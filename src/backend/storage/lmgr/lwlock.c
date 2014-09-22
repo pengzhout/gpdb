@@ -124,7 +124,7 @@ static HTAB *lwlock_stats_htab;
 bool		Trace_lwlocks = false;
 
 inline static void
-PRINT_LWDEBUG(const char *where, const volatile LWLock *lock)
+PRINT_LWDEBUG(const char *where, const LWLock *lock)
 {
 	if (Trace_lwlocks)
 		elog(LOG, "%s(%s %d): excl %d shared %d head %p rOK %d",
@@ -398,9 +398,7 @@ LWLock *
 LWLockAssign(void)
 {
 	LWLock	   *result;
-
-	/* use volatile pointer to prevent code rearrangement */
-	volatile int *LWLockCounter;
+	int		   *LWLockCounter;
 
 	LWLockCounter = (int *) ((char *) MainLWLockArray - 3 * sizeof(int));
 	SpinLockAcquire(ShmemLock);
@@ -484,9 +482,7 @@ int
 LWLockNewTrancheId(void)
 {
 	int			result;
-
-	/* use volatile pointer to prevent code rearrangement */
-	volatile int *LWLockCounter;
+	int		   *LWLockCounter;
 
 	LWLockCounter = (int *) ((char *) MainLWLockArray - 3 * sizeof(int));
 	SpinLockAcquire(ShmemLock);
@@ -566,9 +562,8 @@ LWLockAcquireWithVar(LWLock *l, uint64 *valptr, uint64 val)
 
 /* internal function to implement LWLockAcquire and LWLockAcquireWithVar */
 static inline bool
-LWLockAcquireCommon(LWLock *l, LWLockMode mode, uint64 *valptr, uint64 val)
+LWLockAcquireCommon(LWLock *lock, LWLockMode mode, uint64 *valptr, uint64 val)
 {
-	volatile LWLock *lock = l;
 	PGPROC	   *proc = MyProc;
 	bool		retry = false;
 	bool		result = true;
@@ -580,7 +575,7 @@ LWLockAcquireCommon(LWLock *l, LWLockMode mode, uint64 *valptr, uint64 val)
 	PRINT_LWDEBUG("LWLockAcquire", lock);
 
 #ifdef LWLOCK_STATS
-	lwstats = get_lwlock_stats_entry(l);
+	lwstats = get_lwlock_stats_entry(lock);
 
 	/* Count lock acquisition attempts */
 	if (mode == LW_EXCLUSIVE)
@@ -698,7 +693,7 @@ LWLockAcquireCommon(LWLock *l, LWLockMode mode, uint64 *valptr, uint64 val)
 		 * so that the lock manager or signal manager will see the received
 		 * signal when it next waits.
 		 */
-		LOG_LWDEBUG("LWLockAcquire", T_NAME(l), T_ID(l), "waiting");
+		LOG_LWDEBUG("LWLockAcquire", T_NAME(lock), T_ID(lock), "waiting");
 
 #ifdef LWLOCK_STATS
 		lwstats->block_count++;
@@ -710,7 +705,7 @@ LWLockAcquireCommon(LWLock *l, LWLockMode mode, uint64 *valptr, uint64 val)
 				elog(PANIC, "Waiting on lock already held!");
 		}
 
-		TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(l), T_ID(l), mode);
+		TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), T_ID(lock), mode);
 
 		for (;;)
 		{
@@ -725,9 +720,9 @@ LWLockAcquireCommon(LWLock *l, LWLockMode mode, uint64 *valptr, uint64 val)
 			extraWaits++;
 		}
 
-		TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(l), T_ID(l), mode);
+		TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), T_ID(lock), mode);
 
-		LOG_LWDEBUG("LWLockAcquire", T_NAME(l), T_ID(l), "awakened");
+		LOG_LWDEBUG("LWLockAcquire", T_NAME(lock), T_ID(lock), "awakened");
 
 		/* Now loop back and try to acquire lock again. */
 		retry = true;
@@ -741,7 +736,7 @@ LWLockAcquireCommon(LWLock *l, LWLockMode mode, uint64 *valptr, uint64 val)
 	/* We are done updating shared state of the lock itself. */
 	SpinLockRelease(&lock->mutex);
 
-	TRACE_POSTGRESQL_LWLOCK_ACQUIRE(T_NAME(l), T_ID(l), mode);
+	TRACE_POSTGRESQL_LWLOCK_ACQUIRE(T_NAME(lock), T_ID(lock), mode);
 
 #ifdef USE_TEST_UTILS_X86
 	/* keep track of stack trace where lock got acquired */
@@ -751,7 +746,7 @@ LWLockAcquireCommon(LWLock *l, LWLockMode mode, uint64 *valptr, uint64 val)
 
 	/* Add lock to list of locks held by this backend */
 	held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
-	held_lwlocks[num_held_lwlocks++] = l;
+	held_lwlocks[num_held_lwlocks++] = lock;
 
 	/*
 	 * Fix the process wait semaphore's count for any absorbed wakeups.
@@ -770,9 +765,8 @@ LWLockAcquireCommon(LWLock *l, LWLockMode mode, uint64 *valptr, uint64 val)
  * If successful, cancel/die interrupts are held off until lock release.
  */
 bool
-LWLockConditionalAcquire(LWLock *l, LWLockMode mode)
+LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 {
-	volatile LWLock *lock = l;
 	bool		mustwait;
 
 	PRINT_LWDEBUG("LWLockConditionalAcquire", lock);
@@ -820,8 +814,10 @@ LWLockConditionalAcquire(LWLock *l, LWLockMode mode)
 	{
 		/* Failed to get lock, so release interrupt holdoff */
 		RESUME_INTERRUPTS();
-		LOG_LWDEBUG("LWLockConditionalAcquire", T_NAME(l), T_ID(l), "failed");
-		TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE_FAIL(T_NAME(l), T_ID(l), mode);
+		LOG_LWDEBUG("LWLockConditionalAcquire",
+					T_NAME(lock), T_ID(lock), "failed");
+		TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE_FAIL(T_NAME(lock),
+												 T_ID(lock), mode);
 	}
 	else
 	{
@@ -833,8 +829,8 @@ LWLockConditionalAcquire(LWLock *l, LWLockMode mode)
 
 		/* Add lock to list of locks held by this backend */
 		held_lwlocks_exclusive[num_held_lwlocks] = (mode == LW_EXCLUSIVE);
-		held_lwlocks[num_held_lwlocks++] = l;
-		TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE(T_NAME(l), T_ID(l), mode);
+		held_lwlocks[num_held_lwlocks++] = lock;
+		TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE(T_NAME(lock), T_ID(lock), mode);
 	}
 
 	return !mustwait;
@@ -855,9 +851,8 @@ LWLockConditionalAcquire(LWLock *l, LWLockMode mode)
  * wake up, observe that their records have already been flushed, and return.
  */
 bool
-LWLockAcquireOrWait(LWLock *l, LWLockMode mode)
+LWLockAcquireOrWait(LWLock *lock, LWLockMode mode)
 {
-	volatile LWLock *lock = l;
 	PGPROC	   *proc = MyProc;
 	bool		mustwait;
 	int			extraWaits = 0;
@@ -868,7 +863,7 @@ LWLockAcquireOrWait(LWLock *l, LWLockMode mode)
 	PRINT_LWDEBUG("LWLockAcquireOrWait", lock);
 
 #ifdef LWLOCK_STATS
-	lwstats = get_lwlock_stats_entry(l);
+	lwstats = get_lwlock_stats_entry(lock);
 #endif
 
 	/* Ensure we will have room to remember the lock */
@@ -935,13 +930,14 @@ LWLockAcquireOrWait(LWLock *l, LWLockMode mode)
 		 * Wait until awakened.  Like in LWLockAcquire, be prepared for bogus
 		 * wakups, because we share the semaphore with ProcWaitForSignal.
 		 */
-		LOG_LWDEBUG("LWLockAcquireOrWait", T_NAME(l), T_ID(l), "waiting");
+		LOG_LWDEBUG("LWLockAcquireOrWait", T_NAME(lock), T_ID(lock),
+					"waiting");
 
 #ifdef LWLOCK_STATS
 		lwstats->block_count++;
 #endif
 
-		TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(l), T_ID(l), mode);
+		TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), T_ID(lock), mode);
 
 		for (;;)
 		{
@@ -952,9 +948,10 @@ LWLockAcquireOrWait(LWLock *l, LWLockMode mode)
 			extraWaits++;
 		}
 
-		TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(l), T_ID(l), mode);
+		TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), T_ID(lock), mode);
 
-		LOG_LWDEBUG("LWLockAcquireOrWait", T_NAME(l), T_ID(l), "awakened");
+		LOG_LWDEBUG("LWLockAcquireOrWait", T_NAME(lock), T_ID(lock),
+					"awakened");
 	}
 	else
 	{
@@ -972,14 +969,16 @@ LWLockAcquireOrWait(LWLock *l, LWLockMode mode)
 	{
 		/* Failed to get lock, so release interrupt holdoff */
 		RESUME_INTERRUPTS();
-		LOG_LWDEBUG("LWLockAcquireOrWait", T_NAME(l), T_ID(l), "failed");
-		TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT_FAIL(T_NAME(l), T_ID(l), mode);
+		LOG_LWDEBUG("LWLockAcquireOrWait", T_NAME(lock), T_ID(lock), "failed");
+		TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT_FAIL(T_NAME(lock), T_ID(lock),
+													 mode);
 	}
 	else
 	{
 		/* Add lock to list of locks held by this backend */
-		held_lwlocks[num_held_lwlocks++] = l;
-		TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT(T_NAME(l), T_ID(l), mode);
+		held_lwlocks[num_held_lwlocks++] = lock;
+		TRACE_POSTGRESQL_LWLOCK_ACQUIRE_OR_WAIT(T_NAME(lock), T_ID(lock),
+												mode);
 	}
 
 	return !mustwait;
@@ -1004,10 +1003,8 @@ LWLockAcquireOrWait(LWLock *l, LWLockMode mode)
  * in shared mode, returns 'true'.
  */
 bool
-LWLockWaitForVar(LWLock *l, uint64 *valptr, uint64 oldval, uint64 *newval)
+LWLockWaitForVar(LWLock *lock, uint64 *valptr, uint64 oldval, uint64 *newval)
 {
-	volatile LWLock *lock = l;
-	volatile uint64 *valp = valptr;
 	PGPROC	   *proc = MyProc;
 	int			extraWaits = 0;
 	bool		result = false;
@@ -1018,7 +1015,7 @@ LWLockWaitForVar(LWLock *l, uint64 *valptr, uint64 oldval, uint64 *newval)
 	PRINT_LWDEBUG("LWLockWaitForVar", lock);
 
 #ifdef LWLOCK_STATS
-	lwstats = get_lwlock_stats_entry(l);
+	lwstats = get_lwlock_stats_entry(lock);
 #endif   /* LWLOCK_STATS */
 
 	/*
@@ -1061,7 +1058,7 @@ LWLockWaitForVar(LWLock *l, uint64 *valptr, uint64 oldval, uint64 *newval)
 		}
 		else
 		{
-			value = *valp;
+			value = *valptr;
 			if (value != oldval)
 			{
 				result = false;
@@ -1103,13 +1100,14 @@ LWLockWaitForVar(LWLock *l, uint64 *valptr, uint64 oldval, uint64 *newval)
 		 * so that the lock manager or signal manager will see the received
 		 * signal when it next waits.
 		 */
-		LOG_LWDEBUG("LWLockWaitForVar", T_NAME(l), T_ID(l), "waiting");
+		LOG_LWDEBUG("LWLockWaitForVar", T_NAME(lock), T_ID(lock), "waiting");
 
 #ifdef LWLOCK_STATS
 		lwstats->block_count++;
 #endif
 
-		TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(l), T_ID(l), LW_EXCLUSIVE);
+		TRACE_POSTGRESQL_LWLOCK_WAIT_START(T_NAME(lock), T_ID(lock),
+										   LW_EXCLUSIVE);
 
 		for (;;)
 		{
@@ -1120,9 +1118,10 @@ LWLockWaitForVar(LWLock *l, uint64 *valptr, uint64 oldval, uint64 *newval)
 			extraWaits++;
 		}
 
-		TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(l), T_ID(l), LW_EXCLUSIVE);
+		TRACE_POSTGRESQL_LWLOCK_WAIT_DONE(T_NAME(lock), T_ID(lock),
+										  LW_EXCLUSIVE);
 
-		LOG_LWDEBUG("LWLockWaitForVar", T_NAME(l), T_ID(l), "awakened");
+		LOG_LWDEBUG("LWLockWaitForVar", T_NAME(lock), T_ID(lock), "awakened");
 
 		/* Now loop back and check the status of the lock again. */
 	}
@@ -1130,7 +1129,7 @@ LWLockWaitForVar(LWLock *l, uint64 *valptr, uint64 oldval, uint64 *newval)
 	/* We are done updating shared state of the lock itself. */
 	SpinLockRelease(&lock->mutex);
 
-	TRACE_POSTGRESQL_LWLOCK_ACQUIRE(T_NAME(l), T_ID(l), LW_EXCLUSIVE);
+	TRACE_POSTGRESQL_LWLOCK_ACQUIRE(T_NAME(lock), T_ID(lock), LW_EXCLUSIVE);
 
 	/*
 	 * Fix the process wait semaphore's count for any absorbed wakeups.
@@ -1158,10 +1157,8 @@ LWLockWaitForVar(LWLock *l, uint64 *valptr, uint64 oldval, uint64 *newval)
  * The caller must be holding the lock in exclusive mode.
  */
 void
-LWLockUpdateVar(LWLock *l, uint64 *valptr, uint64 val)
+LWLockUpdateVar(LWLock *lock, uint64 *valptr, uint64 val)
 {
-	volatile LWLock *lock = l;
-	volatile uint64 *valp = valptr;
 	PGPROC	   *head;
 	PGPROC	   *proc;
 	PGPROC	   *next;
@@ -1173,7 +1170,7 @@ LWLockUpdateVar(LWLock *l, uint64 *valptr, uint64 val)
 	Assert(lock->exclusive == 1);
 
 	/* Update the lock's value */
-	*valp = val;
+	*valptr = val;
 
 	/*
 	 * See if there are any LW_WAIT_UNTIL_FREE waiters that need to be woken
@@ -1219,9 +1216,8 @@ LWLockUpdateVar(LWLock *l, uint64 *valptr, uint64 val)
  * LWLockRelease - release a previously acquired lock
  */
 void
-LWLockRelease(LWLock *l)
+LWLockRelease(LWLock *lock)
 {
-	volatile LWLock *lock = l;
 	PGPROC	   *head;
 	PGPROC	   *proc;
 	int			i;
@@ -1234,12 +1230,11 @@ LWLockRelease(LWLock *l)
 	 */
 	for (i = num_held_lwlocks; --i >= 0;)
 	{
-		if (l == held_lwlocks[i])
+		if (lock == held_lwlocks[i])
 			break;
 	}
 	if (i < 0)
-		elog(ERROR, "lock %s %d is not held", T_NAME(l), T_ID(l));
-
+		elog(ERROR, "lock %s %d is not held", T_NAME(lock), T_ID(lock));
 	num_held_lwlocks--;
 	for (; i < num_held_lwlocks; i++)
 	{
@@ -1340,14 +1335,15 @@ LWLockRelease(LWLock *l)
 	/* We are done updating shared state of the lock itself. */
 	SpinLockRelease(&lock->mutex);
 
-	TRACE_POSTGRESQL_LWLOCK_RELEASE(T_NAME(l), T_ID(l));
+	TRACE_POSTGRESQL_LWLOCK_RELEASE(T_NAME(lock), T_ID(lock));
 
 	/*
 	 * Awaken any waiters I removed from the queue.
 	 */
 	while (head != NULL)
 	{
-		LOG_LWDEBUG("LWLockRelease", T_NAME(l), T_ID(l), "release waiter");
+		LOG_LWDEBUG("LWLockRelease", T_NAME(lock), T_ID(lock),
+					"release waiter");
 		proc = head;
 		head = proc->lwWaitLink;
 		proc->lwWaitLink = NULL;
