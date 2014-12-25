@@ -496,7 +496,6 @@ MarkAsPreparing(TransactionId xid,
 	proc->roleId = owner;
 	proc->lwWaiting = false;
 	proc->lwWaitMode = 0;
-	proc->lwWaitLink = NULL;
 	proc->waitLock = NULL;
 	proc->waitProcLock = NULL;
 	proc->serializableIsoLevel = false;
