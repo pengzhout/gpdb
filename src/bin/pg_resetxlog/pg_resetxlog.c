@@ -37,6 +37,7 @@
 
 #include "postgres.h"
 #include "pgtime.h"
+#include "c.h"
 
 #include <dirent.h>
 #include <fcntl.h>

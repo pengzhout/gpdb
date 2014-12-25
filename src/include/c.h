@@ -695,6 +695,7 @@ typedef NameData *Name;
 #define AssertMacro(p)	((void) assert(p))
 #define AssertArg(condition) assert(condition)
 #define AssertState(condition) assert(condition)
+#define AssertPointerAlignment(ptr, bndr)   ((void)true)
 #else							/* USE_ASSERT_CHECKING && !FRONTEND */
 
 /*
