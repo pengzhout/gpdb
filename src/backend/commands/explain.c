@@ -887,6 +887,7 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 
 		case GANGTYPE_PRIMARY_WRITER:
 		case GANGTYPE_PRIMARY_READER:
+		case GANGTYPE_PRIMARY_MIXED:
 		{
 			int numSegments;
 			appendStringInfo(str, "  (slice%d;", sliceId);
@@ -1200,7 +1201,7 @@ explain_outNode(StringInfo str,
 				SliceTable *sliceTable = planstate->state->es_sliceTable;
 				Slice *slice = (Slice *)list_nth(sliceTable->slices, pMotion->motionID);
 
-                int         nSenders = slice->numGangMembersToBeActive;
+				int         nSenders = slice->numGangMembersToBeActive;
 				int         nReceivers = 0;
 
 				/* scale the number of rows by the number of segments sending data */
@@ -1217,7 +1218,8 @@ explain_outNode(StringInfo str,
 						if (nReceivers == 0)
 						{
 							pname = "Broadcast Motion";
-							nReceivers = getgpsegmentCount();
+							Slice *recvslice = (Slice *)list_nth(sliceTable->slices, slice->parentIndex);
+							nReceivers = recvslice->numGangMembersToBeActive; 
 						}
 						else
 						{

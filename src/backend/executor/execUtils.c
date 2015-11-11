@@ -1605,6 +1605,7 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->directDispatch.isDirectDispatch = false;
 		slice->directDispatch.contentIds = NIL;
 		slice->primaryGang = NULL;
+		slice->auxiliaryGang = NULL;
 		slice->primary_gang_id = 0;
 		slice->parentIndex = -1;
 		slice->children = NIL;
@@ -1671,6 +1672,9 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
 
 		case GANGTYPE_PRIMARY_WRITER:
 			return 0; /* writers don't send */
+
+		case GANGTYPE_PRIMARY_MIXED:
+			return (1 + getgpsegmentCount()) ;
 
 		case GANGTYPE_PRIMARY_READER:
 			if ( is1GangSlice(slice))
@@ -1772,14 +1776,14 @@ typedef struct SliceReq
 {
 	int			numNgangs;
 	int			num1gangs_primary_reader;
-    int         num1gangs_entrydb_reader;
+    	int         		num1gangs_entrydb_reader;
 	int			nxtNgang;
 	int			nxt1gang_primary_reader;
 	int			nxt1gang_entrydb_reader;
-	Gang	  **vecNgangs;
-	Gang	  **vec1gangs_primary_reader;
-	Gang	  **vec1gangs_entrydb_reader;
-	bool		writer;
+	Gang	  		**vecNgangs;
+	Gang	  		**vec1gangs_primary_reader;
+	Gang	  		**vec1gangs_entrydb_reader;
+	bool			writer;
 
 }	SliceReq;
 
@@ -1896,15 +1900,15 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 	/* Use the gangs to construct the CdbProcess lists in slices. */
 
 	inv.nxtNgang = 0;
-    inv.nxt1gang_primary_reader = 0;
-    inv.nxt1gang_entrydb_reader = 0;
+    	inv.nxt1gang_primary_reader = 0;
+    	inv.nxt1gang_entrydb_reader = 0;
 	AssociateSlicesToProcesses(sliceMap, 0, &inv);		/* Main tree. */
 
 	for (i = sliceTable->nMotions + 1; i < nslices; i++)
 	{
 		inv.nxtNgang = 0;
-        inv.nxt1gang_primary_reader = 0;
-        inv.nxt1gang_entrydb_reader = 0;
+        	inv.nxt1gang_primary_reader = 0;
+        	inv.nxt1gang_entrydb_reader = 0;
 		AssociateSlicesToProcesses(sliceMap, i, &inv);	/* An initPlan */
 	}
 
@@ -1932,8 +1936,8 @@ void
 InitSliceReq(SliceReq * req)
 {
 	req->numNgangs = 0;
-    req->num1gangs_primary_reader = 0;
-    req->num1gangs_entrydb_reader = 0;
+    	req->num1gangs_primary_reader = 0;
+    	req->num1gangs_entrydb_reader = 0;
 	req->writer = FALSE;
 	req->vecNgangs = NULL;
 	req->vec1gangs_primary_reader = NULL;
@@ -1968,8 +1972,24 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			/* Roots that run on the  QD don't need a gang. */
 			break;
 
+		/*
+		* We did not actually create N+1 size gang, just create
+		* a N-segments gang and 1-entry-db gang here. Then in function
+		* AssociateSlicesToProcesses(), those two gangs will be
+		* bond to the slice.  
+		*
+		* one benefit is no need to care about writer gang allocation,
+		* another benefit is all those gangs can be reused later.
+		*/
+		case GANGTYPE_PRIMARY_MIXED:
+			Assert(slice->gangSize == 1 + getgpsegmentCount());
+			req->numNgangs++;
+			req->num1gangs_entrydb_reader++;
+			setLargestGangsize(slice->gangSize);
+			break;
+
 		case GANGTYPE_ENTRYDB_READER:
-            Assert(slice->gangSize == 1);
+			Assert(slice->gangSize == 1);
 			req->num1gangs_entrydb_reader++;
 			break;
 
@@ -2075,6 +2095,38 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
                                                         slice->sliceIndex,
                                                         &slice->directDispatch);
 			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
+			break;
+
+		/*
+ 		* A MIXED slice contains a N-segments gang as primaryGang
+ 		* and a 1-entry-db gang as auxiliaryGang.
+ 		* So bind the gangs and processes info to the slice here,
+ 		* cdbdisp_dispatchX() need it.
+ 		*/
+		case GANGTYPE_PRIMARY_MIXED:
+			Assert(slice->gangSize == 1 + getgpsegmentCount());
+
+			slice->primaryGang = req->vecNgangs[req->nxtNgang];
+			slice->auxiliaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
+			req->nxtNgang++;
+			req->nxt1gang_entrydb_reader++;
+
+			Assert(slice->primaryGang != NULL);
+			Assert(slice->auxiliaryGang != NULL);
+
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+                                                        slice->sliceIndex,
+                                                        &slice->directDispatch);
+
+		
+			List* auxiliaryProcesses = getCdbProcessList(slice->auxiliaryGang,
+                                                        	slice->sliceIndex,
+                                                        	&slice->directDispatch);
+
+			Assert(1 == list_length(auxiliaryProcesses));
+					
+			slice->primaryProcesses = lappend(slice->primaryProcesses,
+							 linitial(auxiliaryProcesses));
 			break;
 	}
 

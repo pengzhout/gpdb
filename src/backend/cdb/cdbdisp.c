@@ -3509,6 +3509,20 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 								   pQueryParms, primaryGang,
 								   si, sliceLim, &direct);
 		}
+
+		/*
+ 		* If auxiliaryGang is not null, it means current slice is hybrid one
+ 		* which is combination of N-segments gang and 1-entry-db gang.
+ 		* 
+ 		* So here, also dispatch the plan to auxiliaryGang
+ 		*/	
+		if (slice->auxiliaryGang != NULL)
+		{
+			cdbdisp_dispatchToGang(ds,
+					GP_DISPATCH_COMMAND_TYPE_QUERY,
+					pQueryParms, slice->auxiliaryGang,
+					si, sliceLim, &direct);
+		}
 	}
 
 	if (sliceVector)
