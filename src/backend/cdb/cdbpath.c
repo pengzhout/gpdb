@@ -944,7 +944,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
                                                 outer.move_to);
         if (!outer.path)            /* fail if outer motion not feasible */
             goto fail;
-   }
+    }
 
     /*
      * Move inner.
