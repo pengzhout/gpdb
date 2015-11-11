@@ -49,6 +49,7 @@ extern Param *SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 						   Oid resulttype, int32 resulttypmod);
 extern Oid exprType(Node *expr);
 extern void mark_plan_strewn(Plan* plan);
+extern void mark_plan_mixed(Plan* plan);
 extern Plan * plan_pushdown_tlist(Plan *plan, List *tlist);
 
 extern bool	gp_log_dynamic_partition_pruning;

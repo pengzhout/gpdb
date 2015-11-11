@@ -117,6 +117,12 @@ typedef struct DoConnectParms
 static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 						 SegmentDatabaseDescriptor * segdbDesc);
 
+void
+setLargestGangsize(int size)
+{
+	largest_gangsize = size;
+}
+
 int
 largestGangsize(void)
 {
@@ -733,7 +739,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 
 	newGangDefinition->db_descriptors =
 		(SegmentDatabaseDescriptor *) palloc0(cdb_component_dbs->total_segments *
-										  sizeof(SegmentDatabaseDescriptor));
+			  sizeof(SegmentDatabaseDescriptor));
 
 	Assert(cdb_component_dbs->total_segment_dbs > 0);
 
@@ -1296,7 +1302,6 @@ bad:
  * keep track of allocations (it assumes the QD will keep track of what is allocated or not).
  *
  */
-
 static List *allocatedReaderGangsN = NIL;
 static List *availableReaderGangsN = NIL;
 static List *allocatedReaderGangs1 = NIL;
