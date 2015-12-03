@@ -460,10 +460,9 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
                  * degenerate (on constant exprs) or the result is known to
                  * have at most one row. 
                  */
-                if (query->sortClause &&
-                    plan->flow->numSortCols > 0)
+                if (plan->flow->numSortCols > 0)
                 {
-                    if (plan->flow->numSortCols > list_length(query->sortClause))
+                    if (query->sortClause && plan->flow->numSortCols > list_length(query->sortClause))
                         plan->flow->numSortCols = list_length(query->sortClause);
 
                     Insist(focusPlan(plan, true, false));

@@ -8021,11 +8021,11 @@ HINT:  You may need to use explicit aliases and/or to refer to grouping keys in 
 select count(*) over (partition by 1 order by cn rows between 1 preceding and 1 preceding) from sale;
  count 
 -------
+     1
+     1
+     1
+     1
      0
-     1
-     1
-     1
-     1
      1
      1
      1
