@@ -735,6 +735,9 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 		{
 			pCSEntry = &pMNEntry->ready_tuple_lists[i];
 
+			if (!pCSEntry->init)
+				continue;
+
 			if (pMNEntry->preserve_order &&
 				gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 			{
