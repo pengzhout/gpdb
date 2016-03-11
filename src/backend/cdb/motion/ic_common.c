@@ -121,7 +121,6 @@ WSAPoll(
  */
 
 /* Socket file descriptor for the listener. */
-int		TCP_listenerFd;
 int		UDP_listenerFd;
 
 /* Socket file descriptor for the sequence server. */
@@ -175,19 +174,8 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 	uint32		tcSize;
 	int			bytesProcessed = 0;
 
-	if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
-	{
-		/* read the packet in from the network. */
-		readPacket(conn, inTeardown);
-
-		/* go through and form us some TupleChunks. */
-		bytesProcessed = PACKET_HEADER_SIZE;
-	}
-	else
-	{
-		/* go through and form us some TupleChunks. */
-		bytesProcessed = sizeof(struct icpkthdr);
-	}
+	/* go through and form us some TupleChunks. */
+	bytesProcessed = sizeof(struct icpkthdr);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "recvtuple chunk recv bytes %d msgsize %d conn->pBuff %p conn->msgPos: %p",
@@ -233,22 +221,6 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 		}
 
 
-		/* we only check for interrupts here when we don't have a guaranteed full-message */
-		if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
-		{
-			if (tcSize >= conn->msgSize)
-			{
-				/* see MPP-720: it is possible that our message got
-				 * messed up by a cancellation ? */
-				ML_CHECK_FOR_INTERRUPTS(inTeardown);
-
-				logChunkParseDetails(conn);
-
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error parsing message"),
-								errdetail("tcSize %d >= conn->msgSize %d", tcSize, conn->msgSize)));
-			}
-		}
 		Assert(tcSize < conn->msgSize);
 
 		/*
@@ -296,21 +268,15 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 void
 InitMotionLayerIPC(void)
 {
-	uint16 tcp_listener = 0;
-	uint16 udp_listener = 0;
-
 	/*activated = false;*/
 	savedSeqServerFd = -1;
 
-	InitMotionTCP(&TCP_listenerFd, &tcp_listener);
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
-		InitMotionUDPIFC(&UDP_listenerFd, &udp_listener);
-	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-		InitMotionUDP(&UDP_listenerFd, &udp_listener);
+		InitMotionUDPIFC(&UDP_listenerFd, &Gp_listener_port);
+	else
+		elog(ERROR, "Interconnect Exception: unsupported interconnect type");
 
-	Gp_listener_port = (udp_listener<<16) | tcp_listener;
-
-	elog(DEBUG1, "Interconnect listening on tcp port %d udp port %d (0x%x)", tcp_listener, udp_listener, Gp_listener_port);
+	elog(DEBUG1, "Interconnect listening on udp port %d", Gp_listener_port);
 }
 
 /* See ml_ipc.h */
@@ -320,15 +286,12 @@ CleanUpMotionLayerIPC(void)
 	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
     	elog(DEBUG3, "Cleaning Up Motion Layer IPC...");
 
-	CleanupMotionTCP();
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
 		CleanupMotionUDPIFC();
-	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-		CleanupMotionUDP();
+	else
+		elog(ERROR, "Interconnect Exception: unsupported interconnect type");
 
 	/* close down the Interconnect listener socket. */
-    if (TCP_listenerFd >= 0)
-        closesocket(TCP_listenerFd);
 
 	if (UDP_listenerFd >= 0)
 		closesocket(UDP_listenerFd);
@@ -338,7 +301,6 @@ CleanUpMotionLayerIPC(void)
 
 	/* be safe and reset global state variables. */
 	Gp_listener_port = 0;
-	TCP_listenerFd = -1;
 	UDP_listenerFd = -1;
     portReservationFd = -1;
 }
@@ -564,28 +526,9 @@ DeregisterReadInterest(ChunkTransportState *transportStates,
 #endif
 		markUDPConnInactiveIFC(conn);
 	}
-	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-	{
-#ifdef AMS_VERBOSE_LOGGING
-		elog(LOG, "deregisterReadInterest set stillactive = false for node %d route %d (%s)", motNodeID, srcRoute, reason);
-#endif
-		markUDPConnInactive(conn);
-	}
 	else
-	{
+		elog(ERROR, "Interconnect Exception: unsupported interconnect type");
 
-		/*
-		 * we also mark the connection as "done." The way synchronization works is
-		 * strange. On QDs the "teardown" doesn't get called until all segments
-		 * are finished, which means that we need some way for the QEs to know
-		 * that Teardown should complete, otherwise we deadlock the entire query
-		 * (QEs wait in their Teardown calls, while the QD waits for them to
-		 * finish)
-		 */
-		shutdown(conn->sockfd, SHUT_WR);
-
-		MPP_FD_CLR(conn->sockfd, &pEntry->readSet);
-	}
 	return;
 }
 
@@ -739,10 +682,6 @@ SetupInterconnect(EState *estate)
 {
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
 		SetupUDPIFCInterconnect(estate);
-	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-		SetupUDPInterconnect(estate);
-	else if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
-		SetupTCPInterconnect(estate);
 	else
 	{
 		if (Gp_interconnect_type != INTERCONNECT_TYPE_NIL)
@@ -818,16 +757,6 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 		TeardownUDPIFCInterconnect(transportStates, mlStates, forceEOS);
 		return;
 	}
-	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-	{
-		TeardownUDPInterconnect(transportStates, mlStates, forceEOS);
-		return;
-	}
-	else if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
-	{
-		TeardownTCPInterconnect(transportStates, mlStates, forceEOS);
-		return;
-	}
 	else if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
 	{
 		if (transportStates->states != NULL)
@@ -836,6 +765,8 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 
 		return;
 	}
+	else
+		elog(ERROR, "Interconnect Exception: unsupported interconnect type");
 }
 
 /*=========================================================================
@@ -1036,7 +967,7 @@ SendDummyPacket(void)
 	/*
 	* Get address info from interconnect udp listenner port
 	*/
-	udp_listenner = (Gp_listener_port >> 16) & 0x0ffff;
+	udp_listenner = Gp_listener_port;
 	snprintf(port_str, sizeof(port_str), "%d", udp_listenner);
 
 	MemSet(&hint, 0, sizeof(hint));
@@ -1138,8 +1069,6 @@ WaitInterconnectQuit(void)
 	{
 		WaitInterconnectQuitUDPIFC();
 	}
-	else if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-	{
-		WaitInterconnectQuitUDP();
-	}
+	else
+		elog(ERROR, "Interconnect Exception: unsupported interconnect type");
 }

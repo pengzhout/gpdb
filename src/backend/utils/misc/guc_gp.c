@@ -5184,7 +5184,7 @@ struct config_string ConfigureNamesString_gp[] =
 	{
 		{"gp_interconnect_type", PGC_BACKEND, GP_ARRAY_TUNING,
 			gettext_noop("Sets the protocol used for inter-node communication."),
-			gettext_noop("Valid values are \"tcp\", \"udp\" and \"udpifc\"."),
+			gettext_noop("Only support \"udpifc\" for now."),
 			GUC_GPDB_ADDOPT
 		},
 		&gp_interconnect_type_str,

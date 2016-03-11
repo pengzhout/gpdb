@@ -460,10 +460,9 @@ create_gang_retry:
 				   segdbDesc->error_message.len == 0);
 
 			if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
-				elog(LOG, "Connected to %s motionListenerPorts=%d/%d with options %s",
+				elog(LOG, "Connected to %s motionListenerPorts=%d with options %s",
 					 segdbDesc->whoami,
-					 (segdbDesc->motionListener & 0x0ffff),
-					 ((segdbDesc->motionListener >> 16) & 0x0ffff),
+					 segdbDesc->motionListener,
 					 PQoptions(segdbDesc->conn));
 
 			/*
@@ -1859,10 +1858,10 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 
 			process->listenerAddr = pstrdup(qeinfo->hostip);
 
-			if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC || Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-				process->listenerPort = (segdbDesc->motionListener >> 16) & 0x0ffff;
+			if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
+				process->listenerPort = segdbDesc->motionListener;
 			else
-				process->listenerPort = (segdbDesc->motionListener & 0x0ffff);
+				elog(ERROR, "Interconnect Exception: unsupported interconnect type");
 
 			process->pid = segdbDesc->backendPid;
 			process->contentid = segdbDesc->segindex;
@@ -1940,10 +1939,11 @@ getCdbProcessesForQD(int isPrimary)
 	 * interconnect connection.
 	 */
 	proc->listenerAddr = NULL;
-	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC || Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-		proc->listenerPort = (Gp_listener_port >> 16) & 0x0ffff;
+	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDPIFC)
+		proc->listenerPort = Gp_listener_port;
 	else
-		proc->listenerPort = (Gp_listener_port & 0x0ffff);
+		elog(ERROR, "Interconnect Exception: unsupported interconnect type");
+
 	proc->pid = MyProcPid;
 	proc->contentid = -1;
 
