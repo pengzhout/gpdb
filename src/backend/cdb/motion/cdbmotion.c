@@ -731,7 +731,7 @@ EndMotionLayerNode(MotionLayerState *mlStates, int16 motNodeID, bool flushCommLa
 	 */
 	if (pMNEntry->preserve_order && pMNEntry->ready_tuple_lists != NULL)
 	{
-		for (i=0; i < GpIdentity.numsegments; i++)
+		for (i=0; i < GpIdentity.numsegments + 1; i++)
 		{
 			pCSEntry = &pMNEntry->ready_tuple_lists[i];
 
@@ -887,7 +887,7 @@ getChunkSorterEntry(MotionLayerState *mlStates,
 	AssertArg(motNodeEntry != NULL);
 
 	Assert(srcRoute >= 0);
-	Assert(srcRoute < GpIdentity.numsegments);
+	Assert(srcRoute < GpIdentity.numsegments + 1);
 
 	/* Do we have a sorter initialized ? */
 	if (motNodeEntry->ready_tuple_lists != NULL)
