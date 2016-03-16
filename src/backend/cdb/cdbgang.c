@@ -69,6 +69,7 @@ static bool cleanupGang(Gang * gp);
 
 extern void resetSessionForPrimaryGangLoss(void);
 
+static void getAvailableTCPPortForGang(int *sock, uint16 *port);
 /*
  * Points to the result of getCdbComponentDatabases()
  */
@@ -101,6 +102,8 @@ typedef struct DoConnectParms
 	GangType	type;
 
 	bool		i_am_superuser;
+
+	uint16		qdPort;
 
 	/*
 	 * The pthread_t thread handle.
@@ -335,6 +338,7 @@ create_gang_retry:
 
 		/* set the gangType. */
 		pParms->type = type;
+		pParms->qdPort = newGangDefinition->qdPort;
 
 		pParms->i_am_superuser = connectAsSuperUser;
 
@@ -640,6 +644,8 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 	newGangDefinition->allocated = false;
 	newGangDefinition->active = false;
 	newGangDefinition->noReuse = false;
+	newGangDefinition->qdPort = 0;
+	newGangDefinition->dummySock = 0;
 	newGangDefinition->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
 
 	if (gp_log_gang >= GPVARS_VERBOSITY_VERBOSE)
@@ -796,9 +802,87 @@ buildGangDefinition(GangType type, int gang_id, int size, int content, char *por
 		elog(ERROR, "Not all primary segment instances are active and connected");
 		/* not reached */
 	}
+
+	getAvailableTCPPortForGang(&newGangDefinition->dummySock, &newGangDefinition->qdPort);
+
 	return newGangDefinition;
 }
 
+static void 
+getAvailableTCPPortForGang(int *sock, uint16 *port)
+{
+    	int errnoSave = 0;
+	int fd = 0;
+	int reuse = 0;
+	const char *fun = NULL;
+
+	struct sockaddr_storage addr = {0};
+	socklen_t addrlen = 0;
+	struct addrinfo hints = {0};
+	struct addrinfo *addrs = NULL;
+	struct addrinfo *rp = NULL;
+	char service[32];
+	int s = 0;
+
+	snprintf(service,32,"%d",0);
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_UNSPEC;    	/* Allow IPv4 or IPv6 */
+	hints.ai_socktype = SOCK_STREAM; 	/* TCP socket */
+	hints.ai_flags = AI_PASSIVE;    	/* For wildcard IP address */
+	hints.ai_protocol = 0;          	/* Any protocol */
+	
+	if ((s = getaddrinfo(NULL, service, &hints, &addrs)) != 0)
+		elog(ERROR,"getaddrinfo failed: %s", gai_strerror(s));
+
+	for (rp = addrs; rp != NULL; rp = rp->ai_next)
+	{
+		if ((fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1)
+			continue;
+
+		if (bind(fd, rp->ai_addr, rp->ai_addrlen) == -1)
+		{
+			fun = "bind";
+			goto error;
+		}
+
+		break;
+	}
+
+	if (rp == NULL)
+	{
+		elog(ERROR, "could not get an available tcp port");
+	}
+
+	reuse = 1;
+	if (setsockopt(fd ,SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1)
+	{
+		fun = "setsockopt";
+		goto error;
+	}
+
+	addrlen = sizeof(addr);
+	if (getsockname(fd, (struct sockaddr *) &addr, &addrlen) == -1)
+	{
+		fun = "getsockname";
+		goto error;
+	}
+
+	*sock = fd;
+
+	if (addr.ss_family == AF_INET6)
+		*port = ntohs(((struct sockaddr_in6*)&addr)->sin6_port);
+	else
+		*port = ntohs(((struct sockaddr_in*)&addr)->sin_port);
+
+	return;
+
+error:
+	errnoSave = errno;
+	if (fd >= 0)
+		closesocket(fd);
+	errno = errnoSave;
+	elog(ERROR, "could not get an available tcp port. %s:%s", fun, strerror(errno));
+}
 
 /*
  * AddSegDBToConnThreadPool
@@ -1119,7 +1203,7 @@ thread_DoConnect(void *arg)
 		}
 		else
 		{
-			if (cdbconn_doConnect(segdbDesc, gpqeid, buffer.data))
+			if (cdbconn_doConnect(segdbDesc, gpqeid, buffer.data, pParms->qdPort))
 			{
 				if (segdbDesc->motionListener == -1)
 				{
@@ -2424,6 +2508,13 @@ disconnectAndDestroyGang(Gang *gp)
 	{
 		pfree(gp->db_descriptors);
 		gp->db_descriptors = NULL;
+	}
+
+	if (gp->dummySock > 0)
+	{
+		closesocket(gp->dummySock);
+		gp->dummySock = 0;
+		gp->qdPort = 0;
 	}
 
 	gp->size = 0;

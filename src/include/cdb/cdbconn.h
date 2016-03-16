@@ -78,7 +78,8 @@ cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc);
 bool                            /* returns true if connected */
 cdbconn_doConnect(SegmentDatabaseDescriptor *segdbDesc,
 		  const char *gpqeid,
-		  const char *options);
+		  const char *options,
+		  const uint16 qdPort);
 
 /* Set the slice index for error messages related to this QE. */
 bool
