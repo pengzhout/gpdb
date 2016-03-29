@@ -267,17 +267,15 @@ cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc)
 bool                            /* returns true if connected */
 cdbconn_doConnect(SegmentDatabaseDescriptor *segdbDesc,
 				  const char *gpqeid,
-				  const char *options,
-				  const uint16 qdPort)
+				  const char *options)
 {
     CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
     PQExpBufferData             buffer;
-#define MAX_KEYWORDS 11
+#define MAX_KEYWORDS 10
 	const char *keywords[MAX_KEYWORDS];
 	const char *values[MAX_KEYWORDS];
 	int			nkeywords = 0;
-	char		qeportstr[20];
-	char		qdPortStr[20];
+	char		portstr[20];
 	char		timeoutstr[20];
 
     /*
@@ -357,15 +355,9 @@ cdbconn_doConnect(SegmentDatabaseDescriptor *segdbDesc,
 		}
 	}
 
-
-	snprintf(qdPortStr, sizeof(qdPortStr), "%u", qdPort);
-	keywords[nkeywords] = "qdport";
-	values[nkeywords] = qdPortStr;
-	nkeywords++;
-
-	snprintf(qeportstr, sizeof(qeportstr), "%u", q->port);
+	snprintf(portstr, sizeof(portstr), "%u", q->port);
 	keywords[nkeywords] = "port";
-	values[nkeywords] = qeportstr;
+	values[nkeywords] = portstr;
 	nkeywords++;
 
     if (MyProcPort->database_name)

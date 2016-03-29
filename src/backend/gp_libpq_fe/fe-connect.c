@@ -275,10 +275,6 @@ static const PQconninfoOption PQconninfoOptions[] = {
 		"gp-debug-daid", "D", 40,
 	offsetof(struct pg_conn, gpdaid)},
 
-	{"qdport", NULL, "", NULL,
-		"qd-gang-port", "D", 40,
-	offsetof(struct pg_conn, qdport)},
-
 	{"replication", NULL, NULL, NULL,
 		"Replication", "D", 5,
 	offsetof(struct pg_conn, replication)},
@@ -1572,12 +1568,9 @@ connectDBComplete(PGconn *conn)
 PostgresPollingStatusType
 PQconnectPoll(PGconn *conn)
 {
-	PGresult   *res = NULL;
-	char	sebuf[256] = {0};
-	int	optval = 0;
-	int	reuse = 0;	
-	uint16	qdport = 0;
-	struct sockaddr_in sa_loc = {0};
+	PGresult   *res;
+	char		sebuf[256];
+	int			optval;
 
 	if (conn == NULL)
 		return PGRES_POLLING_FAILED;
@@ -1718,6 +1711,7 @@ keep_going:						/* We will come back to here until there is
 						int			on = 1;
 						int			usekeepalives = useKeepalives(conn);
 						int			err = 0;
+						int			reuse = 1;
 
 						if (usekeepalives < 0)
 						{
@@ -1749,6 +1743,14 @@ keep_going:						/* We will come back to here until there is
 							err = 1;
 #endif /* SIO_KEEPALIVE_VALS */
 #endif /* WIN32 */
+
+						if (setsockopt(conn->sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) == -1)
+						{
+							appendPQExpBuffer(&conn->errorMessage, 
+									  libpq_gettext("setsockopt(SO_REUSEADDR) failed:: %s\n"), 
+									  SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
+							err = 1;
+						}
 
 						if (err)
 						{
@@ -1798,40 +1800,6 @@ keep_going:						/* We will come back to here until there is
 						conn->sigpipe_flag = false;
 					}
 #endif   /* SO_NOSIGPIPE */
-
-					if (!IS_AF_UNIX(addr_cur->ai_family) && conn->qdport)
-					{
-						reuse = 1;
-
-						if (setsockopt(conn->sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) == -1)
-						{
-							appendPQExpBuffer(&conn->errorMessage,
-									libpq_gettext("could not set reuse option: %s\n"),
-								SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
-
-							closesocket(conn->sock);
-							conn->sock = -1;
-							conn->addr_cur = addr_cur->ai_next;
-							continue;
-						}
-
-						qdport = atoi(conn->qdport);
-						Assert(qdport > 0);
-
-						sa_loc.sin_family = addr_cur->ai_family;
-						sa_loc.sin_port = qdport;
-						if (bind(conn->sock, (struct sockaddr *)&sa_loc, sizeof(struct sockaddr)) == -1)
-						{
-							appendPQExpBuffer(&conn->errorMessage,
-									libpq_gettext("could not bind socket to port %d: %s\n"), qdport,
-								SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
-	
-							closesocket(conn->sock);
-							conn->sock = -1;
-							conn->addr_cur = addr_cur->ai_next;
-							continue;
-						}
-					}
 
 					/*
 					 * Start/make connection.  This should not block, since we
@@ -2460,7 +2428,6 @@ makeEmptyPGconn(void)
 	conn->auth_req_received = false;
 	conn->password_needed = false;
 	conn->dot_pgpass_used = false;
-	conn->qdport = NULL;
 
 	/*
 	 * We try to send at least 8K at a time, which is the usual size of pipe
@@ -2563,8 +2530,6 @@ freePGconn(PGconn *conn)
         free(conn->gpdaid);
     if (conn->qe_version)		/* CDB */
         free(conn->qe_version);
-    if (conn->qdport)			/* CDB */
-        free(conn->qdport);
 
 	/* Note that conn->Pfdebug is not ours to close or free */
 	if (conn->last_query)

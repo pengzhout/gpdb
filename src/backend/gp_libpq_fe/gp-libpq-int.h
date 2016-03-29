@@ -320,8 +320,6 @@ struct pg_conn
     char       *gpqdid;        /* MPP: session id & startup info for QD callback */
     char       *gpdaid;        /* MPP: session id & startup info for QDA relay */
 
-	char	   *qdport;	/* QD port shared by all connections of the same gang */
-
 	/* Optional file to write trace info to */
 	FILE	   *Pfdebug;
 
