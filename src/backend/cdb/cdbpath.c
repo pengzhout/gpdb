@@ -822,6 +822,21 @@ cdbpath_motion_for_join(PlannerInfo    *root,
     outer.bytes = cdbpath_rows(root, outer.path) * outer.path->parent->width;
     inner.bytes = cdbpath_rows(root, inner.path) * inner.path->parent->width;
 
+	if (CdbPathLocus_IsTest(outer.locus) || CdbPathLocus_IsTest(inner.locus))
+	{
+		if (!(CdbPathLocus_IsTest(outer.locus) && CdbPathLocus_IsTest(inner.locus)))
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+                                    errmsg("The query is not yet supported in "
+                                           "this version of " PACKAGE_NAME "."),
+                                    errdetail("Dispatch testing functions can join with"
+                                              "dispatch testing functions ")
+                                    ));
+		}
+
+        CdbPathLocus_MakeReplicated(&inner.move_to);
+	
+	}
     /*
      * Motion not needed if either source is everywhere (e.g. a constant).
      *

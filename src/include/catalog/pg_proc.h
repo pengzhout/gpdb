@@ -4243,7 +4243,7 @@ DATA(insert OID = 3000 ( gp_read_error_log  PGNSP PGUID 12 1 1000 0 f f t t v 1 
 DESCR("read the error log for the specified external table");
 
 /* gp_truncate_error_log(text) => bool */ 
-DATA(insert OID = 3069 ( gp_truncate_error_log  PGNSP PGUID 12 1 0 0 f f t f v 1 0 16 f "25" _null_ _null_ _null_ _null_ gp_truncate_error_log _null_ _null_ m ));
+DATA(insert OID = 3069 ( gp_truncate_error_log  PGNSP PGUID 12 1 0 0 f f t f v 1 0 16 f "25" _null_ _null_ _null_ _null_ gp_truncate_error_log _null_ _null_ d ));
 DESCR("truncate the error log for the specified external table");
 
 /*
@@ -4279,6 +4279,8 @@ DESCR("truncate the error log for the specified external table");
 #define PRODATAACCESS_MODIFIES	'm'
 /* This is an internal-only data access property. */
 #define PRODATAACCESS_SEGMENT	's'
+/* For dispatch testing function*/
+#define PRODATAACCESS_TEST	'd'
 
 /*
  * prototypes for functions in pg_proc.c

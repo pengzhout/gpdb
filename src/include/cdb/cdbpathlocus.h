@@ -51,6 +51,7 @@ typedef enum CdbLocusType
     CdbLocusType_Hashed,        /* hash partitioned over all qExecs of N-gang */
     CdbLocusType_HashedOJ,      /* result of hash partitioned outer join */
     CdbLocusType_Strewn,        /* partitioned on no known function */
+    CdbLocusType_Test,        /* partitioned on no known function */
     CdbLocusType_End            /* = last valid CdbLocusType + 1 */
 } CdbLocusType;
 
@@ -159,6 +160,7 @@ typedef struct CdbPathLocus
 #define CdbPathLocus_IsPartitioned(locus)       \
             (CdbPathLocus_IsHashed(locus) ||    \
              CdbPathLocus_IsHashedOJ(locus) ||  \
+             CdbPathLocus_IsTest(locus) ||  \
              CdbPathLocus_IsStrewn(locus))
 
 #define CdbPathLocus_IsNull(locus)          \
@@ -177,6 +179,8 @@ typedef struct CdbPathLocus
             ((locus).locustype == CdbLocusType_HashedOJ)
 #define CdbPathLocus_IsStrewn(locus)        \
             ((locus).locustype == CdbLocusType_Strewn)
+#define CdbPathLocus_IsTest(locus)        \
+            ((locus).locustype == CdbLocusType_Test)
 
 #define CdbPathLocus_MakeSimple(plocus, _locustype) \
     do {                                                \
@@ -190,6 +194,8 @@ typedef struct CdbPathLocus
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_Null)
 #define CdbPathLocus_MakeEntry(plocus)                  \
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_Entry)
+#define CdbPathLocus_MakeTEST(plocus)                  \
+            CdbPathLocus_MakeSimple((plocus), CdbLocusType_Test)
 #define CdbPathLocus_MakeSingleQE(plocus)               \
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_SingleQE)
 #define CdbPathLocus_MakeGeneral(plocus)                \
