@@ -497,7 +497,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 
 	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DECODE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DENY
-	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOCUMENT_P DOMAIN_P DOUBLE_P DROP DXL
+	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOCUMENT_P DOMAIN_P DOUBLE_P DPT DROP DXL
 
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERRORS ESCAPE EVERY EXCEPT 
 	EXCHANGE EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
@@ -6741,6 +6741,10 @@ common_func_opt_item:
 				{
 					$$ = makeDefElem("data_access", (Node *)makeString("none"));
 				}
+			| DPT
+				{
+					$$ = makeDefElem("data_access", (Node *)makeString("dptest"));
+				}
 			| CONTAINS SQL
 				{
 					$$ = makeDefElem("data_access", (Node *)makeString("contains"));
@@ -12344,6 +12348,7 @@ unreserved_keyword:
 			| DOCUMENT_P
 			| DOMAIN_P
 			| DOUBLE_P
+			| DPT
 			| DROP
 			| DXL
 			| EACH

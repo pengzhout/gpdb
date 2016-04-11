@@ -520,6 +520,10 @@ interpret_data_access(DefElem *defel)
 		proDataAccess = PRODATAACCESS_READS;
 	else if (strcmp(str, "modifies") == 0)
 		proDataAccess = PRODATAACCESS_MODIFIES;
+#ifdef USE_DISPATCH_TESTING
+	else if (strcmp(str, "dptest") == 0)
+		proDataAccess = PRODATAACCESS_TEST;
+#endif
 	else
 		elog(ERROR, "invalid data access \"%s\"", str);
 
