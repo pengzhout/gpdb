@@ -826,6 +826,7 @@ with_CC
 enable_depend
 enable_cassert
 enable_debugbreak
+enable_dispatch_testing
 enable_debugntuplestore
 enable_testutils
 enable_orca
@@ -1496,6 +1497,7 @@ Optional Features:
   --enable-profiling      build with profiling enabled
   --enable-coverage       build with coverage testing instrumentation
   --enable-dtrace         build with DTrace support
+  --enable-dispatch-testing build with dispatch testing support
   --enable-depend         turn on automatic dependency tracking
   --enable-cassert        enable assertion checks (for debugging)
   --enable-debugbreak     enable debug_break and debug_break_n (for debugging)
@@ -5223,6 +5225,34 @@ else
 
 fi
 
+
+#
+# Enable dispatch testing framework
+#
+
+pgac_args="$pgac_args enable_dispatch_testing"
+
+# Check whether --enable-debugbreak was given.
+if test "${enable_dispatch_testing+set}" = set; then :
+  enableval=$enable_dispatch_testing;
+  case $enableval in
+    yes)
+
+$as_echo "#define USE_DISPATCH_TESTING 1" >>confdefs.h
+
+      ;;
+    no)
+      :
+      ;;
+    *)
+      as_fn_error $? "no argument expected for --enable-dispatch_testing option" "$LINENO" 5
+      ;;
+  esac
+
+else
+  enable_dispatchtesting=no
+
+fi
 
 
 # Enable debug ntuplestore
