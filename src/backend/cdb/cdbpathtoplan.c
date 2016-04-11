@@ -66,8 +66,10 @@ cdbpathtoplan_create_flow(PlannerInfo  *root,
     }
     else if (CdbPathLocus_IsStrewn(locus))
         flow = makeFlow(FLOW_PARTITIONED);
+#ifdef USE_DISPATCH_TESTING
     else if (CdbPathLocus_IsTest(locus))
         flow = makeFlow(FLOW_PARTITIONED);
+#endif
     else
         Insist(0);
 	

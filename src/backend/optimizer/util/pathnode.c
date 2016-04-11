@@ -2277,8 +2277,10 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		data_access = func_data_access(((FuncExpr *) rte->funcexpr)->funcid);
 	if (data_access == PRODATAACCESS_SEGMENT)
 		CdbPathLocus_MakeStrewn(&pathnode->locus);
+#ifdef USE_DISPATCH_TESTING
 	else if (data_access == PRODATAACCESS_TEST)
 		CdbPathLocus_MakeTEST(&pathnode->locus);
+#endif
 	else if (contain_mutable_functions(rte->funcexpr))
 		CdbPathLocus_MakeEntry(&pathnode->locus);
 	else

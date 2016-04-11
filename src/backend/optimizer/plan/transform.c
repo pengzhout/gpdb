@@ -294,7 +294,9 @@ static bool is_sirv_funcexpr(FuncExpr *fe)
 			&& !contain_vars_of_level_or_above((Node *) fe->args, 0) /* Must be variable free */
 			&& !contain_subplans((Node *) fe->args) /* Must not contain sublinks */
 			&& func_volatile(fe->funcid) == PROVOLATILE_VOLATILE /* Must be a volatile function */
+#ifdef USE_DISPATCH_TESTING
 			&& func_data_access(fe->funcid) != PRODATAACCESS_TEST /* Must not be a volatile function */
+#endif
 			&& fe->funcresulttype != RECORDOID /* Record types cannot be handled currently */
 			);
 

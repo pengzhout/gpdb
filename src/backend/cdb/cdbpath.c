@@ -822,6 +822,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
     outer.bytes = cdbpath_rows(root, outer.path) * outer.path->parent->width;
     inner.bytes = cdbpath_rows(root, inner.path) * inner.path->parent->width;
 
+#ifdef USE_DISPATCH_TESTING 
 	if (CdbPathLocus_IsTest(outer.locus) || CdbPathLocus_IsTest(inner.locus))
 	{
 		if (!(CdbPathLocus_IsTest(outer.locus) && CdbPathLocus_IsTest(inner.locus)))
@@ -837,6 +838,8 @@ cdbpath_motion_for_join(PlannerInfo    *root,
         CdbPathLocus_MakeReplicated(&inner.move_to);
 	
 	}
+#endif
+
     /*
      * Motion not needed if either source is everywhere (e.g. a constant).
      *

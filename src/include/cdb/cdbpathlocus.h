@@ -51,7 +51,9 @@ typedef enum CdbLocusType
     CdbLocusType_Hashed,        /* hash partitioned over all qExecs of N-gang */
     CdbLocusType_HashedOJ,      /* result of hash partitioned outer join */
     CdbLocusType_Strewn,        /* partitioned on no known function */
+#ifdef USE_DISPATCH_TESTING
     CdbLocusType_Test,        /* partitioned on no known function */
+#endif
     CdbLocusType_End            /* = last valid CdbLocusType + 1 */
 } CdbLocusType;
 
@@ -157,11 +159,24 @@ typedef struct CdbPathLocus
  * Returns true if the locus indicates partitioning across an N-gang, such
  * that each qExec has a disjoint subset of the rows.
  */
-#define CdbPathLocus_IsPartitioned(locus)       \
+#ifdef USE_DISPATCH_TESTING
+	#define CdbPathLocus_IsPartitioned(locus)       \
             (CdbPathLocus_IsHashed(locus) ||    \
              CdbPathLocus_IsHashedOJ(locus) ||  \
              CdbPathLocus_IsTest(locus) ||  \
              CdbPathLocus_IsStrewn(locus))
+
+	#define CdbPathLocus_IsTest(locus)        \
+            ((locus).locustype == CdbLocusType_Test)
+	#define CdbPathLocus_MakeTEST(plocus)                  \
+            CdbPathLocus_MakeSimple((plocus), CdbLocusType_Test)
+#else
+	#define CdbPathLocus_IsPartitioned(locus)       \
+            (CdbPathLocus_IsHashed(locus) ||    \
+             CdbPathLocus_IsHashedOJ(locus) ||  \
+             CdbPathLocus_IsStrewn(locus))
+
+#endif
 
 #define CdbPathLocus_IsNull(locus)          \
             ((locus).locustype == CdbLocusType_Null)
@@ -179,8 +194,6 @@ typedef struct CdbPathLocus
             ((locus).locustype == CdbLocusType_HashedOJ)
 #define CdbPathLocus_IsStrewn(locus)        \
             ((locus).locustype == CdbLocusType_Strewn)
-#define CdbPathLocus_IsTest(locus)        \
-            ((locus).locustype == CdbLocusType_Test)
 
 #define CdbPathLocus_MakeSimple(plocus, _locustype) \
     do {                                                \
@@ -194,8 +207,6 @@ typedef struct CdbPathLocus
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_Null)
 #define CdbPathLocus_MakeEntry(plocus)                  \
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_Entry)
-#define CdbPathLocus_MakeTEST(plocus)                  \
-            CdbPathLocus_MakeSimple((plocus), CdbLocusType_Test)
 #define CdbPathLocus_MakeSingleQE(plocus)               \
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_SingleQE)
 #define CdbPathLocus_MakeGeneral(plocus)                \
