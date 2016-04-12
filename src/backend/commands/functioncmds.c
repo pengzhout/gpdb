@@ -695,6 +695,13 @@ compute_attributes_sql_style(List *options,
 		*data_access = getDefaultDataAccess(*languageOid);
 	else
 		*data_access = interpret_data_access(data_access_item);
+
+	if (strncmp(language, "c", 1) && *data_access == PRODATAACCESS_TEST)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Can only create C language dispatch testing function")));
+	}
 }
 
 

@@ -4280,7 +4280,7 @@ DESCR("truncate the error log for the specified external table");
 /* This is an internal-only data access property. */
 #define PRODATAACCESS_SEGMENT	's'
 /* For dispatch testing function*/
-#ifdef USE_DISPATCH_TEST
+#ifdef USE_DISPATCH_TESTING
 	#define PRODATAACCESS_TEST	'd'
 #endif
 
