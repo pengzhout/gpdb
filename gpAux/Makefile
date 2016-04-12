@@ -1377,6 +1377,10 @@ installcheck-good :
 	@#cd $(BUILDDIR)/src/test/regress && $(MAKE) testbouncer
 	@cd extensions && $(MAKE) installcheck
 
+installcheck-dispatch :
+	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
+	@cd $(BUILDDIR)/src/test/regress && $(MAKE) installcheck-dispatch
+
 installcheck-parallel :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(BUILDDIR)/src/test/regress && $(MAKE) installcheck-parallel
