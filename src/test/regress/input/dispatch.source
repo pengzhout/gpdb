@@ -4,17 +4,17 @@
 
 CREATE FUNCTION slice_sleep(integer)
    RETURNS void
-   AS '/home/gpadmin/workspace/gpdb/src/test/regress/regress.so'
+   AS '@abs_builddir@/regress@DLSUFFIX@'
    LANGUAGE C DPT;
 
 CREATE FUNCTION slice_error(integer)
    RETURNS void
-   AS '/home/gpadmin/workspace/gpdb/src/test/regress/regress.so'
+   AS '@abs_builddir@/regress@DLSUFFIX@'
    LANGUAGE C DPT;
 
 CREATE FUNCTION slice_fatal(integer)
    RETURNS void
-   AS '/home/gpadmin/workspace/gpdb/src/test/regress/regress.so'
+   AS '@abs_builddir@/regress@DLSUFFIX@'
    LANGUAGE C DPT;
 
 \timing

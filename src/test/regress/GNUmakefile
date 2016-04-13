@@ -93,7 +93,7 @@ uninstall:
 # Build dynamically-loaded object file for CREATE FUNCTION ... LANGUAGE C.
 
 NAME = regress
-OBJS = regress.o caqltest.o partindex.o
+OBJS = regress.o caqltest.o partindex.o dispatch/dptest.o
 
 include $(top_srcdir)/src/Makefile.shlib
 
@@ -181,7 +181,7 @@ installcheck-dispatch: all
 	## 1. build according c functions
 	@echo "Dispatcher testing starting..."
 	## 2. run sql testing
-	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/dispatch_schedule --schedule=$(srcdir)/greenplum_schedule --srcdir=$(abs_srcdir); \
+	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/dispatch_schedule --srcdir=$(abs_srcdir); \
 
 testbouncer: all
 	bash -c "bouncer/setup.sh"
@@ -225,7 +225,6 @@ upg2-setup:
 ugpart-setup:
 	@cp -f $(srcdir)/data/upgrade_pg_partitions.sql.in data/upgrade_pg_partitions.sql
 	@gpstringsubs.pl data/upgrade_pg_partitions.sql	
-
 
 # old interfaces follow...
 
