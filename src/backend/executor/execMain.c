@@ -83,6 +83,7 @@
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdisptpz.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbexplain.h"             /* cdbexplain_sendExecStats() */
 #include "cdb/cdbplan.h"
@@ -553,6 +554,15 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				 * On return, gangs have been allocated and CDBProcess lists have
 				 * been filled in in the slice table.)
 				 */
+				//if (Gp_interconnect_snd_queue_depth == 5)
+				//{
+					OldGangGroupID = CurrentGangGroupID;
+					SliceTable* st = queryDesc->estate->es_sliceTable; 				
+
+					CurrentGangGroupID = GetCurrentDispatcher()->getGangGroup(st); 
+					ereport(NOTICE, (errmsg("CurrentGangGroupID: %d", CurrentGangGroupID)));
+				//}
+
 				AssignGangs(queryDesc, gp_singleton_segindex);
 			}
 		}
