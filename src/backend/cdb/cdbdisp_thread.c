@@ -48,6 +48,7 @@
 
 #include "cdb/cdbselect.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_thread.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbfts.h"
 #include "cdb/cdbgang.h"

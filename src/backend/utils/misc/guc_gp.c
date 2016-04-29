@@ -350,6 +350,7 @@ static char *gp_log_gang_str;
 static char *gp_log_fts_str;
 static char *gp_log_interconnect_str;
 static char *gp_interconnect_type_str;
+static char *gp_dispatch_method_str;
 static char *gp_interconnect_fc_method_str;
 
 /*
@@ -5213,6 +5214,16 @@ struct config_string ConfigureNamesString_gp[] =
 		},
 		&gp_interconnect_type_str,
 		"udpifc", gpvars_assign_gp_interconnect_type, gpvars_show_gp_interconnect_type
+	},
+
+	{
+		{"gp_dispatch_method", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Set dispatch method."),
+			gettext_noop("Only support \"thread\" for now."),
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_DISALLOW_IN_FILE
+		},
+		&gp_dispatch_method_str,
+		"default", gpvars_assign_gp_dispatch_method, gpvars_show_gp_dispatch_method
 	},
 
 	{

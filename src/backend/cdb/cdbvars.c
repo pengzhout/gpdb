@@ -217,6 +217,8 @@ int			interconnect_setup_timeout=7200;
 
 int			Gp_interconnect_type = INTERCONNECT_TYPE_UDPIFC;
 
+int			Gp_dispatch_method = DISPATCH_METHOD_THREAD;
+
 bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
 bool gp_interconnect_full_crc=false; /* sanity check UDP data. */
@@ -972,6 +974,34 @@ const char *
 gpvars_show_gp_interconnect_type(void)
 {
 	return "UDPIFC";
+}                               /* gpvars_show_gp_log_interconnect */
+
+const char *
+gpvars_assign_gp_dispatch_method(const char *newval, bool doit, GucSource source __attribute__((unused)) )
+{
+	int newtype = 0;
+
+	if (newval == NULL || newval[0] == 0)
+		newtype = DISPATCH_METHOD_DEFAULT;
+	else if (!pg_strcasecmp("thread", newval))
+		newtype = DISPATCH_METHOD_THREAD;
+	else
+		elog(ERROR, "Only support DEFAULT and thread, (current type is '%s')", gpvars_show_gp_dispatch_method());
+
+	if (doit)
+	{
+		Gp_dispatch_method = newtype;
+	}
+
+	return newval;
+}                               /* gpvars_assign_gp_log_interconnect */
+
+const char *
+gpvars_show_gp_dispatch_method(void)
+{
+	if (Gp_dispatch_method == DISPATCH_METHOD_THREAD)
+		return "THREAD";
+	return "DEFAULT";
 }                               /* gpvars_show_gp_log_interconnect */
 
 /*

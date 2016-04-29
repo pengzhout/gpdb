@@ -48,6 +48,7 @@
 
 #include "cdb/cdbselect.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_thread.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbfts.h"
 #include "cdb/cdbgang.h"
@@ -3050,7 +3051,16 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			if (primaryGang->type == GANGTYPE_PRIMARY_WRITER)
 				ds->primaryResults->writer_gang = primaryGang;
 
-			cdbdisp_dispatchToGang(ds, primaryGang, si, &direct);
+			if (Gp_dispatch_method)
+			{
+				char* newQuery = dupQueryTextAndSetSliceId(CurrentMemoryContext,
+										ds->dispatchThreads->dispatchCommandParmsAr[0].query_text, ds->dispatchThreads->dispatchCommandParmsAr[0].query_text_len, si);
+				cdbdisp_dispatchToGangV1(primaryGang, newQuery, &direct);
+			}
+			else
+			{
+				cdbdisp_dispatchToGang(ds, primaryGang, si, &direct);
+			}
 		}
 	}
 

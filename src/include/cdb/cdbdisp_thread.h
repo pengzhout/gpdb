@@ -1,0 +1,20 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbdisp.h
+ * routines for dispatching commands from the dispatcher process
+ * to the qExec processes.
+ *
+ * Copyright (c) 2005-2008, Greenplum inc
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef CDBDISP_THREAD_H
+#define CDBDISP_THREAD_H
+
+struct Gang;                        /* #include "cdb/cdbgang.h" */
+
+struct CdbDispatchDirectDesc;
+
+void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, CdbDispatchDirectDesc *disp_direct);
+
+#endif   /* CDBDISP_H */

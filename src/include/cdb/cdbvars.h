@@ -472,10 +472,17 @@ extern int	Gp_max_packet_size;	/* GUC var */
  */
 #define INTERCONNECT_TYPE_UDPIFC (0)
 
+#define DISPATCH_METHOD_DEFAULT (0)
+#define DISPATCH_METHOD_THREAD (1)
+
 extern int Gp_interconnect_type;
+extern int Gp_dispatch_method;
 
 extern const char *gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource source __attribute__((unused)) );
+extern const char *gpvars_assign_gp_dispatch_method(const char *newval, bool doit, GucSource source __attribute__((unused)) );
 extern const char *gpvars_show_gp_interconnect_type(void);
+
+extern const char *gpvars_show_gp_dispatch_method(void);
 
 #define INTERCONNECT_FC_METHOD_CAPACITY (0)
 #define INTERCONNECT_FC_METHOD_LOSS     (2)
