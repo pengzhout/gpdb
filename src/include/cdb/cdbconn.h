@@ -63,6 +63,9 @@ typedef struct SegmentDatabaseDescriptor
     bool	dispatched;
     bool	stillRunning;
 
+    struct PQExpBufferData *resultbuf;      /* -> array of ptr to PGresult */
+    int		numrowsrejected;
+
 } SegmentDatabaseDescriptor;
 
 

@@ -103,6 +103,11 @@ bool dispatchCommandV1(SegmentDatabaseDescriptor* segDesc, char* query);
 static void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
                 const char *query_text);
 
+int getPollFds(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds);
+void handleConnectionData(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds);
+void cdbdisp_appendResultV1(SegmentDatabaseDescriptor *segdbDesc, struct pg_result  *res);
+bool processResultsV1(SegmentDatabaseDescriptor *segdbDesc);
+
 /*
  * Counter to indicate there are some dispatch threads running.  This will
  * be incremented at the beginning of dispatch threads and decremented at
@@ -275,9 +280,9 @@ thread_DispatchOutV1(Gang* gp)
 	return dbs_managed_by_me;
 }
 
+
 void thread_DispatchWaitV1(struct SegmentDatabaseDescriptor** dbs)
 {
-	SegmentDatabaseDescriptor	*segdbDesc;
 
 	struct pollfd* poll_fds = malloc(gp_connections_per_thread * sizeof(struct pollfd));
 
@@ -287,50 +292,13 @@ void thread_DispatchWaitV1(struct SegmentDatabaseDescriptor** dbs)
 	 */
 	for (;;)
 	{							/* some QEs running */
-		int			i;
-		int			sock;
 		int			n;
 		int			nfds = 0;
-		int			cur_fds_num = 0;
 
 		/*
 		 * Which QEs are still running and could send results to us?
 		 */
-		for (i = 0; i < gp_connections_per_thread; i++)
-		{						/* loop to check connection status */
-			segdbDesc = dbs[i];
-
-			/* Already finished with this QE? */
-			if (!segdbDesc->stillRunning)
-				continue;
-
-			/* Add socket to fd_set if still connected. */
-			sock = PQsocket(segdbDesc->conn);
-			if (sock >= 0 &&
-				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
-			{
-				poll_fds[nfds].fd = sock;
-				poll_fds[nfds].events = POLLIN;
-				nfds++;
-			}
-
-			/* Lost the connection. */
-			else
-			{
-				char	   *msg = PQerrorMessage(segdbDesc->conn);
-
-				/* Save error info for later. */
-				appendPQExpBuffer(&segdbDesc->error_message,
-									  "Lost connection to %s.  %s",
-									  segdbDesc->whoami,
-									  msg ? msg : "");
-
-				/* Free the PGconn object. */
-				PQfinish(segdbDesc->conn);
-				segdbDesc->conn = NULL;
-				segdbDesc->stillRunning = false;	/* he's dead, Jim */
-			}
-		}						/* loop to check connection status */
+		nfds = getPollFds(dbs, poll_fds); 
 
 		/* Break out when no QEs still running. */
 		if (nfds <= 0)
@@ -368,51 +336,10 @@ void thread_DispatchWaitV1(struct SegmentDatabaseDescriptor** dbs)
 			continue;
 		}
 
-		cur_fds_num = 0;
 		/*
 		 * We have data waiting on one or more of the connections.
 		 */
-		for (i = 0; i < gp_connections_per_thread ; i++)
-		{						/* input available; receive and process it */
-			bool		finished;
-
-			segdbDesc = dbs[i];
-
-			/* Skip if already finished or didn't dispatch. */
-			if (!segdbDesc->stillRunning)
-				continue;
-
-			/* Skip this connection if it has no input available. */
-			sock = PQsocket(segdbDesc->conn);
-			/*
-			 * The fds array is shorter than conn array, so the following
-			 * match method will use this assumtion.
-			 */
-			if (sock >= 0)
-				Assert(sock == poll_fds[cur_fds_num].fd);
-
-			if (sock >= 0 && (sock == poll_fds[cur_fds_num].fd))
-			{
-				cur_fds_num++;
-				if (!(poll_fds[cur_fds_num - 1].revents & POLLIN))
-					continue;
-			}
-
-			/* Receive and process results from this QE. */
-			//finished = processResults(dispatchResult);
-
-			/* Are we through with this QE now? */
-			if (finished)
-			{
-				segdbDesc->stillRunning = false;
-				if (PQisBusy(segdbDesc->conn))
-					write_log("We thought we were done, because finished==true, but libpq says we are still busy");
-				
-			}
-			else
-				if (DEBUG4 >= log_min_messages)
-					write_log("processResults says we have more to do with %d: %s",i+1,segdbDesc->whoami);
-		}						/* input available; receive and process it */
+		handleConnectionData(dbs, poll_fds);
 
 	}							/* some QEs running */
 	
@@ -491,3 +418,237 @@ static void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
 	 * or any other errors that libpq might have in store for us.
 	 */
 }	/* dispatchCommand */
+
+bool							/* returns true if command complete */
+processResultsV1(SegmentDatabaseDescriptor *segdbDesc)
+{
+	char	   *msg;
+	int			rc;
+
+	/* Receive input from QE. */
+	rc = PQconsumeInput(segdbDesc->conn);
+
+	/* If PQconsumeInput fails, we're hosed. */
+	if (rc == 0)
+	{ /* handle PQconsumeInput error */
+		goto connection_error;
+	}
+
+	/* If we have received one or more complete messages, process them. */
+	while (!PQisBusy(segdbDesc->conn))
+	{							/* loop to call PQgetResult; won't block */
+		PGresult   *pRes;
+		ExecStatusType resultStatus;
+
+		/* MPP-2518: PQisBusy() does some error handling, which can
+		 * cause the connection to die -- we can't just continue on as
+		 * if the connection is happy without checking first. 
+		 *
+		 * For example, cdbdisp_numPGresult() will return a completely
+		 * bogus value! */
+		if (PQstatus(segdbDesc->conn) == CONNECTION_BAD || segdbDesc->conn->sock == -1)
+		{ /* connection is dead. */
+			goto connection_error;
+		}
+
+		/* Get one message. */
+		pRes = PQgetResult(segdbDesc->conn);
+		
+		/*
+		 * Command is complete when PGgetResult() returns NULL. It is critical
+		 * that for any connection that had an asynchronous command sent thru
+		 * it, we call PQgetResult until it returns NULL. Otherwise, the next
+		 * time a command is sent to that connection, it will return an error
+		 * that there's a command pending.
+		 */
+		if (!pRes)
+			return true;		/* this is normal end of command */
+
+		
+		/* Attach the PGresult object to the CdbDispatchResult object. */
+		cdbdisp_appendResultV1(segdbDesc, pRes);
+
+		/* Did a command complete successfully? */
+		resultStatus = PQresultStatus(pRes);
+
+		if (resultStatus == PGRES_COMMAND_OK ||
+			resultStatus == PGRES_TUPLES_OK ||
+			resultStatus == PGRES_COPY_IN ||
+			resultStatus == PGRES_COPY_OUT)
+		{						/* QE reported success */
+
+			/*
+			 * Save the index of the last successful PGresult. Can be given to
+			 * cdbdisp_getPGresult() to get tuple count, etc.
+			 */
+			
+			/* SREH - get number of rows rejected from QE if any */
+			if(pRes->numRejected > 0)
+				segdbDesc->numrowsrejected += pRes->numRejected;
+
+			if (resultStatus == PGRES_COPY_IN ||
+				resultStatus == PGRES_COPY_OUT)
+				return true;
+		}						/* QE reported success */
+
+		/* Note QE error.  Cancel the whole statement if requested. */
+		else
+		{						/* QE reported an error */
+			char	   *sqlstate = PQresultErrorField(pRes, PG_DIAG_SQLSTATE);
+			int			errcode = 0;
+
+			msg = PQresultErrorMessage(pRes);
+
+			/*
+			 * Convert SQLSTATE to an error code (ERRCODE_xxx). Use a generic
+			 * nonzero error code if no SQLSTATE.
+			 */
+			if (sqlstate &&
+				strlen(sqlstate) == 5)
+				errcode = cdbdisp_sqlstate_to_errcode(sqlstate);
+
+			/*
+			 * Save first error code and the index of its PGresult buffer
+			 * entry.
+			 */
+			//cdbdisp_seterrcode(errcode, resultIndex, dispatchResult);
+		}						/* QE reported an error */
+	}							/* loop to call PQgetResult; won't block */
+	
+	return false;				/* we must keep on monitoring this socket */
+
+connection_error:
+	msg = PQerrorMessage(segdbDesc->conn);
+
+	if (msg)
+		write_log("Dispatcher encountered connection error on %s: %s", segdbDesc->whoami, msg);
+
+	/* Save error info for later. */
+	appendPQExpBuffer(&segdbDesc->error_message,
+						  "Error on receive from %s: %s",
+						  segdbDesc->whoami,
+						  msg ? msg : "unknown error");
+
+	/* Can't recover, so drop the connection. */
+	PQfinish(segdbDesc->conn);
+	segdbDesc->conn = NULL;
+	segdbDesc->stillRunning = false;
+
+	return true; /* connection is gone! */	
+}	/* processResults */
+
+int getPollFds(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds)
+{
+	int 	i;
+	int	sock;
+	int	nfds = 0;
+
+	SegmentDatabaseDescriptor	*segdbDesc;
+
+	for (i = 0; i < gp_connections_per_thread; i++)
+	{						/* loop to check connection status */
+		segdbDesc = dbs[i];
+
+		/* Already finished with this QE? */
+		if (!segdbDesc->stillRunning)
+			continue;
+
+		/* Add socket to fd_set if still connected. */
+		sock = PQsocket(segdbDesc->conn);
+		if (sock >= 0 &&
+			PQstatus(segdbDesc->conn) != CONNECTION_BAD)
+		{
+			poll_fds[nfds].fd = sock;
+			poll_fds[nfds].events = POLLIN;
+			nfds++;
+		}
+
+		/* Lost the connection. */
+		else
+		{
+			char	   *msg = PQerrorMessage(segdbDesc->conn);
+
+			/* Save error info for later. */
+			appendPQExpBuffer(&segdbDesc->error_message,
+								  "Lost connection to %s.  %s",
+								  segdbDesc->whoami,
+								  msg ? msg : "");
+
+			/* Free the PGconn object. */
+			PQfinish(segdbDesc->conn);
+			segdbDesc->conn = NULL;
+			segdbDesc->stillRunning = false;	/* he's dead, Jim */
+		}
+	}						/* loop to check connection status */
+
+	return nfds;
+}
+
+
+void handleConnectionData(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds)
+{
+	int cur_fds_num = 0;
+	int		i;
+	int		sock;
+
+	SegmentDatabaseDescriptor	*segdbDesc;
+
+	for (i = 0; i < gp_connections_per_thread ; i++)
+	{						/* input available; receive and process it */
+		bool		finished ;
+
+		segdbDesc = dbs[i];
+
+		/* Skip if already finished or didn't dispatch. */
+		if (!segdbDesc->stillRunning)
+			continue;
+
+		/* Skip this connection if it has no input available. */
+		sock = PQsocket(segdbDesc->conn);
+		/*
+		 * The fds array is shorter than conn array, so the following
+		 * match method will use this assumtion.
+		 */
+		if (sock >= 0)
+			Assert(sock == poll_fds[cur_fds_num].fd);
+
+		if (sock >= 0 && (sock == poll_fds[cur_fds_num].fd))
+		{
+			cur_fds_num++;
+			if (!(poll_fds[cur_fds_num - 1].revents & POLLIN))
+				continue;
+		}
+
+		/* Receive and process results from this QE. */
+		finished = processResultsV1(segdbDesc);
+
+		/* Are we through with this QE now? */
+		if (finished)
+		{
+			segdbDesc->stillRunning = false;
+			if (PQisBusy(segdbDesc->conn))
+				write_log("We thought we were done, because finished==true, but libpq says we are still busy");
+			
+		}
+		else
+			if (DEBUG4 >= log_min_messages)
+				write_log("processResults says we have more to do with %d: %s",i+1,segdbDesc->whoami);
+	}						/* input available; receive and process it */
+}
+
+void
+cdbdisp_appendResultV1(SegmentDatabaseDescriptor *segdbDesc,
+                     struct pg_result  *res)
+{
+    Assert(segdbDesc && res);
+
+    /* Attach the QE identification string to the PGresult */
+    if (segdbDesc &&
+        segdbDesc->whoami)
+        pqSaveMessageField(res, PG_DIAG_GP_PROCESS_TAG,
+                           segdbDesc->whoami);
+
+    appendBinaryPQExpBuffer(segdbDesc->resultbuf, (char *)&res, sizeof(res));
+}
+
+
