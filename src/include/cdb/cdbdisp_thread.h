@@ -15,6 +15,6 @@ struct Gang;                        /* #include "cdb/cdbgang.h" */
 
 struct CdbDispatchDirectDesc;
 
-void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, CdbDispatchDirectDesc *disp_direct);
+void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, int len, CdbDispatchDirectDesc *disp_direct);
 
 #endif   /* CDBDISP_H */

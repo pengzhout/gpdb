@@ -217,7 +217,7 @@ int			interconnect_setup_timeout=7200;
 
 int			Gp_interconnect_type = INTERCONNECT_TYPE_UDPIFC;
 
-int			Gp_dispatch_method = DISPATCH_METHOD_THREAD;
+int			Gp_dispatch_method = DISPATCH_METHOD_DEFAULT;
 
 bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
@@ -982,6 +982,8 @@ gpvars_assign_gp_dispatch_method(const char *newval, bool doit, GucSource source
 	int newtype = 0;
 
 	if (newval == NULL || newval[0] == 0)
+		newtype = DISPATCH_METHOD_DEFAULT;
+	else if (!pg_strcasecmp("default", newval))
 		newtype = DISPATCH_METHOD_DEFAULT;
 	else if (!pg_strcasecmp("thread", newval))
 		newtype = DISPATCH_METHOD_THREAD;

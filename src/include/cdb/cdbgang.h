@@ -58,6 +58,7 @@ typedef struct Gang
 	bool		noReuse;
 
 	char*		CurrentQuery;
+	int		QueryLen;
 	bool		isWriterGang;
 	/* MPP-24003: pointer to array of segment database info for each reader and writer gang. */
 	struct		CdbComponentDatabaseInfo *segment_database_info;

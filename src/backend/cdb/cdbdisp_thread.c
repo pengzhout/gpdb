@@ -92,17 +92,17 @@ pthread_mutex_t dbmutex = PTHREAD_MUTEX_INITIALIZER;
 							
 int getDispatchThreadCount(Gang *gp, CdbDispatchDirectDesc *disp_direct);
 
-void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, CdbDispatchDirectDesc *disp_direct);
+void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, int len, CdbDispatchDirectDesc *disp_direct);
 bool thread_dispatchToGang(struct Gang *gp, CdbDispatchDirectDesc *disp_direct);
 void* thread_dispatch_func(void* arg);
 
 struct SegmentDatabaseDescriptor** thread_DispatchOutV1(Gang* gp);
 void thread_DispatchWaitV1(struct SegmentDatabaseDescriptor** dbs);
 
-bool dispatchCommandV1(SegmentDatabaseDescriptor* segDesc, char* query);
+bool dispatchCommandV1(SegmentDatabaseDescriptor* segDesc, char* query, int len);
 
 static void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
-                const char *query_text);
+                const char *query_text, int query_len);
 
 int getPollFds(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds);
 void handleConnectionData(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds);
@@ -126,7 +126,7 @@ int getDispatchThreadCount(Gang *gp, CdbDispatchDirectDesc *disp_direct)
 		return 1 + gp->size / gp_connections_per_thread;
 }
 
-void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, CdbDispatchDirectDesc *disp_direct)
+void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, int len, CdbDispatchDirectDesc *disp_direct)
 {
 
 	if (gp->isWriterGang && gp->dispatcherActive)
@@ -140,6 +140,7 @@ void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, CdbDispatchDirectDe
 	}
 
 	gp->CurrentQuery = query;
+	gp->QueryLen = len;
 
 	//bool result = gp->dispatchQuery(gp, newQueryText, disp_direct);
 	//bool result = async_dispatchToGang(gp, disp_direct);
@@ -253,6 +254,8 @@ thread_DispatchOutV1(Gang* gp)
 
 	struct SegmentDatabaseDescriptor** dbs_managed_by_me = (struct SegmentDatabaseDescriptor**) malloc(gp_connections_per_thread * sizeof(SegmentDatabaseDescriptor*));
 
+	memset(dbs_managed_by_me, 0, gp_connections_per_thread * sizeof(SegmentDatabaseDescriptor*));
+
 	struct SegmentDatabaseDescriptor* segDesc = NULL; 
 
 	for (i = 0; i < gp->size; i++)
@@ -274,8 +277,9 @@ thread_DispatchOutV1(Gang* gp)
 			// release lock
 		}
 
-		dispatchCommandV1(segDesc, gp->CurrentQuery);
+		dispatchCommandV1(segDesc, gp->CurrentQuery, gp->QueryLen);
 		dbs_managed_by_me[dbcount++] = segDesc;
+		segDesc->stillRunning = true;
 	}
 
 	return dbs_managed_by_me;
@@ -347,7 +351,7 @@ void thread_DispatchWaitV1(struct SegmentDatabaseDescriptor** dbs)
 }
 
 bool
-dispatchCommandV1(SegmentDatabaseDescriptor* segdbDesc, char* queryText)
+dispatchCommandV1(SegmentDatabaseDescriptor* segdbDesc, char* queryText, int queryLen)
 {
 	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)	
 	{
@@ -362,7 +366,7 @@ dispatchCommandV1(SegmentDatabaseDescriptor* segdbDesc, char* queryText)
 		return false;
 	}
 
-	dispatchCommandInternal(segdbDesc, queryText);	
+	dispatchCommandInternal(segdbDesc, queryText, queryLen);	
 
 	return true;
 
@@ -372,13 +376,12 @@ dispatchCommandV1(SegmentDatabaseDescriptor* segdbDesc, char* queryText)
 }
 
 static void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
-		const char *query_text)
+		const char *query_text, int query_text_len)
 {
 	PGconn	   *conn = segdbDesc->conn;
 	TimestampTz beforeSend = 0;
 	long		secs;
 	int			usecs;
-	int		query_text_len = strlen(query_text);
 
 	if (DEBUG1 >= log_min_messages)
 		beforeSend = GetCurrentTimestamp();
@@ -551,7 +554,7 @@ int getPollFds(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds)
 		segdbDesc = dbs[i];
 
 		/* Already finished with this QE? */
-		if (!segdbDesc->stillRunning)
+		if (!segdbDesc || !segdbDesc->stillRunning)
 			continue;
 
 		/* Add socket to fd_set if still connected. */
@@ -601,7 +604,7 @@ void handleConnectionData(struct SegmentDatabaseDescriptor** dbs, struct pollfd*
 		segdbDesc = dbs[i];
 
 		/* Skip if already finished or didn't dispatch. */
-		if (!segdbDesc->stillRunning)
+		if (!segdbDesc || !segdbDesc->stillRunning)
 			continue;
 
 		/* Skip this connection if it has no input available. */

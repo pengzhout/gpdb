@@ -3055,7 +3055,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			{
 				char* newQuery = dupQueryTextAndSetSliceId(CurrentMemoryContext,
 										ds->dispatchThreads->dispatchCommandParmsAr[0].query_text, ds->dispatchThreads->dispatchCommandParmsAr[0].query_text_len, si);
-				cdbdisp_dispatchToGangV1(primaryGang, newQuery, &direct);
+				cdbdisp_dispatchToGang_V1(primaryGang, newQuery, ds->dispatchThreads->dispatchCommandParmsAr[0].query_text_len, &direct);
 			}
 			else
 			{
