@@ -57,6 +57,8 @@ typedef struct Gang
 	/* should be destroyed in cleanupGang() if set*/
 	bool		noReuse;
 
+	char*		CurrentQuery;
+	bool		isWriterGang;
 	/* MPP-24003: pointer to array of segment database info for each reader and writer gang. */
 	struct		CdbComponentDatabaseInfo *segment_database_info;
 } Gang;

@@ -72,7 +72,7 @@
 
 #define DISPATCH_WAIT_TIMEOUT_SEC 2
 extern bool Test_print_direct_dispatch_info;
-
+extern volatile int32 RunningThreadCount;
 extern pthread_t main_tid;
 #ifndef _WIN32
 #define mythread() ((unsigned long) pthread_self())
@@ -80,25 +80,35 @@ extern pthread_t main_tid;
 #define mythread() ((unsigned long) pthread_self().p)
 #endif 
 
+pthread_mutex_t dbmutex = PTHREAD_MUTEX_INITIALIZER;
 /*
  * default directed-dispatch parameters: don't direct anything.
  */
-CdbDispatchDirectDesc default_dispatch_direct_desc = {false, 0, {0}};
 
 /*
  * Static Helper functions
  */
 							
-void cdbdisp_dispatchToGang_V1(struct Gang *gp, const char* query, CdbDispatchDirectDesc *disp_direct)
 int getDispatchThreadCount(Gang *gp, CdbDispatchDirectDesc *disp_direct);
+
+void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, CdbDispatchDirectDesc *disp_direct);
+bool thread_dispatchToGang(struct Gang *gp, CdbDispatchDirectDesc *disp_direct);
+void* thread_dispatch_func(void* arg);
+
+struct SegmentDatabaseDescriptor** thread_DispatchOutV1(Gang* gp);
+void thread_DispatchWaitV1(struct SegmentDatabaseDescriptor** dbs);
+
+bool dispatchCommandV1(SegmentDatabaseDescriptor* segDesc, char* query);
+
+static void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
+                const char *query_text);
 
 /*
  * Counter to indicate there are some dispatch threads running.  This will
  * be incremented at the beginning of dispatch threads and decremented at
  * the end of them.
  */
-static volatile int32 RunningThreadCount = 0;
-static int* ThreadHandles = NULL;
+static pthread_t * ThreadHandles = NULL;
 
 int getDispatchThreadCount(Gang *gp, CdbDispatchDirectDesc *disp_direct)
 {
@@ -110,17 +120,16 @@ int getDispatchThreadCount(Gang *gp, CdbDispatchDirectDesc *disp_direct)
 		return 1 + gp->size / gp_connections_per_thread;
 }
 
-void cdbdisp_dispatchToGang_V1(struct Gang *gp, const char* query, CdbDispatchDirectDesc *disp_direct)
+void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, CdbDispatchDirectDesc *disp_direct)
 {
 
-	if (gp->writer_gang && gp->writer_gang->dispatcherActive)
+	if (gp->isWriterGang && gp->dispatcherActive)
 	{
 		/* Are we dispatching to the writer-gang when it is already busy ? */
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						 errmsg("query plan with multiple segworker groups is not supported"),
 						 errhint("likely caused by a function that reads or modifies data in a distributed table")));
-			}
 
 	}
 
@@ -176,7 +185,7 @@ bool thread_dispatchToGang(struct Gang *gp, CdbDispatchDirectDesc *disp_direct)
 		{
 			int pthread_err = 0;
 			//pthread_err = gp_thread_create(&pParms[i]->thread, gp->thread_dispatch_internal, pParms[i], "dispatchToGang");
-			pthread_err = gp_thread_create(&ThreadHandles[i], thread_dispatch_internal, (void*)gp, "dispatchToGang");
+			pthread_err = gp_pthread_create(&ThreadHandles[i], thread_dispatch_func, (void*)gp, "dispatchToGang");
 			if (pthread_err != 0)
 			{
 				ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -185,20 +194,300 @@ bool thread_dispatchToGang(struct Gang *gp, CdbDispatchDirectDesc *disp_direct)
 			}
 		}
 	}
-}	/* cdbdisp_dispatchToGang */
+
+	return true;
+}
+
+static void
+DecrementRunningCount(void *arg)
+{
+	pg_atomic_sub_fetch_u32((pg_atomic_uint32 *)&RunningThreadCount, 1);
+}
+
 
 /*
- * thread_DispatchCommand is the thread proc used to dispatch the command to one or more of the qExecs.
+ *	Helper function for thread dispatcher
  *
- * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
- *		 elog is NOT thread-safe.  Developers should instead use something like:
- *
- *	if (DEBUG3 >= log_min_messages)
- *			write_log("my brilliant log statement here.");
- *
- * NOTE: In threads, we cannot use palloc, because it's not thread safe.
  */
-void thread_dispatch_internal(void* arg)
+void* thread_dispatch_func(void* arg)
 {
+	Gang	*gp = (Gang*)arg;
 
+	gp_set_thread_sigmasks();
+
+	pg_atomic_add_fetch_u32((pg_atomic_uint32 *)&RunningThreadCount, 1);
+	/*
+	 * We need to make sure the value will be decremented once the thread
+	 * finishes.  Currently there is not such case but potentially we could
+	 * have pthread_exit or thread cancellation in the middle of code, in
+	 * which case we would miss to decrement value if we tried to do this
+	 * without the cleanup callback facility.
+	 */
+	pthread_cleanup_push(DecrementRunningCount, NULL);
+	{
+		struct SegmentDatabaseDescriptor** dbs =
+							thread_DispatchOutV1(gp);
+		/*
+		 * thread_DispatchWaitSingle might have a problem with interupts
+		 */
+		thread_DispatchWaitV1(dbs);
+	}
+	pthread_cleanup_pop(1);
+
+	return (void*)NULL;
 }
+
+struct SegmentDatabaseDescriptor**
+thread_DispatchOutV1(Gang* gp)
+{
+	int i = 0;
+	int dbcount = 0;
+
+	Assert(gp_connections_per_thread > 0);
+
+	struct SegmentDatabaseDescriptor** dbs_managed_by_me = (struct SegmentDatabaseDescriptor**) malloc(gp_connections_per_thread * sizeof(SegmentDatabaseDescriptor*));
+
+	struct SegmentDatabaseDescriptor* segDesc = NULL; 
+
+	for (i = 0; i < gp->size; i++)
+	{
+		segDesc = &gp->db_descriptors[i];
+		// Lock thread gang lock
+		pthread_mutex_lock(&dbmutex);
+		/* Don't use elog, it's not thread-safe */
+		if (segDesc->dispatched == true)
+		{
+			// release lock
+			pthread_mutex_unlock(&dbmutex);
+			continue;
+		}
+		else
+		{
+			segDesc->dispatched = true;
+			pthread_mutex_unlock(&dbmutex);
+			// release lock
+		}
+
+		dispatchCommandV1(segDesc, gp->CurrentQuery);
+		dbs_managed_by_me[dbcount++] = segDesc;
+	}
+
+	return dbs_managed_by_me;
+}
+
+void thread_DispatchWaitV1(struct SegmentDatabaseDescriptor** dbs)
+{
+	SegmentDatabaseDescriptor	*segdbDesc;
+
+	struct pollfd* poll_fds = malloc(gp_connections_per_thread * sizeof(struct pollfd));
+
+	/*
+	 * OK, we are finished submitting the command to the segdbs.
+	 * Now, we have to wait for them to finish.
+	 */
+	for (;;)
+	{							/* some QEs running */
+		int			i;
+		int			sock;
+		int			n;
+		int			nfds = 0;
+		int			cur_fds_num = 0;
+
+		/*
+		 * Which QEs are still running and could send results to us?
+		 */
+		for (i = 0; i < gp_connections_per_thread; i++)
+		{						/* loop to check connection status */
+			segdbDesc = dbs[i];
+
+			/* Already finished with this QE? */
+			if (!segdbDesc->stillRunning)
+				continue;
+
+			/* Add socket to fd_set if still connected. */
+			sock = PQsocket(segdbDesc->conn);
+			if (sock >= 0 &&
+				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
+			{
+				poll_fds[nfds].fd = sock;
+				poll_fds[nfds].events = POLLIN;
+				nfds++;
+			}
+
+			/* Lost the connection. */
+			else
+			{
+				char	   *msg = PQerrorMessage(segdbDesc->conn);
+
+				/* Save error info for later. */
+				appendPQExpBuffer(&segdbDesc->error_message,
+									  "Lost connection to %s.  %s",
+									  segdbDesc->whoami,
+									  msg ? msg : "");
+
+				/* Free the PGconn object. */
+				PQfinish(segdbDesc->conn);
+				segdbDesc->conn = NULL;
+				segdbDesc->stillRunning = false;	/* he's dead, Jim */
+			}
+		}						/* loop to check connection status */
+
+		/* Break out when no QEs still running. */
+		if (nfds <= 0)
+			break;
+
+		/*
+		 * bail-out if we are dying.  We should not do much of cleanup
+		 * as the main thread is waiting on this thread to finish.  Once
+		 * QD dies, QE will recognize it shortly anyway.
+		 */
+		if (proc_exit_inprogress)
+			break;
+
+		/*
+		 * Wait for results from QEs.
+		 */
+
+		/* Block here until input is available. */
+		n = poll(poll_fds, nfds, DISPATCH_WAIT_TIMEOUT_SEC * 1000);
+
+		if (n < 0)
+		{
+			int			sock_errno = SOCK_ERRNO;
+
+			if (sock_errno == EINTR)
+				continue;
+
+			//handlePollError(pParms, db_count, sock_errno);
+			continue;
+		}
+
+		if (n == 0)
+		{
+			//handlePollTimeout(pParms, db_count, &timeoutCounter, true);
+			continue;
+		}
+
+		cur_fds_num = 0;
+		/*
+		 * We have data waiting on one or more of the connections.
+		 */
+		for (i = 0; i < gp_connections_per_thread ; i++)
+		{						/* input available; receive and process it */
+			bool		finished;
+
+			segdbDesc = dbs[i];
+
+			/* Skip if already finished or didn't dispatch. */
+			if (!segdbDesc->stillRunning)
+				continue;
+
+			/* Skip this connection if it has no input available. */
+			sock = PQsocket(segdbDesc->conn);
+			/*
+			 * The fds array is shorter than conn array, so the following
+			 * match method will use this assumtion.
+			 */
+			if (sock >= 0)
+				Assert(sock == poll_fds[cur_fds_num].fd);
+
+			if (sock >= 0 && (sock == poll_fds[cur_fds_num].fd))
+			{
+				cur_fds_num++;
+				if (!(poll_fds[cur_fds_num - 1].revents & POLLIN))
+					continue;
+			}
+
+			/* Receive and process results from this QE. */
+			//finished = processResults(dispatchResult);
+
+			/* Are we through with this QE now? */
+			if (finished)
+			{
+				segdbDesc->stillRunning = false;
+				if (PQisBusy(segdbDesc->conn))
+					write_log("We thought we were done, because finished==true, but libpq says we are still busy");
+				
+			}
+			else
+				if (DEBUG4 >= log_min_messages)
+					write_log("processResults says we have more to do with %d: %s",i+1,segdbDesc->whoami);
+		}						/* input available; receive and process it */
+
+	}							/* some QEs running */
+	
+}
+
+bool
+dispatchCommandV1(SegmentDatabaseDescriptor* segdbDesc, char* queryText)
+{
+	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)	
+	{
+		char *msg = PQerrorMessage(segdbDesc->conn);
+		appendPQExpBuffer(&segdbDesc->error_message, "Connection is bad before sending the query from %s : %s",
+								segdbDesc->whoami, msg ? msg : "unknow error");
+
+		PQfinish(segdbDesc->conn);
+		segdbDesc->conn = NULL;
+		segdbDesc->stillRunning = false;
+
+		return false;
+	}
+
+	dispatchCommandInternal(segdbDesc, queryText);	
+
+	return true;
+
+#ifdef USE_NONBLOCKING
+	/* add flush code here*/
+#endif
+}
+
+static void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
+		const char *query_text)
+{
+	PGconn	   *conn = segdbDesc->conn;
+	TimestampTz beforeSend = 0;
+	long		secs;
+	int			usecs;
+	int		query_text_len = strlen(query_text);
+
+	if (DEBUG1 >= log_min_messages)
+		beforeSend = GetCurrentTimestamp();
+
+	/*
+	 * Submit the command asynchronously.
+	 */
+	if (PQsendGpQuery_shared(conn, (char *)query_text, query_text_len) == 0)
+	{
+		char	   *msg = PQerrorMessage(segdbDesc->conn);
+
+		if (DEBUG3 >= log_min_messages)
+			write_log("PQsendMPPQuery_shared error %s %s",
+					  segdbDesc->whoami, msg ? msg : "");
+
+		/* Note the error. */
+		appendPQExpBuffer(&segdbDesc->error_message,
+							  "Command could not be sent to segment db %s;  %s",
+							  segdbDesc->whoami, msg ? msg : "");
+		PQfinish(conn);
+		segdbDesc->conn = NULL;
+		segdbDesc->stillRunning = false;
+	}
+	
+	if (DEBUG1 >= log_min_messages)
+	{
+		TimestampDifference(beforeSend,
+							GetCurrentTimestamp(),
+							&secs, &usecs);
+		
+		if (secs != 0 || usecs > 1000) /* Time > 1ms? */
+			write_log("time for PQsendGpQuery_shared %ld.%06d", secs, usecs);
+	}
+
+	/*
+	 * We'll keep monitoring this QE -- whether or not the command
+	 * was dispatched -- in order to check for a lost connection
+	 * or any other errors that libpq might have in store for us.
+	 */
+}	/* dispatchCommand */

@@ -60,6 +60,9 @@ typedef struct SegmentDatabaseDescriptor
     char                   *whoami;         /* QE identifier for msgs */
     struct SegmentDatabaseDescriptor * myAgent;
 
+    bool	dispatched;
+    bool	stillRunning;
+
 } SegmentDatabaseDescriptor;
 
 

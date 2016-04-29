@@ -228,7 +228,7 @@ static DtxContextInfo TempQDDtxContextInfo = DtxContextInfo_StaticInit;
  * be incremented at the beginning of dispatch threads and decremented at
  * the end of them.
  */
-static volatile int32 RunningThreadCount = 0;
+volatile int32 RunningThreadCount = 0;
 
 /*
  * cdbdisp_dispatchToGang:
