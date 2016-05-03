@@ -848,6 +848,7 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 	 * and bump the count of members
 	 */
 	pParms->segdbDescPtrArray[pParms->db_count++] = segdbDesc;
+	segdbDesc->resultbuf = createPQExpBuffer();
 
 	/*
 	 * Bump the count of segdbs processed

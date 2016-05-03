@@ -469,7 +469,12 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 {
 	PG_TRY();
 	{
-		CdbCheckDispatchResultInt(ds, NULL, NULL, waitMode);
+		if (Gp_dispatch_method == DISPATCH_METHOD_THREAD && getThreadCount() > 0)
+		{
+			CdbCheckDispatchResultInt_V1(ds);
+		}
+		else
+			CdbCheckDispatchResultInt(ds, NULL, NULL, waitMode);
 	}
 	PG_CATCH();
 	{
@@ -3051,7 +3056,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			if (primaryGang->type == GANGTYPE_PRIMARY_WRITER)
 				ds->primaryResults->writer_gang = primaryGang;
 
-			if (Gp_dispatch_method)
+			if (Gp_dispatch_method == DISPATCH_METHOD_THREAD)
 			{
 				char* newQuery = dupQueryTextAndSetSliceId(CurrentMemoryContext,
 										ds->dispatchThreads->dispatchCommandParmsAr[0].query_text, ds->dispatchThreads->dispatchCommandParmsAr[0].query_text_len, si);

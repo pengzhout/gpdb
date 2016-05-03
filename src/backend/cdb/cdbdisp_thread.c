@@ -101,20 +101,23 @@ void thread_DispatchWaitV1(struct SegmentDatabaseDescriptor** dbs);
 
 bool dispatchCommandV1(SegmentDatabaseDescriptor* segDesc, char* query, int len);
 
-static void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
+void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
                 const char *query_text, int query_len);
 
 int getPollFds(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds);
 void handleConnectionData(struct SegmentDatabaseDescriptor** dbs, struct pollfd* poll_fds);
 void cdbdisp_appendResultV1(SegmentDatabaseDescriptor *segdbDesc, struct pg_result  *res);
 bool processResultsV1(SegmentDatabaseDescriptor *segdbDesc);
+void CdbCheckDispatchResultInt_V1(struct CdbDispatcherState *ds);
 
+int getThreadCount(void);
 /*
  * Counter to indicate there are some dispatch threads running.  This will
  * be incremented at the beginning of dispatch threads and decremented at
  * the end of them.
  */
 static pthread_t * ThreadHandles = NULL;
+static int ThreadNeeded = 0;
 
 int getDispatchThreadCount(Gang *gp, CdbDispatchDirectDesc *disp_direct)
 {
@@ -161,7 +164,7 @@ void cdbdisp_dispatchToGang_V1(struct Gang *gp, char* query, int len, CdbDispatc
  **/
 bool thread_dispatchToGang(struct Gang *gp, CdbDispatchDirectDesc *disp_direct)
 {
-	int	i, ThreadNeeded = 0;	
+	int	i;	
 	/*
 	 * Compute the thread count based on how many segdbs were added into the
 	 * thread pool, knowing that each thread handles gp_connections_per_thread
@@ -174,6 +177,8 @@ bool thread_dispatchToGang(struct Gang *gp, CdbDispatchDirectDesc *disp_direct)
 	 *
 	 **/
 	ThreadHandles = malloc(ThreadNeeded * sizeof(int));
+
+	memset(ThreadHandles, 0 , ThreadNeeded * sizeof(int));
 
 	/*
 	 * start thread to dispatch Query
@@ -375,7 +380,7 @@ dispatchCommandV1(SegmentDatabaseDescriptor* segdbDesc, char* queryText, int que
 #endif
 }
 
-static void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
+void dispatchCommandInternal(SegmentDatabaseDescriptor* segdbDesc,
 		const char *query_text, int query_text_len)
 {
 	PGconn	   *conn = segdbDesc->conn;
@@ -630,6 +635,7 @@ void handleConnectionData(struct SegmentDatabaseDescriptor** dbs, struct pollfd*
 		if (finished)
 		{
 			segdbDesc->stillRunning = false;
+			segdbDesc->dispatched = false;
 			if (PQisBusy(segdbDesc->conn))
 				write_log("We thought we were done, because finished==true, but libpq says we are still busy");
 			
@@ -655,4 +661,39 @@ cdbdisp_appendResultV1(SegmentDatabaseDescriptor *segdbDesc,
     appendBinaryPQExpBuffer(segdbDesc->resultbuf, (char *)&res, sizeof(res));
 }
 
+void CdbCheckDispatchResultInt_V1(struct CdbDispatcherState *ds)
+{
+	int			i;
 
+	/*
+	 * Wait for threads to finish.
+	 */
+	for (i = 0; i < ThreadNeeded; i++)
+	{							/* loop over threads */		
+		pthread_t fd = ThreadHandles[i];
+
+		if (fd > 0)
+		{
+			int			pthread_err = 0;
+			pthread_err = pthread_join(fd, NULL);
+			if (pthread_err != 0)
+				elog(FATAL, "CheckDispatchResult: pthread_join failed on thread %d (%lu) of %d (returned %d attempting to join to %lu)",
+					 i + 1, fd, 
+						 ThreadNeeded, pthread_err, (unsigned long)mythread());
+		}
+
+		HOLD_INTERRUPTS();
+		ThreadHandles[i] = 0;
+		RESUME_INTERRUPTS();
+
+	}							/* loop over threads */
+
+	/* reset thread state (will be destroyed later on in finishCommand) */
+	ds->dispatchThreads->threadCount = 0;
+			
+}
+
+int getThreadCount(void)
+{
+	return ThreadNeeded;
+}
