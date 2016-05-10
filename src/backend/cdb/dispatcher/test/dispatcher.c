@@ -1,5 +1,6 @@
 #include "postgres.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_thread.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsreh.h"

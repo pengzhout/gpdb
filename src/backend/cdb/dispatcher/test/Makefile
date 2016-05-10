@@ -13,7 +13,7 @@ OBJS = fe-connect.o fe-auth.o fe-exec.o fe-misc.o fe-protocol3.o pqexpbuffer.o i
 CDBDISP_OBJS = cdbdisp_fake.o cdbdispatchresult.o cdbdisp_test.o $(OBJS)
 CDBDISPATCHRESULT_OBJS = cdbdisp_fake.o cdbdispatchresult_test.o cdbdisp.o $(OBJS)
 
-DISPATCHER_OBJS = dispatcher.o cdbdisp.o cdbdisp_fake.o cdbdispatchresult.o $(OBJS)
+DISPATCHER_OBJS = dispatcher.o cdbdisp.o cdbdisp_thread.o cdbdisp_fake.o cdbdispatchresult.o $(OBJS)
 
 cdbdisp_test: $(CDBDISP_OBJS)
 	$(CC) -o $@ $^ $(CFLAGS) $(PTHREAD_CFLAGS) $(PTHREAD_LIBS) $(UT_LIB_FLAGS) -Wl,--wrap=largestGangsize
@@ -29,6 +29,8 @@ dispatcher: $(DISPATCHER_OBJS)
 	$(CC) -o $@ $^ $(CFLAGS) $(PTHREAD_CFLAGS) $(PTHREAD_LIBS)
 
 cdbdisp.c: $(top_srcdir)/src/backend/cdb/dispatcher/cdbdisp.c
+	rm -f $@ && $(LN_S) $< .
+cdbdisp_thread.c: $(top_srcdir)/src/backend/cdb/dispatcher/cdbdisp_thread.c
 	rm -f $@ && $(LN_S) $< .
 cdbdispatchresult.c: $(top_srcdir)/src/backend/cdb/dispatcher/cdbdispatchresult.c
 	rm -f $@ && $(LN_S) $< .
