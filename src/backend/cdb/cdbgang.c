@@ -1926,6 +1926,7 @@ void freeGangsForPortal(char *portal_name)
 	}
 
 	cur_item = list_head(allocatedReaderGangs1);
+	prev_item = NULL;
 	while (cur_item != NULL)
 	{
 		Gang *gp = (Gang *) lfirst(cur_item);
