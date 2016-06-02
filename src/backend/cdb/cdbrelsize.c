@@ -57,7 +57,6 @@ int64 cdbRelSize(Relation rel)
 	int		i;
 	int 	resultCount = 0;
 	struct pg_result **results = NULL;
-	StringInfoData errbuf;
 	StringInfoData buffer;
 
 	char	*schemaName;
@@ -76,7 +75,6 @@ int64 cdbRelSize(Relation rel)
 	 * Let's ask the QEs for the size of the relation
 	 */
 	initStringInfo(&buffer);
-	initStringInfo(&errbuf);
 
 	schemaName = get_namespace_name(RelationGetNamespace(rel));
 	if (schemaName == NULL)
@@ -95,52 +93,38 @@ int64 cdbRelSize(Relation rel)
 	 * In the future, it would be better to send the command to only one QE for the optimizer's needs,
 	 * but for ALTER TABLE, we need to be sure if the table has any rows at all.
 	 */
-	results = cdbdisp_dispatchRMCommand(buffer.data, true, &errbuf, &resultCount);
+	results = CdbDoCommandV1_SNAPSHOT(buffer.data, &resultCount);
 
-	if (errbuf.len > 0)
+	for (i = 0; i < resultCount; i++)
 	{
-		ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-						  errdetail("%s", errbuf.data)));
-		pfree(errbuf.data);
-		pfree(buffer.data);
-		
-		return -1;
-	}
-	else
-	{
-										
-		for (i = 0; i < resultCount; i++)
+		if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
 		{
-			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+			elog(ERROR,"cdbRelSize: resultStatus not tuples_Ok: %s   %s",PQresStatus(PQresultStatus(results[i])),PQresultErrorMessage(results[i]));
+		}
+		else
+		{
+			/*
+			 * Due to funkyness in the current dispatch agent code, instead of 1 result 
+			 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
+			 * one row per QE controlled by that agent.
+			 */
+			int j;
+			for (j = 0; j < PQntuples(results[i]); j++)
 			{
-				elog(ERROR,"cdbRelSize: resultStatus not tuples_Ok: %s   %s",PQresStatus(PQresultStatus(results[i])),PQresultErrorMessage(results[i]));
-			}
-			else
-			{
-				/*
-				 * Due to funkyness in the current dispatch agent code, instead of 1 result 
-				 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
-				 * one row per QE controlled by that agent.
-				 */
-				int j;
-				for (j = 0; j < PQntuples(results[i]); j++)
-				{
-					int64 tempsize = 0;
-					(void) scanint8(PQgetvalue(results[i], j, 0), false, &tempsize);
-					if (tempsize > size)
-					 	size = tempsize;
-				}
+				int64 tempsize = 0;
+				(void) scanint8(PQgetvalue(results[i], j, 0), false, &tempsize);
+				if (tempsize > size)
+				 	size = tempsize;
 			}
 		}
-	
-		pfree(errbuf.data);
-		pfree(buffer.data);
-
-		for (i = 0; i < resultCount; i++)
-			PQclear(results[i]);
-	
-		free(results);
 	}
+
+	pfree(buffer.data);
+
+	for (i = 0; i < resultCount; i++)
+		PQclear(results[i]);
+
+	free(results);
 
 	if (size >= 0)	/* Cache the size even if it is zero, as table might be empty */
 	{

@@ -1432,7 +1432,7 @@ dropdb(const char *dbname, bool missing_ok)
 		/*
 		 * Do the DROP DATABASE as part of a distributed transaction.
 		 */
-		CdbDoCommand(buffer.data, true, true);
+		CdbDoCommand_COE_2PC_SNAPSHOT(buffer.data);
 	}
 
 	/*
@@ -1848,7 +1848,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" CONNECTION LIMIT %d", stmt->dbname, connlimit);
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand_2PC_SNAPSHOT(buffer.data);
 	}
 
 	/*
@@ -2031,7 +2031,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 
 		}
 
-		CdbDoCommand(buffer.data, false, /*start txn*/ true);
+		CdbDoCommand_2PC_SNAPSHOT(buffer.data);
 	}
 
 	/*

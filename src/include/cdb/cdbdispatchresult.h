@@ -309,6 +309,10 @@ CdbDispatchResult *
 cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex);
 
 struct pg_result **
+cdbdisp_returnResultSets(CdbDispatchResults *primaryResults,
+                      int *numresults);
+
+struct pg_result **
 cdbdisp_returnResults(CdbDispatchResults *primaryResults,
                       StringInfo errmsgbuf,
                       int *numresults);

@@ -143,7 +143,6 @@ pg_lock_status(PG_FUNCTION_ARGS)
 			int 	resultCount = 0;
 			struct pg_result **results = NULL;
 			StringInfoData buffer;
-			StringInfoData errbuf;
 			int i;
 
 			initStringInfo(&buffer);
@@ -158,8 +157,6 @@ pg_lock_status(PG_FUNCTION_ARGS)
 					 " transactionid xid, classid oid, objid oid, objsubid int2,"
 					 " transaction xid, pid int4, mode text, granted boolean, "
 					 " mppSessionId int4, mppIsWriter boolean, gp_segment_id int4) ");
-
-			initStringInfo(&errbuf);
 
 			/*
 			 * Why dispatch something here, rather than do a UNION ALL in pg_locks view, and
@@ -200,11 +197,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 			 *
 			 */
 
-			results = cdbdisp_dispatchRMCommand(buffer.data, true, &errbuf, &resultCount);
-
-			if (errbuf.len > 0)
-				ereport(ERROR, (errmsg("pg_lock internal error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-								errdetail("%s", errbuf.data)));
+			results = CdbDoCommandV1_SNAPSHOT(buffer.data, &resultCount);
 
 			/*
 			 * I don't think resultCount can ever be zero if errbuf isn't set.
@@ -235,10 +228,9 @@ pg_lock_status(PG_FUNCTION_ARGS)
 				}
 			}
 
-			pfree(errbuf.data);
 			mystatus->numsegresults = resultCount;
 			/*
-			 * cdbdisp_dispatchRMCommand copies the result sets into our memory, which
+			 * CdbExecCommandOnQEsExpectResults copies the result sets into our memory, which
 			 * will still exist on the subsequent calls.
 			 */
 			mystatus->segresults = results;

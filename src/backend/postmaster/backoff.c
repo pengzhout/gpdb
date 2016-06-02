@@ -957,10 +957,6 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 		struct pg_result **results = NULL;
 		char cmd[255];
 
-		StringInfoData errbuf;
-
-		initStringInfo(&errbuf);
-
 		/*
 		 * Make sure the session exists before dispatching
 		 */
@@ -987,12 +983,7 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 		 */
 		sprintf(cmd, "select gp_adjust_priority(%d,%d,%d)", session_id, command_count, wt);
 
-		results = cdbdisp_dispatchRMCommand(cmd, true, &errbuf, &resultCount);
-
-		if (errbuf.len > 0)
-			ereport(ERROR,(
-					errmsg("gp_adjust_priority error (gathered %d results from cmd '%s')",
-							resultCount, cmd), errdetail("%s",	errbuf.data)));
+		results = CdbDoCommandV1_SNAPSHOT(cmd, &resultCount);
 
 		for (i = 0; i < resultCount; i++)
 		{
@@ -1012,8 +1003,6 @@ gp_adjust_priority_int(PG_FUNCTION_ARGS)
 				}
 			}
 		}
-
-		pfree(errbuf.data);
 
 		for (i = 0; i < resultCount; i++)
 			PQclear(results[i]);

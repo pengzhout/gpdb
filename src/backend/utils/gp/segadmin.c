@@ -532,7 +532,7 @@ dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 					 segdbid,
 					 a);
 
-	CdbDoCommand(q->data, true, false);
+	CdbDoCommand_COE_SNAPSHOT(q->data);
 }
 
 /*
@@ -613,7 +613,7 @@ remove_segment_persistent_entries(int16 pridbid, seginfo *i)
 						 pridbid,
 						 i->db.dbid);
 
-		CdbDoCommand(q->data, true, false);
+		CdbDoCommand_COE_SNAPSHOT(q->data);
 	}
 }
 

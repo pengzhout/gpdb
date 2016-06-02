@@ -101,6 +101,14 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 									 bool needTwoPhase,
 									 struct CdbDispatcherState *ds);
 
+static struct CdbDispatcherState *
+cdbdisp_dispatchCommandOrQueryTree(const char *queryCommand,
+								   char *serializedQuerytree,
+								   int serializedQuerytreelen,
+								   bool cancelOnError,
+								   bool needTwoPhase,
+								   bool withSnapshot);
+
 static int
 fillSliceVector(SliceTable *sliceTable,
 				int sliceIndex,
@@ -123,6 +131,10 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  struct SliceTable *sliceTbl,
 				  struct CdbDispatcherState *ds);
 
+static void
+CdbExecCommandOnQEs_Internal(const char* strCommand, bool cancelOnError, bool needTwoPhase,
+							   bool withSnapshot, struct pg_result *** resultSetsPtr,
+							   int* numResults);
 /*
  * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.  (A plan tree will correspond either
@@ -591,38 +603,6 @@ cdbdisp_dispatchCommand(const char *strCommand,
 }
 
 /*
- * CdbDoCommand:
- * Combination of cdbdisp_dispatchCommand and cdbdisp_finishCommand.
- * If not all QEs execute the command successfully, throws an error and
- * does not return.
- *
- * needTwoPhase specifies a desire to include global transaction control
- * before dispatch.
- */
-void
-CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase)
-{
-	CdbDispatcherState ds = {NULL, NULL, NULL};
-	const bool withSnapshot = true;
-
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "CdbDoCommand for command = '%s', needTwoPhase = %s", strCommand,
-		 (needTwoPhase ? "true" : "false"));
-
-	dtmPreCommand("CdbDoCommand", strCommand, NULL, needTwoPhase, withSnapshot,
-				  false /* inCursor */ );
-
-	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, needTwoPhase,
-							true, &ds);
-
-	/*
-	 * Wait for all QEs to finish. If not all of our QEs were successful,
-	 * report the error and throw up.
-	 */
-	cdbdisp_finishCommand(&ds, NULL, NULL);
-}
-
-/*
  * Dispatch a command - already parsed and in the form of a Node tree
  * - to all primary segdbs.  Does not wait for completion. Does not
  * start a global transaction.
@@ -686,71 +666,6 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	cdbdisp_dispatchCommand(debug_query_string, serializedQuerytree,
 							serializedQuerytree_len, cancelOnError,
 							needTwoPhase, withSnapshot, ds);
-}
-
-/*
- * cdbdisp_dispatchRMCommand:
- * Sends a non-cancelable command to all segment dbs.
- *
- * Returns a malloc'ed array containing the PGresult objects thus
- * produced; the caller must PQclear() them and free() the array.
- * A NULL entry follows the last used entry in the array.
- *
- * Any error messages - whether or not they are associated with
- * PGresult objects - are appended to a StringInfo buffer provided
- * by the caller.
- */
-struct pg_result **
-cdbdisp_dispatchRMCommand(const char *strCommand,
-						  bool withSnapshot,
-						  StringInfo errmsgbuf,
-						  int *numresults)
-{
-	volatile struct CdbDispatcherState ds = {NULL, NULL, NULL};
-
-	PGresult  **resultSets = NULL;
-
-	/*
-	 * never want to start a global transaction for these
-	 */
-	bool needTwoPhase = false;
-
-	elog(((Debug_print_full_dtm || Debug_print_snapshot_dtm) ? LOG : DEBUG5),
-		 "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
-		 strCommand, (withSnapshot ? "true" : "false"));
-
-	PG_TRY();
-	{
-		/*
-		 * Launch the command.	Don't cancel on error. 
-		 */
-		cdbdisp_dispatchCommand(strCommand, NULL, 0,
-								false, /* cancelOnError */
-								needTwoPhase, withSnapshot,
-								(struct CdbDispatcherState *) &ds);
-
-		/*
-		 * Wait for all QEs to finish.	Don't cancel. 
-		 */
-		CdbCheckDispatchResult((struct CdbDispatcherState *) &ds, DISPATCH_WAIT_NONE);
-	}
-	PG_CATCH();
-	{
-		/*
-		 * Something happend, clean up after ourselves
-		 */
-		CdbCheckDispatchResult((struct CdbDispatcherState *) &ds, DISPATCH_WAIT_NONE);
-
-		cdbdisp_destroyDispatcherState((struct CdbDispatcherState *) &ds);
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	resultSets = cdbdisp_returnResults(ds.primaryResults, errmsgbuf, numresults);
-
-	cdbdisp_destroyDispatcherState((struct CdbDispatcherState *) &ds);
-
-	return resultSets;
 }
 
 /*
@@ -1631,6 +1546,165 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt,
 }
 
 /*
+ * CdbExecCommandOnQEs
+ *
+ * Execute plain command on all primary writer QEs.
+ * If one or more QEs got error, throw a Error.
+ *
+ * This function is used to execute command like 'DROP DATABASE IF EXISTS' on
+ * each segments, caller don't need to further process the result of each
+ * segments.
+ */
+void
+CdbExecCommandOnQEs(const char* strCommand, bool cancelOnError, bool needTwoPhase,
+					bool withSnapshot)
+{
+	CdbExecCommandOnQEs_Internal(strCommand,
+								 cancelOnError,
+								 needTwoPhase,
+								 withSnapshot,
+								 NULL,
+								 NULL);
+}
+
+/*
+ * CdbExecCommandOnQEsExpectResults
+ *
+ * Another version of CdbExecCommandOnQEs
+ *
+ * This function is used to execute command like 'select pg_relation_size()',
+ * caller normally need to further process the result of each QEs.
+ */
+struct pg_result**
+CdbExecCommandOnQEsExpectResults(const char* strCommand, bool cancelOnError,
+								 bool needTwoPhase, bool withSnapshot,
+								 int* numResults)
+{
+	struct pg_result ** resultSets = NULL;
+
+	CdbExecCommandOnQEs_Internal(strCommand,
+								 cancelOnError,
+								 needTwoPhase,
+								 withSnapshot,
+								 &resultSets,
+								 numResults);	
+	return resultSets;
+}
+
+/* 
+ * CdbExecUtilityStatementOnQEs
+ *
+ * Dispatch a command - already parsed and in the form of a Node
+ * tree to all primary writer segdbs, and wait for completion.
+ * If not all QEs in the given gang(s) executed the command successfully,
+ * throws an error and does not return.
+ */
+void
+CdbExecUtilityStatementOnQEs(Node* stmt,
+							 bool cancelOnError,
+							 bool needTwoPhase,
+							 bool withSnapshot,
+							 char* debugCaller __attribute__((unused)))
+{
+	CdbExecUtilityStatementOnQEs_Internal(stmt,
+										  cancelOnError,
+										  needTwoPhase,
+										  withSnapshot,
+										  NULL,
+										  NULL);
+}
+
+/*
+ * CdbExecUtilityCommandOnQEsExpectResults:
+ *
+ * Dispath plain command to all primary writer QEs, wait until all QEs finish
+ * the execution successfully. If one or more QEs got error, throw a Error.
+ *
+ * This function is used to execute command like 'select pg_relation_size()',
+ * caller normally need to further process the result of each QEs.
+ */
+struct pg_result**
+CdbExecUtilityStatementOnQEsExpectResults(Node* stmt,
+										  bool cancelOnError,
+										  bool needTwoPhase,
+										  bool withSnapshot,
+										  int* numResults,
+										  char* debugCaller __attribute__((unused)))
+{
+	struct pg_result **resultSets = NULL;
+
+	CdbExecUtilityStatementOnQEs_Internal(stmt,
+										  cancelOnError,
+										  needTwoPhase,
+										  withSnapshot,
+										  &resultSets,
+										  numResults);
+	return resultSets;
+}
+
+/*
+ * CdbExecCommandOnQEs_Internal
+ *
+ * Dispatch plain command to all primay writer QEs, and wait all QEs to finish
+ * If one or more QEs got error, throw a Error.
+ *
+ * If resultSetsPtr provided, point it to a pg_result array.
+ * the caller must PQclear() them and free() the array.
+ * A NULL entry follows the last used entry in the array.
+ */
+static void
+CdbExecCommandOnQEs_Internal(const char* strCommand, bool cancelOnError, bool needTwoPhase,
+							   bool withSnapshot, struct pg_result *** resultSetsPtr,
+							   int* numResults)
+{
+	CdbDispatcherState* ds = NULL;
+	CdbDispatchResults* results = NULL;
+	StringInfoData * errorMsg = NULL;
+
+	elog(((Debug_print_full_dtm || Debug_print_snapshot_dtm) ? LOG : DEBUG5),
+		 "CdbExecCommandOnQEs_Internal for command = '%s', cancelOnError = %s,\
+		 needTwoPhase = %s, withSnapshot = %s",
+		 strCommand,
+		 (cancelOnError? "true" : "false"),
+		 (needTwoPhase ? "true" : "false"),
+		 (withSnapshot ? "true" : "false"));
+
+	dtmPreCommand("cdbdisp_dispatchStatementNode", strCommand, NULL,
+				  needTwoPhase, withSnapshot, false /* inCursor */ );
+
+	/*
+	 * Dispatch plain command to primary writer gang.
+	 */
+	ds = cdbdisp_dispatchCommandOrQueryTree(strCommand, NULL, 0,
+											cancelOnError,
+											needTwoPhase, withSnapshot);
+	/*
+	 * Block until valid results is available or one or more QEs got errors.
+	 */
+	results = cdbdisp_getDispatchResults(ds, &errorMsg);
+	
+	/*
+	 * If QEs have errors, throw it up
+	 */
+	if (!results && errorMsg)
+	{
+		cdbdisp_destroyDispatcherState(ds);	
+		elog(ERROR, "cdbdisp_dispatchStatementNode: One or more QEs got Errors: %s",
+			 		errorMsg->data);
+	}
+
+	/*
+	 * If Caller need dispatch results
+	 */
+	if (resultSetsPtr && results && numResults)
+	{
+		*resultSetsPtr = cdbdisp_returnResultSets(results, numResults);
+	}
+
+	cdbdisp_destroyDispatcherState(ds);
+}
+
+/*
  * cdbdisp_dispatchCommandOrQueryTree:
  * Send query command directly or serialized query tree to primary writer gang
  *
@@ -1738,3 +1812,6 @@ cdbdisp_dispatchCommandOrQueryTree(const char *queryCommand,
 
 	return ds;
 }
+
+
+

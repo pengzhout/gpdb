@@ -879,6 +879,61 @@ cdbdisp_resultEnd(CdbDispatchResults * results, int sliceIndex)
 }
 
 struct pg_result **
+cdbdisp_returnResultSets(CdbDispatchResults * primaryResults,
+						 int *numresults)
+{
+	CdbDispatchResult *dispatchResult;
+	PGresult **resultSets = NULL;
+	int	nslots;
+	int	nresults = 0;
+	int	i;
+	int	totalResultCount = 0;
+
+	/*
+	 * Allocate result set ptr array. The caller must PQclear() each PGresult
+	 * and free() the array.
+	 */
+	nslots = 0;
+	if (primaryResults)
+	{
+		for (i = 0; i < primaryResults->resultCount; ++i)
+			nslots += cdbdisp_numPGresult(&primaryResults->resultArray[i]);
+	}
+	resultSets = (struct pg_result **)calloc(nslots, sizeof(*resultSets));
+
+	if (!resultSets)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg
+						("cdbdisp_returnResults failed: out of memory")));
+
+	/*
+	 * Collect results from primary gang.
+	 */
+	if (primaryResults)
+	{
+		totalResultCount = primaryResults->resultCount;
+
+		for (i = 0; i < primaryResults->resultCount; ++i)
+		{
+			dispatchResult = &primaryResults->resultArray[i];
+
+			/*
+			 * Take ownership of this QE's PGresult object(s). 
+			 */
+			nresults += cdbdisp_snatchPGresults(dispatchResult,
+												resultSets + nresults,
+												nslots - nresults);
+		}
+	}
+	Assert(nresults == nslots);
+
+	/* tell the caller how many sets we're returning. */
+	*numresults = totalResultCount;
+
+	return resultSets;
+}
+
+struct pg_result **
 cdbdisp_returnResults(CdbDispatchResults * primaryResults,
 					  StringInfo errmsgbuf, int *numresults)
 {

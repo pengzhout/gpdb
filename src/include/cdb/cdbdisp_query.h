@@ -82,18 +82,6 @@ cdbdisp_dispatchCommand(const char *strCommand,
 						bool withSnapshot,
 						struct CdbDispatcherState *ds); /* OUT */
 
-/*
- * CdbDoCommand:
- * Combination of cdbdisp_dispatchCommand and cdbdisp_finishCommand.
- * Called by general users, this method includes global transaction control.
- * If not all QEs execute the command successfully, throws an error and
- * does not return.
- *
- * needTwoPhase specifies whether to dispatch within a distributed 
- * transaction or not.
- */
-void
-CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase);
 
 /* Dispatch a command - already parsed and in the form of a Node
  * tree - to all primary segdbs.  Does not wait for
@@ -117,24 +105,6 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 								 struct CdbDispatcherState *ds,
 								 char* debugCaller __attribute__((unused)));
 
-/*
- * cdbdisp_dispatchRMCommand:
- * Sends a non-cancelable command to all segment dbs, primary
- *
- * Returns a malloc'ed array containing the PGresult objects thus
- * produced; the caller must PQclear() them and free() the array.
- * A NULL entry follows the last used entry in the array.
- *
- * Any error messages - whether or not they are associated with
- * PGresult objects - are appended to a StringInfo buffer provided
- * by the caller.
- */
-struct pg_result **
-cdbdisp_dispatchRMCommand(const char *strCommand,
-						  bool withSnapshot,
-						  StringInfo errmsgbuf,
-						  int *numresults);
-
 /* Dispatch a command - already parsed and in the form of a Node
  * tree - to all primary segdbs, and wait for completion.
  * Starts a global transaction first, if not already started.
@@ -146,5 +116,65 @@ CdbDispatchUtilityStatement(struct Node *stmt, char* debugCaller __attribute__((
 
 void
 CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char* debugCaller __attribute__((unused)));
+
+/*
+ ****************************************
+ * Execute Command On Primary Writer Gang
+ ****************************************
+ */
+#define CdbDoCommand(strCommand) \
+	CdbExecCommandOnQEs(strCommand, false, false, false)
+
+#define CdbDoCommand_SNAPSHOT(strCommand) \
+	CdbExecCommandOnQEs(strCommand, false, false, true)
+
+#define CdbDoCommand_COE_SNAPSHOT(strCommand) \
+	CdbExecCommandOnQEs(strCommand, true, true, true)
+
+#define CdbDoCommand_2PC_SNAPSHOT(strCommand) \
+	CdbExecCommandOnQEs(strCommand, true, true, true)
+
+#define CdbDoCommand_COE_2PC_SNAPSHOT(strCommand) \
+	CdbExecCommandOnQEs(strCommand, true, true, true)
+
+#define CdbDoCommandV1(strCommand, resultNumPtr) \
+	CdbExecCommandOnQEsExpectResults(strCommand, false, false,\
+									 false, resultNumPtr)
+
+#define CdbDoCommandV1_SNAPSHOT(strCommand, resultNumPtr) \
+	CdbExecCommandOnQEsExpectResults(strCommand, false, false,\
+									 true, resultNumPtr)
+
+/*
+ * CdbExecCommandOnQEs
+ *
+ * Execute plain command on all primary writer QEs.
+ * If one or more QEs got error, throw a Error.
+ *
+ * This function is used to execute command like 'DROP DATABASE IF EXISTS' on
+ * each segments, caller don't need to further process the result of each
+ * segments.
+ */
+void
+CdbExecCommandOnQEs(const char* strCommand,
+					bool cancelOnError,
+					bool needTwoPhase,
+					bool withSnapshot);
+
+
+/*
+ * CdbExecCommandOnQEsExpectResults
+ *
+ * Another version of CdbExecCommandOnQEs which return pg_result array
+ *
+ * This function is used to execute command like 'select pg_relation_size()',
+ * caller normally need to further process the result of each QEs.
+ */
+struct pg_result**
+CdbExecCommandOnQEsExpectResults(const char* strCommand,
+								 bool cancelOnError,
+								 bool needTwoPhase,
+								 bool withSnapshot,
+								 int* numResults);
 
 #endif   /* CDBDISP_QUERY_H */

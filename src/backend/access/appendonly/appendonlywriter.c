@@ -1273,7 +1273,6 @@ GetTotalTupleCountFromSegments(Oid aoRelid,
 							   int segno)
 {
 	StringInfoData	sqlstmt;
-	StringInfoData	errbuf;
 	Relation		aosegrel;
 	AppendOnlyEntry *aoEntry = NULL;
 	struct pg_result **results = NULL;
@@ -1300,7 +1299,6 @@ GetTotalTupleCountFromSegments(Oid aoRelid,
 		appendStringInfo(&sqlstmt, " WHERE segno = %d", segno);
 	heap_close(aosegrel, AccessShareLock);
 
-	initStringInfo(&errbuf);
 
 	/* Allocate result array to be returned. */
 	total_tupcount = palloc0(sizeof(int64) * MAX_AOREL_CONCURRENCY);
@@ -1315,17 +1313,13 @@ GetTotalTupleCountFromSegments(Oid aoRelid,
 	 */
 	GetUserIdAndContext(&save_userid, &save_secdefcxt);
 	SetUserIdAndContext(BOOTSTRAP_SUPERUSERID, true);
-	results = cdbdisp_dispatchRMCommand(sqlstmt.data, true,
-										&errbuf, &resultCount);
-	/* Restore userid */
-	SetUserIdAndContext(save_userid, save_secdefcxt);
 
 	PG_TRY();
 	{
-		if (errbuf.len > 0)
-			ereport(ERROR,
-					(errmsg("failed to obtain AO total tupcount: %s (%s)",
-							sqlstmt.data, errbuf.data)));
+		results = CdbDoCommandV1_SNAPSHOT(sqlstmt.data, &resultCount);
+
+		/* Restore userid */
+		SetUserIdAndContext(save_userid, save_secdefcxt);
 
 		for (i = 0; i < resultCount; i++)
 		{
@@ -1362,6 +1356,8 @@ GetTotalTupleCountFromSegments(Oid aoRelid,
 	}
 	PG_CATCH();
 	{
+		SetUserIdAndContext(save_userid, save_secdefcxt);
+
 		/* Clean up malloc'ed items */
 		if (results)
 		{
@@ -1374,7 +1370,6 @@ GetTotalTupleCountFromSegments(Oid aoRelid,
 	PG_END_TRY();
 
 	pfree(sqlstmt.data);
-	pfree(errbuf.data);
 
 	for (i = 0; i < resultCount; i++)
 		PQclear(results[i]);
@@ -1394,7 +1389,6 @@ static bool *
 GetFileSegStateInfoFromSegments(Relation parentrel, AppendOnlyEntry *aoEntry)
 {
 	StringInfoData	sqlstmt;
-	StringInfoData	errbuf;
 	Relation		aosegrel;
 	struct pg_result **results = NULL;
 	int				resultCount;
@@ -1424,8 +1418,6 @@ GetFileSegStateInfoFromSegments(Relation parentrel, AppendOnlyEntry *aoEntry)
 				RelationGetRelationName(parentrel),
 				RelationGetRelid(parentrel));
 
-	initStringInfo(&errbuf);
-
 	/* Allocate result array to be returned. */
 	awaiting_drop = palloc0(sizeof(bool) * MAX_AOREL_CONCURRENCY);
 
@@ -1441,17 +1433,13 @@ GetFileSegStateInfoFromSegments(Relation parentrel, AppendOnlyEntry *aoEntry)
 	 */
 	GetUserIdAndContext(&save_userid, &save_secdefcxt);
 	SetUserIdAndContext(BOOTSTRAP_SUPERUSERID, true);
-	results = cdbdisp_dispatchRMCommand(sqlstmt.data, true,
-										&errbuf, &resultCount);
-	/* Restore userid */
-	SetUserIdAndContext(save_userid, save_secdefcxt);
 
 	PG_TRY();
 	{
-		if (errbuf.len > 0)
-			ereport(ERROR,
-					(errmsg("failed to obtain AO segfile state: %s (%s)",
-							sqlstmt.data, errbuf.data)));
+		results = CdbDoCommandV1_SNAPSHOT(sqlstmt.data, &resultCount);
+
+		/* Restore userid */
+		SetUserIdAndContext(save_userid, save_secdefcxt);
 
 		for (i = 0; i < resultCount; i++)
 		{
@@ -1501,6 +1489,8 @@ GetFileSegStateInfoFromSegments(Relation parentrel, AppendOnlyEntry *aoEntry)
 	}
 	PG_CATCH();
 	{
+		SetUserIdAndContext(save_userid, save_secdefcxt);
+
 		/* Clean up malloc'ed items */
 		if (results)
 		{
@@ -1513,7 +1503,6 @@ GetFileSegStateInfoFromSegments(Relation parentrel, AppendOnlyEntry *aoEntry)
 	PG_END_TRY();
 
 	pfree(sqlstmt.data);
-	pfree(errbuf.data);
 
 	for (i = 0; i < resultCount; i++)
 		PQclear(results[i]);

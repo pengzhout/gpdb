@@ -47,20 +47,13 @@ get_max_oid_from_segDBs(void)
 	int 	resultCount = 0;
 	struct pg_result **results = NULL;
 	StringInfoData buffer;
-	StringInfoData errbuf;
 		
 	initStringInfo(&buffer);
 	
 	appendStringInfo(&buffer, "select pg_highest_oid()");
 	
-	initStringInfo(&errbuf);
+	results = CdbDoCommandV1_SNAPSHOT(buffer.data, &resultCount);
 
-	results = cdbdisp_dispatchRMCommand(buffer.data, true, &errbuf, &resultCount);
-
-	if (errbuf.len > 0)
-		ereport(ERROR, (errmsg("pg_highest_oid error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-						errdetail("%s", errbuf.data)));
-										
 	for (i = 0; i < resultCount; i++)
 	{
 		if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
@@ -85,8 +78,6 @@ get_max_oid_from_segDBs(void)
 			}
 		}
 	}
-
-	pfree(errbuf.data);
 
 	for (i = 0; i < resultCount; i++)
 		PQclear(results[i]);
