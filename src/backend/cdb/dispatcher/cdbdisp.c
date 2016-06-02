@@ -141,6 +141,44 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 }
 
 /*
+ * cdbdisp_getDispatchResults:
+ *
+ * Block until all QEs return results or report errors.
+ *
+ * Return Values:
+ *   Return NULL If one or more QEs got Error in which case errorMsg contain
+ *   QE error messages.
+ */
+struct CdbDispatchResults *
+cdbdisp_getDispatchResults(struct CdbDispatcherState *ds, StringInfoData **errorMsg)
+{
+	int errorcode;
+	StringInfoData *errorMsgBuf = NULL;
+
+	if (!ds || !ds->primaryResults)
+		return NULL;
+
+	/* wait QEs to return results or report errors*/
+	CdbCheckDispatchResult(ds, DISPATCH_WAIT_CANCEL);
+
+	/* check if any error reported */
+	errorcode = ds->primaryResults->errcode;
+
+	if (errorcode)
+	{
+		errorMsgBuf = palloc0(sizeof(StringInfoData));
+		initStringInfo(errorMsgBuf);
+		cdbdisp_dumpDispatchResults(ds->primaryResults, errorMsgBuf, false);
+		*errorMsg = errorMsgBuf;
+		return NULL;
+	}
+
+	*errorMsg = NULL;
+
+	return ds->primaryResults;
+}
+
+/*
  * Wait for all QEs to finish, then report any errors from the given
  * CdbDispatchResults objects and free them.  If not all QEs in the
  * associated gang(s) executed the command successfully, throws an
@@ -347,6 +385,39 @@ cdbdisp_makeDispatcherState(CdbDispatcherState * ds, int maxResults,
 }
 
 /*
+ * Create and initialize CdbDispatcherState.
+ *
+ * Call cdbdisp_destroyDispatcherState to free it.
+ *
+ *	 maxResults: max number of results, normally equals to max number of QEs.
+ *	 maxSlices: max number of slices of the query/command.
+ */
+CdbDispatcherState *
+cdbdisp_createDispatcherState(int maxResults,
+							int maxSlices, bool cancelOnError)
+{
+	MemoryContext oldContext = NULL;
+
+	CdbDispatcherState * ds = palloc0(sizeof(CdbDispatcherState));
+
+	ds->dispatchStateContext = AllocSetContextCreate(TopMemoryContext,
+													 "Dispatch Context",
+													 ALLOCSET_DEFAULT_MINSIZE,
+													 ALLOCSET_DEFAULT_INITSIZE,
+													 ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldContext = MemoryContextSwitchTo(ds->dispatchStateContext);
+	ds->primaryResults = cdbdisp_makeDispatchResults(maxResults,
+													 maxSlices,
+													 cancelOnError);
+
+	ds->dispatchThreads = cdbdisp_makeDispatchThreads(maxSlices);
+	MemoryContextSwitchTo(oldContext);
+
+	return ds;
+}
+
+/*
  * Free memory in CdbDispatcherState
  *
  * Free the PQExpBufferData allocated in libpq.
@@ -379,6 +450,10 @@ cdbdisp_destroyDispatcherState(CdbDispatcherState * ds)
 	ds->primaryResults = NULL;
 }
 
+void cdbdisp_cancelDispatch(CdbDispatcherState *ds)
+{
+	CdbCheckDispatchResult(ds, DISPATCH_WAIT_CANCEL);	
+}
 /*
  * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
  * internal dispatcher structures.

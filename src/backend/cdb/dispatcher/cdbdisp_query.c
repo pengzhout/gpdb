@@ -1629,3 +1629,112 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt,
 	}
 	PG_END_TRY();
 }
+
+/*
+ * cdbdisp_dispatchCommandOrQueryTree:
+ * Send query command directly or serialized query tree to primary writer gang
+ *
+ * Arguments:
+ * -cancelOnError
+ * indicate whether an error occurring on one of the qExec segdbs should cause
+ * all still-executing commands to cancel on other qExecs. Normally this would be true.
+ *
+ * -needTwoPhase
+ * indicate whether the command to be dispatched should be done inside of a global
+ * transaction or not.
+ *
+ * -withSanpshot
+ * indicate whether dispatch command or queryTree along with snapshot
+ *
+ * Return Value:
+ * CdbDispatcherState structure is returned, caller need to call cdbdisp_getDispatchResults()
+ * to get dispatch results or cdbdisp_cancelDispatch() to cancel.Caller is also responsible to
+ * release this object by using cdbdisp_destroyDispatcherState();
+ *
+ * Error Handling:
+ * If any errors happen when dispatching, an error will be thrown and the whole 
+ * dispatch context will be destroyed, callers don't need to take care of it.
+ *
+ * This function will not care any execution error in QEs, cdbdisp_getDispatchResults() will
+ * detect QE errors.
+ * 
+ */
+static struct CdbDispatcherState *
+cdbdisp_dispatchCommandOrQueryTree(const char *queryCommand,
+								   char *serializedQuerytree,
+								   int serializedQuerytreelen,
+								   bool cancelOnError,
+								   bool needTwoPhase,
+								   bool withSnapshot)
+{
+	DispatchCommandQueryParms queryParms;
+	Gang *primaryGang;
+	int	nsegdb = getgpsegmentCount();
+	CdbComponentDatabaseInfo *qdinfo;
+
+	struct CdbDispatcherState *ds = NULL;
+
+	if (log_dispatch_stats)
+		ResetUsage();
+
+	if (DEBUG5 >= log_min_messages)
+		elog(DEBUG3, "cdbdisp_dispatchCommand: %s (needTwoPhase = %s)",
+			 queryCommand, (needTwoPhase ? "true" : "false"));
+	else
+		elog((Debug_print_full_dtm ? LOG : DEBUG3),
+			 "cdbdisp_dispatchCommand: %.50s (needTwoPhase = %s)", queryCommand,
+			 (needTwoPhase ? "true" : "false"));
+
+	MemSet(&queryParms, 0, sizeof(queryParms));
+	queryParms.strCommand = queryCommand;
+	queryParms.serializedQuerytree = serializedQuerytree;
+	queryParms.serializedQuerytreelen = serializedQuerytreelen;
+
+	/*
+	 * Allocate a primary QE for every available segDB in the system.
+	 */
+	primaryGang = allocateWriterGang();
+
+	Assert(primaryGang);
+
+	queryParms.primary_gang_id = primaryGang->gang_id;
+
+	/*
+	 * Serialize a version of our DTX Context Info
+	 */
+	queryParms.serializedDtxContextInfo =
+		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen,
+								  withSnapshot, false,
+								  mppTxnOptions(needTwoPhase),
+								  "cdbdisp_dispatchCommand");
+
+	/*
+	 * sequence server info
+	 */
+	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+	Assert(qdinfo != NULL && qdinfo->hostip != NULL);
+	queryParms.seqServerHost = pstrdup(qdinfo->hostip);
+	queryParms.seqServerHostlen = strlen(qdinfo->hostip) + 1;
+	queryParms.seqServerPort = seqServerCtl->seqServerPort;
+
+	/*
+	 * Dispatch the command.
+	 */
+	ds = cdbdisp_createDispatcherState(nsegdb, 0, cancelOnError);
+	cdbdisp_queryParmsInit(ds, &queryParms);
+	ds->primaryResults->writer_gang = primaryGang;
+
+	PG_TRY();
+	{
+		cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
+	}
+	PG_CATCH();
+	{
+		cdbdisp_cancelDispatch(ds);
+		cdbdisp_destroyDispatcherState(ds);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return ds;
+}

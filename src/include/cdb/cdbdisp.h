@@ -95,6 +95,18 @@ void
 CdbCheckDispatchResult(struct CdbDispatcherState *ds, DispatchWaitMode waitMode);
 
 /*
+ * cdbdisp_getDispatchResults:
+ *
+ * Block until all QEs return results or report errors.
+ *
+ * Return Values:
+ *   Return NULL If one or more QEs got Error in which case errorMsg contain
+ *   QE error messages.
+ */
+struct CdbDispatchResults *
+cdbdisp_getDispatchResults(struct CdbDispatcherState *ds, StringInfoData **errorMsg);
+
+/*
  * Wait for all QEs to finish, then report any errors from the given
  * CdbDispatchResults objects and free them.  If not all QEs in the
  * associated gang(s) executed the command successfully, throws an
@@ -139,11 +151,30 @@ cdbdisp_makeDispatcherState(CdbDispatcherState *ds,
 							bool cancelOnError);
 
 /*
+ * Create and initialize CdbDispatcherState.
+ *
+ * Call cdbdisp_destroyDispatcherState to free it.
+ *
+ *   maxResults: max number of results, normally equals to max number of QEs.
+ *   maxSlices: max number of slices of the query/command.
+ */
+
+CdbDispatcherState *
+cdbdisp_createDispatcherState(int maxResults,
+							int maxSlices,
+							bool cancelOnError);
+
+/*
  * Free memory in CdbDispatcherState
  *
  * Free the PQExpBufferData allocated in libpq.
  * Free dispatcher memory context.
  */
 void cdbdisp_destroyDispatcherState(CdbDispatcherState *ds);
+
+/*
+ * Cancel all still runing QEs
+ */
+void cdbdisp_cancelDispatch(CdbDispatcherState *ds);
 
 #endif   /* CDBDISP_H */
