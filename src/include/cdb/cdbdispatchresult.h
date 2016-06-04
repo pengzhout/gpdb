@@ -312,11 +312,6 @@ struct pg_result **
 cdbdisp_returnResultSets(CdbDispatchResults *primaryResults,
                       int *numresults);
 
-struct pg_result **
-cdbdisp_returnResults(CdbDispatchResults *primaryResults,
-                      StringInfo errmsgbuf,
-                      int *numresults);
-
 /*
  * used in the interconnect on the dispatcher to avoid error-cleanup deadlocks.
  */

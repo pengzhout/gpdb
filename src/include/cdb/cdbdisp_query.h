@@ -33,11 +33,10 @@ struct CdbDispatcherState;
  * To wait for completion, check for errors, and clean up, it is
  * suggested that the caller use cdbdisp_finishCommand().
  */
-void
+struct CdbDispatcherState*
 cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 					 bool planRequiresTxn,
-					 bool cancelOnError,
-					 struct CdbDispatcherState *ds);
+					 bool cancelOnError);
 
 /*
  * Special for sending SET commands that change GUC variables, so they go to all

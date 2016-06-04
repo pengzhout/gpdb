@@ -2233,7 +2233,6 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 	char		*dtxProtocolCommandStr = 0;
 
 	struct pg_result	**results = NULL;
-	StringInfoData		errbuf;
 
 	dtxProtocolCommandStr = DtxProtocolCommandToString(dtxProtocolCommand);
 
@@ -2248,20 +2247,11 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 		 dtxProtocolCommand, dtxProtocolCommandStr,
 				 direct->directed_dispatch ? direct->content[0] : -1);
 
-	initStringInfo(&errbuf);
 	results = cdbdisp_dispatchDtxProtocolCommand(dtxProtocolCommand, flags,
 												 dtxProtocolCommandStr,
 												 gid, gxid,
-												 &errbuf, &resultCount, badGangs, direct,
+												 &resultCount, badGangs, direct,
 												 serializedArgument, serializedArgumentLen);
-
-	if (errbuf.len > 0)
-	{
-		ereport((raiseError ? ERROR : LOG),
-				(errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, dtxProtocolCommandStr),
-				 errdetail("%s", errbuf.data)));
-		return false;
-	}
 
 	Assert(results != NULL);
 	if (results == NULL)
@@ -2299,9 +2289,6 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 			}
 		}
 	}
-
-	/* discard the errbuf text */
-	pfree(errbuf.data);
 
 	/* Now we clean up the results array. */
 	for (i = 0; i < resultCount; i++)

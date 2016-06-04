@@ -86,15 +86,6 @@ typedef struct DispatchCommandQueryParms
 
 static void stripPlanBeforeDispatch(PlannedStmt *plan);
 
-static void
-cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
-									 char *serializedQuerytree,
-									 int serializedQuerytreelen,
-									 char *serializedPlantree,
-									 int serializedPlantreelen,
-									 bool cancelOnError,
-									 bool needTwoPhase,
-									 struct CdbDispatcherState *ds);
 
 static struct CdbDispatcherState *
 cdbdisp_dispatchCommandOrQueryTree(const char *queryCommand,
@@ -120,11 +111,10 @@ static void
 cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
 					   DispatchCommandQueryParms * pQueryParms);
 
-static void
+static struct CdbDispatcherState*
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
-				  struct SliceTable *sliceTbl,
-				  struct CdbDispatcherState *ds);
+				  struct SliceTable *sliceTbl);
 
 static void
 CdbExecCommandOnQEs_Internal(const char* strCommand, bool cancelOnError, bool needTwoPhase,
@@ -174,10 +164,10 @@ CdbExecUtilityStatementOnQEs_Internal(struct Node *stmt, bool cancelOnError, boo
  * Each QE receives its assignment as a message of type 'M' in PostgresMain().
  * The message is deserialized and processed by exec_mpp_query() in postgres.c.
  */
-void
+struct CdbDispatcherState*
 cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 					 bool planRequiresTxn,
-					 bool cancelOnError, struct CdbDispatcherState *ds)
+					 bool cancelOnError)
 {
 	char *splan,
 		 *ssliceinfo,
@@ -197,8 +187,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	DispatchCommandQueryParms queryParms;
 	CdbComponentDatabaseInfo *qdinfo;
 
-	ds->primaryResults = NULL;
-	ds->dispatchThreads = NULL;
+	CdbDispatcherState *ds = NULL;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
@@ -454,9 +443,11 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	Assert(sliceTbl);
 	Assert(sliceTbl->slices != NIL);
 
-	cdbdisp_dispatchX(&queryParms, cancelOnError, sliceTbl, ds);
+	ds = cdbdisp_dispatchX(&queryParms, cancelOnError, sliceTbl);
 
 	sliceTbl->localSlice = oldLocalSlice;
+
+	return ds;
 }
 
 /*
@@ -467,8 +458,16 @@ void
 CdbSetGucOnAllGangs(const char *strCommand,
 					bool cancelOnError, bool needTwoPhase)
 {
-	volatile CdbDispatcherState ds = { NULL, NULL };
+	CdbDispatcherState *ds = NULL;
+	CdbDispatchResults *results = NULL;
+	StringInfoData* 	errorMsg = NULL;
 	const bool	withSnapshot = true;
+
+	DispatchCommandQueryParms queryParms;
+	Gang *primaryGang;
+	List *idleReaderGangs;
+	List *busyReaderGangs;
+	ListCell *le;
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "CdbSetGucOnAllGangs for command = '%s', needTwoPhase = %s",
@@ -477,32 +476,92 @@ CdbSetGucOnAllGangs(const char *strCommand,
 	dtmPreCommand("CdbSetGucOnAllGangs", strCommand, NULL, needTwoPhase,
 				  withSnapshot, false /* inCursor */ );
 
+	int nsegdb = getgpsegmentCount();
+	int	gangCount;
+
+	MemSet(&queryParms, 0, sizeof(queryParms));
+	queryParms.strCommand = strCommand;
+	queryParms.serializedQuerytree = NULL;
+	queryParms.serializedQuerytreelen = 0;
+	queryParms.serializedPlantree = NULL;
+	queryParms.serializedPlantreelen = 0;
+
+	/*
+	 * Allocate a primary QE for every available segDB in the system.
+	 */
+	primaryGang = allocateWriterGang();
+
+	Assert(primaryGang);
+
+	queryParms.primary_gang_id = primaryGang->gang_id;
+
+	/*
+	 * serialized a version of our snapshot
+	 */
+	queryParms.serializedDtxContextInfo =
+		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen,
+								  true /* withSnapshot */ ,
+								  false /* cursor */ ,
+								  mppTxnOptions(needTwoPhase),
+								  "cdbdisp_dispatchSetCommandToAllGangs");
+
+	idleReaderGangs = getAllIdleReaderGangs();
+	busyReaderGangs = getAllBusyReaderGangs();
+
+	/*
+	 * Dispatch the command.
+	 */
+	gangCount = 1 + list_length(idleReaderGangs);
+
+
 	PG_TRY();
 	{
-		cdbdisp_dispatchSetCommandToAllGangs(strCommand, NULL, 0, NULL, 0,
-											 cancelOnError, needTwoPhase,
-											 (struct CdbDispatcherState *)
-											 &ds);
 
+		ds = cdbdisp_createDispatcherState(nsegdb * gangCount, gangCount, cancelOnError);
+		cdbdisp_queryParmsInit(ds, &queryParms);
+		ds->primaryResults->writer_gang = primaryGang;
+		cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
+	
+		foreach(le, idleReaderGangs)
+		{
+			Gang *rg = lfirst(le);
+	
+			cdbdisp_dispatchToGang(ds, rg, -1, DEFAULT_DISP_DIRECT);
+		}
+	
 		/*
-		 * Wait for all QEs to finish. If not all of our QEs were successful,
-		 * report the error and throw up.
+		 *Can not send set command to busy gangs, so those gangs
+		 *can not be reused because their GUC is not set.
 		 */
-		cdbdisp_finishCommand((struct CdbDispatcherState *) &ds, NULL, NULL);
+		foreach(le, busyReaderGangs)
+		{
+			Gang *rg = lfirst(le);
+	
+			rg->noReuse = true;
+		}
 	}
 	PG_CATCH();
 	{
-		/*
-		 * Something happend, clean up after ourselves
-		 */
-		CdbCheckDispatchResult((struct CdbDispatcherState *) &ds,
-							   DISPATCH_WAIT_CANCEL);
-
-		cdbdisp_destroyDispatcherState((struct CdbDispatcherState *) &ds);
-
+		if (ds)
+		{
+			cdbdisp_cancelDispatch(ds);
+			cdbdisp_destroyDispatcherState(ds);
+		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+	results = cdbdisp_getDispatchResults(ds, &errorMsg);
+
+	if (!results && errorMsg)
+	{
+		cdbdisp_destroyDispatcherState(ds);
+		elog(ERROR, "CdbSetGucOnAllGangs: One or more QEs got Errors: %s",
+			 		errorMsg->data);
+
+	}
+
+	cdbdisp_destroyDispatcherState(ds);
 }
 
 /*
@@ -968,11 +1027,10 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
  * and for dispatching all statements from Query Dispatch Agents
  * when we are using dispatch agents.
  */
-static void
+static struct CdbDispatcherState*
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  bool cancelOnError,
-				  struct SliceTable *sliceTbl,
-				  struct CdbDispatcherState *ds)
+				  struct SliceTable *sliceTbl)
 {
 	int			oldLocalSlice = 0;
 	sliceVec   *sliceVector = NULL;
@@ -980,6 +1038,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	int			sliceLim = 1;
 	int			iSlice;
 	int			rootIdx = pQueryParms->rootIdx;
+
+	struct CdbDispatcherState * ds = NULL;
 
 	if (log_dispatch_stats)
 		ResetUsage();
@@ -1010,10 +1070,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	/*
 	 * Allocate result array with enough slots for QEs of primary gangs.
 	 */
-	ds->primaryResults = NULL;
-	ds->dispatchThreads = NULL;
-
-	cdbdisp_makeDispatcherState(ds, nSlices * largestGangsize(), sliceLim,
+	ds = cdbdisp_createDispatcherState(nSlices * largestGangsize(), sliceLim,
 								cancelOnError);
 	cdbdisp_queryParmsInit(ds, pQueryParms);
 
@@ -1170,7 +1227,17 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			if (primaryGang->type == GANGTYPE_PRIMARY_WRITER)
 				ds->primaryResults->writer_gang = primaryGang;
 
-			cdbdisp_dispatchToGang(ds, primaryGang, si, &direct);
+			PG_TRY();
+			{
+				cdbdisp_dispatchToGang(ds, primaryGang, si, &direct);
+			}
+			PG_CATCH();
+			{
+				cdbdisp_cancelDispatch(ds);	
+				cdbdisp_destroyDispatcherState(ds);
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 		}
 	}
 
@@ -1192,13 +1259,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		/*
 		 * Cancel any QEs still running, and wait for them to terminate.
 		 */
-		CdbCheckDispatchResult(ds, DISPATCH_WAIT_CANCEL);
+		cdbdisp_cancelDispatch(ds);
 
-		/*
-		 * Check and free the results of all gangs. If any QE had an
-		 * error, report it and exit via PG_THROW.
-		 */
-		cdbdisp_finishCommand(ds, NULL, NULL);
+		cdbdisp_destroyDispatcherState(ds);
+
+		ds = NULL;
 
 		/*
 		 * Wasn't an error, must have been an interrupt. 
@@ -1227,94 +1292,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				break;
 		}
 	}
+
+	return ds;
 }
 
-/*
- * Dispatch SET command to all gangs.
- *
- * Can not dispatch SET commands to busy reader gangs (allocated by cursors) directly because another command is already in progress.
- * Cursors only allocate reader gangs, so primary writer and idle reader gangs can be dispatched to.
- */
-static void
-cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
-									 char *serializedQuerytree,
-									 int serializedQuerytreelen,
-									 char *serializedPlantree,
-									 int serializedPlantreelen,
-									 bool cancelOnError,
-									 bool needTwoPhase,
-									 struct CdbDispatcherState *ds)
-{
-	DispatchCommandQueryParms queryParms;
 
-	Gang *primaryGang;
-	List *idleReaderGangs;
-	List *busyReaderGangs;
-	ListCell *le;
-
-	int nsegdb = getgpsegmentCount();
-	int	gangCount;
-
-	MemSet(&queryParms, 0, sizeof(queryParms));
-	queryParms.strCommand = strCommand;
-	queryParms.serializedQuerytree = serializedQuerytree;
-	queryParms.serializedQuerytreelen = serializedQuerytreelen;
-	queryParms.serializedPlantree = serializedPlantree;
-	queryParms.serializedPlantreelen = serializedPlantreelen;
-
-	/*
-	 * Allocate a primary QE for every available segDB in the system.
-	 */
-	primaryGang = allocateWriterGang();
-
-	Assert(primaryGang);
-
-	queryParms.primary_gang_id = primaryGang->gang_id;
-
-	/*
-	 * serialized a version of our snapshot
-	 */
-	queryParms.serializedDtxContextInfo =
-		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen,
-								  true /* withSnapshot */ ,
-								  false /* cursor */ ,
-								  mppTxnOptions(needTwoPhase),
-								  "cdbdisp_dispatchSetCommandToAllGangs");
-
-	idleReaderGangs = getAllIdleReaderGangs();
-	busyReaderGangs = getAllBusyReaderGangs();
-
-	/*
-	 * Dispatch the command.
-	 */
-	gangCount = 1 + list_length(idleReaderGangs);
-
-	ds->primaryResults = NULL;
-	ds->dispatchThreads = NULL;
-	cdbdisp_makeDispatcherState(ds, nsegdb * gangCount, gangCount, cancelOnError);
-	cdbdisp_queryParmsInit(ds, &queryParms);
-	ds->primaryResults->writer_gang = primaryGang;
-
-	cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
-
-	foreach(le, idleReaderGangs)
-	{
-		Gang *rg = lfirst(le);
-
-		cdbdisp_dispatchToGang(ds, rg, -1, DEFAULT_DISP_DIRECT);
-	}
-
-	/*
-	 *Can not send set command to busy gangs, so those gangs
-	 *can not be reused because their GUC is not set.
-	 */
-	foreach(le, busyReaderGangs)
-	{
-		Gang *rg = lfirst(le);
-
-		rg->noReuse = true;
-	}
-}
 	
 /*
  * CdbExecCommandOnQEs

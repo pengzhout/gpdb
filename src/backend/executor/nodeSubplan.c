@@ -30,6 +30,7 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbtm.h"
 #include "cdb/ml_ipc.h"
 #include "lib/stringinfo.h"
@@ -1119,7 +1120,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext,
              * command to the appropriate segdbs.  It does not wait for them
              * to finish unless an error is detected before all are dispatched.
 			 */
-			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, queryDesc->estate->dispatcherState);
+			queryDesc->estate->dispatcherState = 
+				cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true);
 
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
@@ -1315,7 +1317,17 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext,
              * If the dispatcher or any QE had an error, report it and
              * exit to our error handler (below) via PG_THROW.
              */
-            cdbdisp_finishCommand(queryDesc->estate->dispatcherState, NULL, NULL);
+			StringInfoData* 	errorMsg = NULL;
+			CdbDispatchResults *pr = cdbdisp_getDispatchResults(queryDesc->estate->dispatcherState, &errorMsg);
+
+			if (!pr && errorMsg)
+			{
+            	cdbdisp_destroyDispatcherState(queryDesc->estate->dispatcherState);
+				queryDesc->estate->dispatcherState = NULL;
+				elog(ERROR, "ExecSetParamPlan: one or more segments got errors: %s", errorMsg->data);
+			}
+
+            cdbdisp_destroyDispatcherState(queryDesc->estate->dispatcherState);
         }
 
 		/* teardown the sequence server */
@@ -1340,31 +1352,24 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext,
         {
             cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
             if (!explainRecvStats &&
-				shouldDispatch)
+				shouldDispatch && !queryDesc->estate->dispatcherState)
             {
 				Assert(queryDesc != NULL &&
 					   queryDesc->estate != NULL);
                 /* Wait for all gangs to finish.  Cancel slowpokes. */
-				CdbCheckDispatchResult(queryDesc->estate->dispatcherState,
-									   DISPATCH_WAIT_CANCEL);
+				cdbdisp_cancelDispatch(queryDesc->estate->dispatcherState);
 
                 cdbexplain_recvExecStats(planstate,
                                          queryDesc->estate->dispatcherState->primaryResults,
                                          LocallyExecutingSliceIndex(queryDesc->estate),
                                          econtext->ecxt_estate->showstatctx);
+				cdbdisp_destroyDispatcherState(queryDesc->estate->dispatcherState);
             }
         }
 
         /* Restore memory high-water mark for root slice of main query. */
         MemoryContextSetPeakSpace(planstate->state->es_query_cxt, savepeakspace);
 
-        /*
-		 * Request any commands still executing on qExecs to stop.
-		 * Wait for them to finish and clean up the dispatching structures.
-         * Replace current error info with QE error info if more interesting.
-		 */
-        if (shouldDispatch && queryDesc && queryDesc->estate && queryDesc->estate->dispatcherState && queryDesc->estate->dispatcherState->primaryResults)
-			cdbdisp_handleError(queryDesc->estate->dispatcherState);
 		
 		/* teardown the sequence server */
 		TeardownSequenceServer();

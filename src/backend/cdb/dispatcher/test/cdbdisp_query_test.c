@@ -49,8 +49,7 @@ test__cdbdisp_dispatchPlan__Overflow_plan_size_in_kb(void **state)
 {
 	bool success = false;
 
-	struct CdbDispatcherState *ds = (struct CdbDispatcherState *)
-		palloc0(sizeof(struct CdbDispatcherState));
+	struct CdbDispatcherState *ds = NULL;
 
 	struct QueryDesc *queryDesc = (struct QueryDesc *)
 		palloc0(sizeof(QueryDesc));
@@ -75,7 +74,7 @@ test__cdbdisp_dispatchPlan__Overflow_plan_size_in_kb(void **state)
 
 	PG_TRY();
 	{
-		cdbdisp_dispatchPlan(queryDesc, true, true, ds);
+		ds = cdbdisp_dispatchPlan(queryDesc, true, true);
 	}
 	PG_CATCH();
 	{

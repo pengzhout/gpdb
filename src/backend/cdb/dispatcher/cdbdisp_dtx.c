@@ -76,13 +76,14 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 								   char *dtxProtocolCommandLoggingStr,
 								   char *gid,
 								   DistributedTransactionId gxid,
-								   StringInfo errmsgbuf,
 								   int *numresults,
 								   bool *badGangs,
 								   CdbDispatchDirectDesc * direct,
 								   char *argument, int argumentLength)
 {
-	CdbDispatcherState ds = {NULL, NULL, NULL};
+	CdbDispatcherState* ds = NULL;
+	CdbDispatchResults *pr = NULL;
+	StringInfoData *errmsgbuf = NULL;
 
 	PGresult  **resultSets = NULL;
 
@@ -127,16 +128,20 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	/*
 	 * Dispatch the command.
 	 */
-	cdbdisp_makeDispatcherState(&ds, nsegdb, 0, /* cancelOnError */ false);
-	cdbdisp_dtxParmsInit(&ds, &dtxProtocolParms);
-	ds.primaryResults->writer_gang = primaryGang;
+	ds = cdbdisp_createDispatcherState(nsegdb, 0, /* cancelOnError */ false);
+	cdbdisp_dtxParmsInit(ds, &dtxProtocolParms);
+	ds->primaryResults->writer_gang = primaryGang;
 
-	cdbdisp_dispatchToGang(&ds, primaryGang, -1, direct);
 
-	/*
-	 * Wait for all QEs to finish.	Don't cancel. 
-	 */
-	CdbCheckDispatchResult(&ds, DISPATCH_WAIT_NONE);
+	cdbdisp_dispatchToGang(ds, primaryGang, -1, direct);
+
+	pr = cdbdisp_getDispatchResults(ds,&errmsgbuf);
+
+	if (!pr && errmsgbuf)
+	{
+		cdbdisp_destroyDispatcherState(ds);
+		elog(ERROR, "cdbdisp_dispatchDtxProtocolCommand: one or more segments got errors: %s", errmsgbuf->data);
+	}
 
 	if (!gangOK(primaryGang))
 	{
@@ -147,9 +152,9 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 			 dtxProtocolCommandLoggingStr, gid);
 	}
 
-	resultSets = cdbdisp_returnResults(ds.primaryResults, errmsgbuf, numresults);
+	resultSets = cdbdisp_returnResultSets(ds->primaryResults, numresults);
 
-	cdbdisp_destroyDispatcherState((struct CdbDispatcherState *) &ds);
+	cdbdisp_destroyDispatcherState(ds);
 
 	return resultSets;
 }
