@@ -171,7 +171,7 @@ CommentObject(CommentStmt *stmt)
 	}
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "CommentObject");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "CommentObject");
 	}
 }
 

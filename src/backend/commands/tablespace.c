@@ -257,7 +257,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		stmt->tsoid = tablespaceoid;
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateTablespaceCommand");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "CreateTablespaceCommand");
 
 		/* MPP-6929: metadata tracking */
 		MetaTrackAddObject(TableSpaceRelationId,

@@ -470,7 +470,7 @@ ExecuteGrantStmt(GrantStmt *stmt)
 		
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *)stmt, "ExecuteGrantStmt");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *)stmt, "ExecuteGrantStmt");
 	}
 	
 }

@@ -672,7 +672,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	{
 		stmt->opclassOid = opclassoid;
 		stmt->opfamilyOid = opfamilyoid;
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineOpClass");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "DefineOpClass");
 	}
 }
 
@@ -798,7 +798,7 @@ DefineOpFamily(CreateOpFamilyStmt *stmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		stmt->newOid = opfamilyoid;
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineOpFamily");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "DefineOpFamily");
 	}
 }
 
@@ -876,7 +876,7 @@ AlterOpFamily(AlterOpFamilyStmt *stmt)
 						 stmt->items);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterOpFamilyStmt");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "AlterOpFamilyStmt");
 }
 
 /*
@@ -1615,7 +1615,7 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "RemoveOpClass");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "RemoveOpClass");
 	}
 }
 
@@ -1682,7 +1682,7 @@ RemoveOpFamily(RemoveOpFamilyStmt *stmt)
 	performDeletion(&object, stmt->behavior);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *) stmt, "RemoveOpFamily");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "RemoveOpFamily");
 }
 
 

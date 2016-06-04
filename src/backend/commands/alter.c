@@ -158,7 +158,7 @@ ExecRenameStmt(RenameStmt *stmt)
 	}
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "ExecRenameStmt");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "ExecRenameStmt");
 	}
 
 }
@@ -199,7 +199,7 @@ ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt)
 	}
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "ExecAlterObjectSchemaStmt");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "ExecAlterObjectSchemaStmt");
 	}
 }
 
@@ -273,6 +273,6 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 	}
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "ExecAlterOwnerStmt");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "ExecAlterOwnerStmt");
 	}
 }

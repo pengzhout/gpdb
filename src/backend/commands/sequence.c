@@ -636,7 +636,7 @@ DefineSequence(CreateSeqStmt *seq)
 	if (shouldDispatch)
 	{
 		seq->comptypeOid = stmt->oidInfo.comptypeOid;
-		CdbDispatchUtilityStatement((Node *)seq, "DefineSequence");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *)seq, "DefineSequence");
 	}
 }
 
@@ -791,7 +791,7 @@ AlterSequence(AlterSeqStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *)stmt, "AlterSequence");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *)stmt, "AlterSequence");
 
 		if (!bSeqIsTemp)
 		{

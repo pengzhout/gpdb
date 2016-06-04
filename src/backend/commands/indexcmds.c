@@ -673,38 +673,11 @@ DefineIndex(RangeVar *heapRelation,
          */
         if (stmt->concurrent)
         {
-			volatile struct CdbDispatcherState ds = {NULL, NULL};
-
-			PG_TRY();
-			{
-				/*
-				 * Dispatch the command to all primary and mirror segdbs.
-				 * Doesn't start a global transaction.  Doesn't wait for
-				 * the QEs to finish execution.
-				 */
-				cdbdisp_dispatchUtilityStatement((Node *)stmt,
-												 true,      /* cancelOnError */
-												 false,      /* startTransaction */
-												 true,      /* withSnapshot */
-												 (struct CdbDispatcherState *)&ds,
-												 "DefineIndex");
-				/* Wait for all QEs to finish.	Throw up if error. */
-				cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
-			}
-			PG_CATCH();
-			{
-				/* If dispatched, stop QEs and clean up after them. */
-				if (ds.primaryResults)
-					cdbdisp_handleError((struct CdbDispatcherState *)&ds);
-
-				PG_RE_THROW();
-				/* not reached */
-			}
-			PG_END_TRY();
+        	CdbDoUtility_COE_SNAPSHOT((Node *)stmt, "DefineIndex");
         }
         else
 		{
-        	CdbDispatchUtilityStatement((Node *)stmt, "DefineIndex");
+        	CdbDoUtility_COE_2PC_SNAPSHOT((Node *)stmt, "DefineIndex");
 		}
 	}
 
@@ -1634,7 +1607,7 @@ ReindexIndex(ReindexStmt *stmt)
 
 		stmt->new_ind_oids = lappend(stmt->new_ind_oids, map);
 
-		CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "ProcessUtility");
 	}
 }
 
@@ -1694,7 +1667,7 @@ ReindexRelationList(List *relids)
 							RelationGetRelationName(rel))));
 			/* no need to dispatch if the relation has no indexes. */
 			else if (Gp_role == GP_ROLE_DISPATCH)
-				CdbDispatchUtilityStatement((Node *) stmt, NULL);
+				CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, NULL);
 
 			/* keep lock until end of transaction (which comes soon) */
 			heap_close(rel, NoLock);

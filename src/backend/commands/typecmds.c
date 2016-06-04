@@ -187,7 +187,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid newArrayOid)
 				stmt->newOid = typoid;
 				stmt->arrayOid = newArrayOid;
 				stmt->commutatorOid = stmt->negatorOid = InvalidOid;
-				CdbDispatchUtilityStatement((Node *) stmt, "DefineType");
+				CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "DefineType");
 			}
 			return;
 		}
@@ -534,7 +534,7 @@ DefineType(List *names, List *parameters, Oid newOid, Oid newArrayOid)
 		stmt->definition = parameters;
 		stmt->newOid = typoid;
 		stmt->arrayOid = array_oid;
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineType");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "DefineType");
 	}
 }
 
@@ -955,7 +955,7 @@ DefineDomain(CreateDomainStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineDomain");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "DefineDomain");
 	}
 }
 
@@ -1367,7 +1367,7 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 		stmt->relOid = newRelOid;
 		stmt->comptypeOid = createStmt->comptypeOid;
 
-		CdbDispatchUtilityStatement((Node *) stmt);
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt);
 	}*/
 
 }
@@ -2802,7 +2802,7 @@ AlterType(AlterTypeStmt *stmt)
 	}	
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *)stmt, NULL);
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *)stmt, NULL);
 
 	heap_close(pgtypeenc, NoLock);
 }

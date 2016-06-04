@@ -458,7 +458,7 @@ CreateFileSpace(CreateFileSpaceStmt *stmt)
 
 		/* Dispatch to segments */
 		stmt->fsoid = fsoid;  /* Already Asserted OidIsValid */
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateFilespaceCommand");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "CreateFilespaceCommand");
 
 		/* MPP-6929: metadata tracking */
 		MetaTrackAddObject(FileSpaceRelationId,

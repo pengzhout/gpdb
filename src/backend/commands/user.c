@@ -583,7 +583,7 @@ CreateRole(CreateRoleStmt *stmt)
 	{
 		Assert(stmt->type == T_CreateRoleStmt);
 		Assert(stmt->type < 1000);
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateRole");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "CreateRole");
 
 		/* MPP-6929: metadata tracking */
 		MetaTrackAddObject(AuthIdRelationId,
@@ -1172,7 +1172,7 @@ AlterRole(AlterRoleStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterRole");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "AlterRole");
 	}
 }
 
@@ -1305,7 +1305,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	/* needn't keep lock since we won't be updating the flat file */
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterRoleSetStmt");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "AlterRoleSetStmt");
 }
 
 
@@ -1480,7 +1480,7 @@ DropRole(DropRoleStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "DropRole");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "DropRole");
 
 	}
 }
@@ -1693,7 +1693,7 @@ GrantRole(GrantRoleStmt *stmt)
 	auth_file_update_needed();
 
     if (Gp_role == GP_ROLE_DISPATCH)
-        CdbDispatchUtilityStatement((Node *) stmt, "GrantRole");
+        CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "GrantRole");
 
 }
 
@@ -1721,7 +1721,7 @@ DropOwnedObjects(DropOwnedStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt, "DropOwnedObjects");
+        CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "DropOwnedObjects");
     }
     
 	/* Ok, do it */
@@ -1761,7 +1761,7 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 				 
 	if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt, "ReassignOwnedObjects");
+        CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "ReassignOwnedObjects");
     }
 
 	/* Ok, do it */

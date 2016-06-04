@@ -97,7 +97,7 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 		stmt->arrayOid = stmt->commutatorOid = stmt->negatorOid = InvalidOid;
 		stmt->ordered = false;
 		stmt->trusted = trusted;
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineExtprotocol");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "DefineExtprotocol");
 	}
 }
 

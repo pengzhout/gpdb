@@ -119,7 +119,7 @@ CreateConversionCommand(CreateConversionStmt *stmt)
 					 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateConversionCommand");
+		CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "CreateConversionCommand");
 	}
 }
 

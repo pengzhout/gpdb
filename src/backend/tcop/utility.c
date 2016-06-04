@@ -1046,7 +1046,7 @@ ProcessUtility(Node *parsetree,
 						 */
 						if (Gp_role == GP_ROLE_DISPATCH)
 						{
-							CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+							CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "ProcessUtility");
 						}
 					}
 				}
@@ -1151,7 +1151,7 @@ ProcessUtility(Node *parsetree,
 
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+					CdbDoUtility_COE_2PC_SNAPSHOT((Node *) stmt, "ProcessUtility");
 				}
 			}
 			break;
@@ -1260,7 +1260,7 @@ ProcessUtility(Node *parsetree,
 			DefineQueryRewrite((RuleStmt *) parsetree);
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
+				CdbDoUtility_COE_2PC_SNAPSHOT((Node *) parsetree, "ProcessUtility");
 			}
 			break;
 
@@ -1483,7 +1483,7 @@ ProcessUtility(Node *parsetree,
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					((CreateTrigStmt *) parsetree)->trigOid = trigOid;
-					CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
+					CdbDoUtility_COE_2PC_SNAPSHOT((Node *) parsetree, "ProcessUtility");
 				}
 			}
 			break;
@@ -1514,7 +1514,7 @@ ProcessUtility(Node *parsetree,
 				}
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
+					CdbDoUtility_COE_2PC_SNAPSHOT((Node *) parsetree, "ProcessUtility");
 				}
 			}
 			break;
