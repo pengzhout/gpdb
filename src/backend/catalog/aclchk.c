@@ -471,7 +471,11 @@ ExecuteGrantStmt(GrantStmt *stmt)
 		
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *)stmt, "ExecuteGrantStmt");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 	
 }

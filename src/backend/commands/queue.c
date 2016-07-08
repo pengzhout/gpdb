@@ -1022,7 +1022,11 @@ CreateQueue(CreateQueueStmt *stmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		stmt->queueOid = queueid;
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateResourceQueue");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 		MetaTrackAddObject(ResQueueRelationId,
 						   queueid,
 						   GetUserId(), /* not ownerid */
@@ -1450,7 +1454,11 @@ AlterQueue(AlterQueueStmt *stmt)
 	/* MPP-6929, MPP-7583: metadata tracking */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterResourceQueue");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 		MetaTrackUpdObject(ResQueueRelationId,
 						   queueid,
 						   GetUserId(), /* not ownerid */
@@ -1587,7 +1595,11 @@ DropQueue(DropQueueStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "DropResourceQueue");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 	/* MPP-6929, MPP-7583: metadata tracking */
 	MetaTrackDropObject(ResQueueRelationId,

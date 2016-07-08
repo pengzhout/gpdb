@@ -14,7 +14,7 @@
 #include "cdb/cdbtm.h"
 
 struct pg_result;                   /* #include "gp-libpq-fe.h" */
-
+struct CdbPgResults;
 /*
  * cdbdisp_dispatchDtxProtocolCommand:
  * Sends a non-cancelable command to all segment dbs, primary
@@ -27,15 +27,14 @@ struct pg_result;                   /* #include "gp-libpq-fe.h" */
  * PGresult objects - are appended to a StringInfo buffer provided
  * by the caller.
  */
-struct pg_result **
+struct CdbPgResults*
 cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 								   int flags,
 								   char	*dtxProtocolCommandLoggingStr,
 								   char	*gid,
 								   DistributedTransactionId	gxid,
 								   StringInfo errmsgbuf,
-								   int *numresults,
-								   bool *badGangs,
+								   bool* badGangs,
 								   CdbDispatchDirectDesc *direct,
 								   char *argument, int argumentLength );
 

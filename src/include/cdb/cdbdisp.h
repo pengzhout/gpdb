@@ -95,6 +95,18 @@ void
 CdbCheckDispatchResult(struct CdbDispatcherState *ds, DispatchWaitMode waitMode);
 
 /*
+ * cdbdisp_getDispatchResults:
+ *
+ * Block until all QEs return results or report errors.
+ *
+ * Return Values:
+ *   Return NULL If one or more QEs got Error in which case qeErrorMsg contain
+ *   QE error messages.
+ */
+struct CdbDispatchResults *
+cdbdisp_getDispatchResults(struct CdbDispatcherState *ds, StringInfoData *qeErrorMsg);
+
+/*
  * Wait for all QEs to finish, then report any errors from the given
  * CdbDispatchResults objects and free them.  If not all QEs in the
  * associated gang(s) executed the command successfully, throws an
@@ -103,9 +115,7 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds, DispatchWaitMode waitMode)
  * instead call CdbCheckDispatchResult(), etc., directly.
  */
 void
-cdbdisp_finishCommand(struct CdbDispatcherState *ds,
-					  void (*handle_results_callback)(struct CdbDispatchResults *primaryResults, void *ctx),
-					  void *ctx);
+cdbdisp_finishCommand(struct CdbDispatcherState *ds);
 
 /*
  * cdbdisp_handleError
@@ -123,6 +133,12 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
  */
 void
 cdbdisp_handleError(struct CdbDispatcherState *ds);
+
+void
+cdbdisp_finishDispatch(CdbDispatcherState *ds);
+
+void
+cdbdisp_cancelDispatch(CdbDispatcherState *ds);
 
 /*
  * Allocate memory and initialize CdbDispatcherState.

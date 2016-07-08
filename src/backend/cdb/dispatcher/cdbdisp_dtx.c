@@ -69,22 +69,21 @@ buildGpDtxProtocolCommand(MemoryContext cxt,
  * PGresult objects - are appended to a StringInfo buffer provided
  * by the caller.
  */
-struct pg_result **
+struct CdbPgResults*
 cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 								   int flags,
 								   char *dtxProtocolCommandLoggingStr,
 								   char *gid,
 								   DistributedTransactionId gxid,
 								   StringInfo errmsgbuf,
-								   int *numresults,
-								   bool *badGangs,
+								   bool* badGangs,
 								   CdbDispatchDirectDesc * direct,
 								   char *serializedDtxContextInfo,
 								   int serializedDtxContextInfoLen)
 {
 	CdbDispatcherState ds = {NULL, NULL, NULL};
-
-	PGresult  **resultSets = NULL;
+	CdbDispatchResults* pr = NULL;
+	CdbPgResults *cdb_pgresults = NULL;
 
 	DispatchCommandDtxProtocolParms dtxProtocolParms;
 	Gang *primaryGang;
@@ -128,27 +127,41 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	cdbdisp_dtxParmsInit(&ds, &dtxProtocolParms);
 	ds.primaryResults->writer_gang = primaryGang;
 
-	cdbdisp_dispatchToGang(&ds, primaryGang, -1, direct);
-
-	/*
-	 * Wait for all QEs to finish.	Don't cancel. 
-	 */
-	CdbCheckDispatchResult(&ds, DISPATCH_WAIT_NONE);
-
-	if (!gangOK(primaryGang))
+	PG_TRY();
 	{
-		*badGangs = true;
+		cdbdisp_dispatchToGang(&ds, primaryGang, -1, direct);
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),
-			 "cdbdisp_dispatchDtxProtocolCommand: Bad gang from dispatch of %s for gid = %s",
-			 dtxProtocolCommandLoggingStr, gid);
+		/*
+		 * Wait for all QEs to finish.	Don't cancel.
+		 */
+		pr = cdbdisp_getDispatchResults(&ds, errmsgbuf);
+
+		if (!gangOK(primaryGang))
+		{
+			*badGangs = true;
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),
+					"cdbdisp_dispatchDtxProtocolCommand: Bad gang from dispatch of %s for gid = %s",
+					dtxProtocolCommandLoggingStr, gid);
+		}
+		/*
+		 * No errors happens in QEs
+		 */
+		if (pr)
+		{
+			cdb_pgresults = cdbdisp_returnResults(pr);
+		}
+
+		cdbdisp_destroyDispatcherState(&ds);
 	}
+	PG_CATCH();
+	{
+		cdbdisp_cancelDispatch(&ds);
+		cdbdisp_destroyDispatcherState(&ds);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
-	resultSets = cdbdisp_returnResults(ds.primaryResults, errmsgbuf, numresults);
-
-	cdbdisp_destroyDispatcherState((struct CdbDispatcherState *) &ds);
-
-	return resultSets;
+	return cdb_pgresults;
 }
 
 char *

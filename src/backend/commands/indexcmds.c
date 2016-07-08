@@ -673,7 +673,11 @@ DefineIndex(RangeVar *heapRelation,
 		 * (For a concurrent build, we do this later, see below.)
 		 */
 		if (shouldDispatch)
-			CdbDispatchUtilityStatement((Node *) stmt, "DefineIndex");
+			CdbDispatchUtilityStatement((Node *) stmt,
+										EUS_CANCEL_ON_ERROR|
+										EUS_WITH_SNAPSHOT|
+										EUS_NEED_TWO_PHASE,
+										false);
 
 		return;					/* We're done, in the standard case */
 	}
@@ -723,34 +727,10 @@ DefineIndex(RangeVar *heapRelation,
 	 */
 	if (shouldDispatch)
 	{
-		volatile struct CdbDispatcherState ds = {NULL, NULL};
-
-		PG_TRY();
-		{
-			/*
-			 * Dispatch the command to all primary and mirror segdbs.
-			 * Doesn't start a global transaction.  Doesn't wait for
-			 * the QEs to finish execution.
-			 */
-			cdbdisp_dispatchUtilityStatement((Node *) stmt,
-											 true,      /* cancelOnError */
-											 false,      /* startTransaction */
-											 true,      /* withSnapshot */
-											 (struct CdbDispatcherState *)&ds,
-											 "DefineIndex");
-			/* Wait for all QEs to finish.	Throw up if error. */
-			cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, NULL, NULL);
-		}
-		PG_CATCH();
-		{
-			/* If dispatched, stop QEs and clean up after them. */
-			if (ds.primaryResults)
-				cdbdisp_handleError((struct CdbDispatcherState *)&ds);
-
-			PG_RE_THROW();
-			/* not reached */
-		}
-		PG_END_TRY();
+        CdbDispatchUtilityStatement((Node *) stmt,
+        								EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT,
+									false);
 	}
 
 	StartTransactionCommand();
@@ -1726,7 +1706,11 @@ ReindexIndex(ReindexStmt *stmt)
 
 		stmt->new_ind_oids = lappend(stmt->new_ind_oids, map);
 
-		CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 
@@ -1786,7 +1770,11 @@ ReindexRelationList(List *relids)
 							RelationGetRelationName(rel))));
 			/* no need to dispatch if the relation has no indexes. */
 			else if (Gp_role == GP_ROLE_DISPATCH)
-				CdbDispatchUtilityStatement((Node *) stmt, NULL);
+				CdbDispatchUtilityStatement((Node *) stmt,
+											EUS_CANCEL_ON_ERROR|
+											EUS_WITH_SNAPSHOT|
+											EUS_NEED_TWO_PHASE,
+											false);
 
 			/* keep lock until end of transaction (which comes soon) */
 			heap_close(rel, NoLock);

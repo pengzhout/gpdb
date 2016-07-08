@@ -1204,7 +1204,11 @@ CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateFunction");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 
@@ -1287,7 +1291,11 @@ RemoveFunction(RemoveFuncStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "RemoveFunction");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 
@@ -1755,7 +1763,11 @@ AlterFunction(AlterFunctionStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterFunction");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 
@@ -2098,7 +2110,11 @@ CreateCast(CreateCastStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateCast");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 	
 }
@@ -2168,7 +2184,11 @@ DropCast(DropCastStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "DropCast");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 

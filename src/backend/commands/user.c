@@ -583,7 +583,11 @@ CreateRole(CreateRoleStmt *stmt)
 	{
 		Assert(stmt->type == T_CreateRoleStmt);
 		Assert(stmt->type < 1000);
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateRole");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 
 		/* MPP-6929: metadata tracking */
 		MetaTrackAddObject(AuthIdRelationId,
@@ -1172,7 +1176,11 @@ AlterRole(AlterRoleStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterRole");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 
@@ -1302,7 +1310,11 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	heap_close(rel, RowExclusiveLock);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterRoleSetStmt");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 }
 
 
@@ -1477,7 +1489,11 @@ DropRole(DropRoleStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "DropRole");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 
 	}
 }
@@ -1690,7 +1706,11 @@ GrantRole(GrantRoleStmt *stmt)
 	auth_file_update_needed();
 
     if (Gp_role == GP_ROLE_DISPATCH)
-        CdbDispatchUtilityStatement((Node *) stmt, "GrantRole");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 
 }
 
@@ -1718,7 +1738,11 @@ DropOwnedObjects(DropOwnedStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt, "DropOwnedObjects");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
     }
     
 	/* Ok, do it */
@@ -1758,7 +1782,11 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 				 
 	if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt, "ReassignOwnedObjects");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
     }
 
 	/* Ok, do it */

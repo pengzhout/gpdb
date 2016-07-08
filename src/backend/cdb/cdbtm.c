@@ -2229,11 +2229,11 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 							 char *serializedDtxContextInfo,
 							 int serializedDtxContextInfoLen)
 {
-	int i, resultCount, numOfFailed = 0;
+	int i, numOfFailed = 0;
 
 	char *dtxProtocolCommandStr = 0;
 
-	struct pg_result **results = NULL;
+	CdbPgResults *cdb_pgresults = NULL;
 	StringInfoData errbuf;
 
 	dtxProtocolCommandStr = DtxProtocolCommandToString(dtxProtocolCommand);
@@ -2250,32 +2250,32 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 				 direct->directed_dispatch ? direct->content[0] : -1);
 
 	initStringInfo(&errbuf);
-	results = cdbdisp_dispatchDtxProtocolCommand(dtxProtocolCommand, flags,
+	cdb_pgresults = cdbdisp_dispatchDtxProtocolCommand(dtxProtocolCommand, flags,
 												 dtxProtocolCommandStr,
 												 gid, gxid,
-												 &errbuf, &resultCount, badGangs, direct,
+												 &errbuf, badGangs, direct,
 												 serializedDtxContextInfo, serializedDtxContextInfoLen);
 
-	if (errbuf.len > 0)
+	if (!cdb_pgresults && errbuf.len > 0)
 	{
 		ereport((raiseError ? ERROR : LOG),
-				(errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, dtxProtocolCommandStr),
+				(errmsg("DTM error (gathered results from cmd '%s')", dtxProtocolCommandStr),
 				 errdetail("%s", errbuf.data)));
 		return false;
 	}
 
-	Assert(results != NULL);
-	if (results == NULL)
+	if (cdb_pgresults == NULL || cdb_pgresults->numResults == 0)
 	{
 		numOfFailed++; /* If we got no results, we need to treat it as an error! */
 	}
-	for (i = 0; i < resultCount; i++)
+
+	for (i = 0; i < cdb_pgresults->numResults; i++)
 	{
 		char			*cmdStatus;
 		ExecStatusType	resultStatus;
 
 		/* note: PQresultStatus() is smart enough to deal with results[i] == NULL */
-		resultStatus = PQresultStatus(results[i]);
+		resultStatus = PQresultStatus(cdb_pgresults->pg_results[i]);
 		if (resultStatus != PGRES_COMMAND_OK &&
 			resultStatus != PGRES_TUPLES_OK)
 		{
@@ -2290,7 +2290,7 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 			 * status, otherwise we could issue a COMMIT when we don't want
 			 * to!
 			 */
-			cmdStatus = PQcmdStatus(results[i]);
+			cmdStatus = PQcmdStatus(cdb_pgresults->pg_results[i]);
 
 			elog(DEBUG3, "DTM: status message cmd '%s' [%d] result '%s'", dtxProtocolCommandStr, i, cmdStatus);
 			if (strncmp(cmdStatus, dtxProtocolCommandStr, strlen(cmdStatus)) != 0)
@@ -2304,10 +2304,7 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 	/* discard the errbuf text */
 	pfree(errbuf.data);
 
-	/* Now we clean up the results array. */
-	for (i = 0; i < resultCount; i++)
-		PQclear(results[i]);
-	free(results);
+	cdbdisp_freeCdbPgResults(cdb_pgresults);
 
 	return (numOfFailed == 0);
 }

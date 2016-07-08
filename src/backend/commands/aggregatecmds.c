@@ -236,7 +236,11 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 		stmt->newOid = aggOid;
 		stmt->arrayOid = stmt->commutatorOid = stmt->negatorOid = InvalidOid;
 		stmt->ordered = ordered;
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineAggregate");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 
@@ -294,7 +298,11 @@ RemoveAggregate(RemoveFuncStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "RemoveAggregate");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 

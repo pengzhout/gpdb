@@ -97,7 +97,11 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 		stmt->arrayOid = stmt->commutatorOid = stmt->negatorOid = InvalidOid;
 		stmt->ordered = false;
 		stmt->trusted = trusted;
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineExtprotocol");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									EUS_CANCEL_ON_ERROR|
+									EUS_WITH_SNAPSHOT|
+									EUS_NEED_TWO_PHASE,
+									false);
 	}
 }
 

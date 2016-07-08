@@ -801,16 +801,15 @@ cdbdisp_resultEnd(CdbDispatchResults * results, int sliceIndex)
 	return &results->resultArray[si->resultEnd];
 }
 
-struct pg_result **
-cdbdisp_returnResults(CdbDispatchResults * primaryResults,
-					  StringInfo errmsgbuf, int *numresults)
+CdbPgResults*
+cdbdisp_returnResults(CdbDispatchResults * primaryResults)
 {
 	CdbDispatchResult *dispatchResult;
-	PGresult **resultSets = NULL;
 	int	nslots;
 	int	nresults = 0;
 	int	i;
-	int	totalResultCount = 0;
+
+	CdbPgResults *cdb_pgresults = (CdbPgResults*)palloc0(sizeof(CdbPgResults));
 
 	/*
 	 * Allocate result set ptr array. The caller must PQclear() each PGresult
@@ -822,9 +821,10 @@ cdbdisp_returnResults(CdbDispatchResults * primaryResults,
 		for (i = 0; i < primaryResults->resultCount; ++i)
 			nslots += cdbdisp_numPGresult(&primaryResults->resultArray[i]);
 	}
-	resultSets = (struct pg_result **)calloc(nslots, sizeof(*resultSets));
 
-	if (!resultSets)
+	cdb_pgresults->pg_results = (struct pg_result **)calloc(nslots, sizeof(struct pg_result*));
+
+	if (!cdb_pgresults->pg_results)
 		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 						errmsg
 						("cdbdisp_returnResults failed: out of memory")));
@@ -834,31 +834,23 @@ cdbdisp_returnResults(CdbDispatchResults * primaryResults,
 	 */
 	if (primaryResults)
 	{
-		totalResultCount = primaryResults->resultCount;
-
 		for (i = 0; i < primaryResults->resultCount; ++i)
 		{
 			dispatchResult = &primaryResults->resultArray[i];
-
-			/*
-			 * Append error messages to caller's buffer. 
-			 */
-			cdbdisp_dumpDispatchResult(dispatchResult, errmsgbuf);
-
 			/*
 			 * Take ownership of this QE's PGresult object(s). 
 			 */
 			nresults += cdbdisp_snatchPGresults(dispatchResult,
-												resultSets + nresults,
+												cdb_pgresults->pg_results + nresults,
 												nslots - nresults);
 		}
 	}
 	Assert(nresults == nslots);
 
 	/* tell the caller how many sets we're returning. */
-	*numresults = totalResultCount;
+	cdb_pgresults->numResults = nresults;
 
-	return resultSets;
+	return cdb_pgresults;
 }
 
 /*
@@ -912,6 +904,14 @@ cdbdisp_makeDispatchResults(int sliceCapacity,
     return results;
 }
 
+void cdbdisp_freeCdbPgResults(CdbPgResults* cdb_pgresults)
+{
+	int i = 0;
+	for (i = 0; i < cdb_pgresults->numResults; i++)
+		PQclear(cdb_pgresults->pg_results[i]);
+
+	cdb_pgresults->numResults = 0;
+}
 /*
  * Remove all of the PGresult ptrs from a CdbDispatchResult object
  * and place them into an array provided by the caller. The caller

@@ -145,7 +145,11 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
              * Starts a global transaction and reconfigures cluster if needed.
              * Waits for QEs to finish.  Exits via ereport(ERROR,...) if error.
              */
-            CdbDispatchUtilityStatement((Node *)stmt, "CreateSchemaCommand");
+            CdbDispatchUtilityStatement((Node *) stmt,
+            								EUS_CANCEL_ON_ERROR|
+										EUS_WITH_SNAPSHOT|
+										EUS_NEED_TWO_PHASE,
+										false);
 		}
 
 		/* MPP-6929: metadata tracking */
