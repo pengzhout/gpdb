@@ -83,13 +83,12 @@ typedef struct DispatchCommandQueryParms
 	int *sliceIndexGangIdMap;
 } DispatchCommandQueryParms;
 
-static void
+static CdbPgResults*
 cdbdisp_dispatchCommand(const char *strCommand,
 						char *serializedQuerytree,
 						int serializedQuerytreelen,
-						bool cancelOnError,
-						bool needTwoPhase,
-						bool withSnapshot, CdbDispatcherState * ds);
+						int flags,
+						bool returnPgResults);
 
 static void
 cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
@@ -506,17 +505,36 @@ CdbSetGucOnAllGangs(const char *strCommand,
  * To wait for completion, check for errors, and clean up, it is
  * suggested that the caller use cdbdisp_finishCommand().
  */
-static void
+static CdbPgResults*
 cdbdisp_dispatchCommand(const char *strCommand,
 						char *serializedQuerytree,
 						int serializedQuerytreelen,
-						bool cancelOnError,
-						bool needTwoPhase,
-						bool withSnapshot, CdbDispatcherState * ds)
+						int flags,
+						bool returnPgResults)
 {
+
+
+	struct CdbDispatcherState ds = {NULL, NULL, NULL};
+	CdbDispatchResults* dispatchresults = NULL;
+	CdbPgResults *cdb_pgresults = NULL;
+	StringInfoData qeErrorMsg;
+
 	DispatchCommandQueryParms queryParms;
 	Gang *primaryGang;
 	CdbComponentDatabaseInfo *qdinfo;
+
+	bool cancelOnError = flags & EUS_CANCEL_ON_ERROR;
+	bool needTwoPhase = flags & EUS_NEED_TWO_PHASE;
+	bool withSnapshot = flags & EUS_WITH_SNAPSHOT;
+
+	elog(((Debug_print_full_dtm || Debug_print_snapshot_dtm) ? LOG : DEBUG5),
+		 "cdbdisp_dispatchCommand for command = '%s', withSnapshot = %s",
+		 strCommand, (withSnapshot ? "true" : "false"));
+
+	dtmPreCommand("CdbDispatchCommand", strCommand, NULL,
+					flags & EUS_NEED_TWO_PHASE,
+					flags & EUS_WITH_SNAPSHOT,
+					false /* inCursor */ );
 
 	if (log_dispatch_stats)
 		ResetUsage();
@@ -562,29 +580,60 @@ cdbdisp_dispatchCommand(const char *strCommand,
 	/*
 	 * Dispatch the command.
 	 */
-	ds->primaryResults = NULL;
-	ds->dispatchThreads = NULL;
-	cdbdisp_makeDispatcherState(ds, /*slice count*/1, cancelOnError);
-	cdbdisp_queryParmsInit(ds, &queryParms);
-	ds->primaryResults->writer_gang = primaryGang;
+	cdbdisp_makeDispatcherState(&ds, /*slice count*/1, cancelOnError);
+	cdbdisp_queryParmsInit(&ds, &queryParms);
+	ds.primaryResults->writer_gang = primaryGang;
 
+	initStringInfo(&qeErrorMsg);
 
-    PG_TRY();
-    {
-    		cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
-    }
-    PG_CATCH();
-    {
-        cdbdisp_cancelDispatch(ds);
-        cdbdisp_destroyDispatcherState(ds);
-        PG_RE_THROW();
-    }
-    PG_END_TRY();
+	PG_TRY();
+	{
+		cdbdisp_dispatchToGang(&ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
 
-	/*
-	 * don't pfree serializedShapshot here, it will be pfree'd when
-	 * the first thread is destroyed.
-	 */
+		/*
+		 * Block until valid results is available or one or more QEs got errors.
+		 */
+		dispatchresults = cdbdisp_getDispatchResults(&ds, &qeErrorMsg);
+
+		/*
+		 * If QEs have errors, throw it up
+		 */
+		if (!dispatchresults && qeErrorMsg.len > 0)
+		{
+			/* debug_string_query is not meaningful for utility statement */
+			if (serializedQuerytree != NULL)
+			{	
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg("%s", qeErrorMsg.data)));
+			}
+			else
+			{
+			
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg("could not execute command on QE"),
+							errdetail("%s", qeErrorMsg.data),
+							errhint("command: '%s'",strCommand)));
+			}
+		}
+
+		if (returnPgResults)
+		{
+			cdb_pgresults = cdbdisp_returnResults(dispatchresults);
+		}
+	}
+	PG_CATCH();
+	{
+		cdbdisp_cancelDispatch(&ds);
+		cdbdisp_destroyDispatcherState(&ds);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	cdbdisp_destroyDispatcherState(&ds);
+
+	return cdb_pgresults;
 }
 
 /*
@@ -608,36 +657,18 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 							int flags,
 							bool returnPgResults)
 {
-	CdbDispatcherState ds = {NULL, NULL, NULL};
 	char *serializedQuerytree;
 	int serializedQuerytree_len;
-	Query *q = makeNode(Query);
-
-	CdbPgResults *cdb_pgresults = NULL;
-
-	CdbDispatchResults* results = NULL;
-	StringInfoData qeErrorMsg;
-
-	elog(((Debug_print_full_dtm || Debug_print_snapshot_dtm) ? LOG : DEBUG5),
-			"CdbDispatchUtilityStatement for command = '%s', cancelOnError = %s,\
-         needTwoPhase = %s, withSnapshot = %s",
-		 debug_query_string,
-		 "true",
-		 (flags | EUS_NEED_TWO_PHASE ? "true" : "false"),
-		 "true");
-
-	dtmPreCommand("CdbDispatchUtilityStatement", "(none)", NULL,
-			flags | EUS_NEED_TWO_PHASE, true, false /* inCursor */ );
-
-	q->commandType = CMD_UTILITY;
 
 	Assert(stmt != NULL);
 	Assert(stmt->type < 1000);
 	Assert(stmt->type > 0);
 
-	q->utilityStmt = stmt;
+	Query *q = makeNode(Query);
 
 	q->querySource = QSRC_ORIGINAL;
+	q->commandType = CMD_UTILITY;
+	q->utilityStmt = stmt;
 
 	/*
 	 * We must set q->canSetTag = true.  False would be used to hide a command
@@ -660,48 +691,11 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 	/*
 	 * Dispatch serializedQuerytree to primary writer gang.
 	 */
-	cdbdisp_dispatchCommand(debug_query_string,
+	return cdbdisp_dispatchCommand(debug_query_string,
 			serializedQuerytree,
 			serializedQuerytree_len,
-			flags & EUS_CANCEL_ON_ERROR,
-			flags & EUS_NEED_TWO_PHASE,
-			flags & EUS_WITH_SNAPSHOT,
-			&ds);
-
-	initStringInfo(&qeErrorMsg);
-	/*
-	 * Block until a valid result is available or one or more QEs got errors.
-	 */
-	results = cdbdisp_getDispatchResults(&ds, &qeErrorMsg);
-
-	/*
-	 * If QEs have errors, throw it up
-	 */
-	if (!results && qeErrorMsg.len > 0)
-	{
-		cdbdisp_destroyDispatcherState(&ds);
-
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("%s", qeErrorMsg.data)));
-	}
-
-	if (returnPgResults)
-	{
-		PG_TRY();
-		{
-			cdb_pgresults = cdbdisp_returnResults(results);
-		}
-		PG_CATCH();
-		{
-			cdbdisp_destroyDispatcherState(&ds);
-		}
-		PG_END_TRY();
-	}
-
-	cdbdisp_destroyDispatcherState(&ds);
-
-	return cdb_pgresults;
+			flags,
+			returnPgResults);
 }
 
 /*
@@ -724,63 +718,9 @@ CdbDispatchCommand(const char* strCommand,
 					int flags,
 					bool returnPgResults)
 {
-	volatile struct CdbDispatcherState ds = {NULL, NULL, NULL};
-
-    CdbDispatchResults* results = NULL;
-    StringInfoData qeErrorMsg;
-    CdbPgResults *cdb_pgresults = NULL;
-
-	elog(((Debug_print_full_dtm || Debug_print_snapshot_dtm) ? LOG : DEBUG5),
-		 "CdbDispatchCommand for command = '%s', withSnapshot = %s",
-		 strCommand, (flags&EUS_WITH_SNAPSHOT ? "true" : "false"));
-
-	dtmPreCommand("CdbDispatchCommand", strCommand, NULL,
-					flags & EUS_NEED_TWO_PHASE,
-					flags & EUS_WITH_SNAPSHOT,
-					false /* inCursor */ );
-	/*
-	 * Launch the command.	Don't cancel on error.
-	 */
-	cdbdisp_dispatchCommand(strCommand, NULL, 0,
-							flags & EUS_CANCEL_ON_ERROR,
-							flags & EUS_NEED_TWO_PHASE,
-							flags & EUS_WITH_SNAPSHOT,
-							(struct CdbDispatcherState *) &ds);
-
-    /*
-     * Block until valid results is available or one or more QEs got errors.
-     */
-    results = cdbdisp_getDispatchResults(&ds, &qeErrorMsg);
-
-	/*
-	 * If QEs have errors, throw it up
-	 */
-	if (!results && qeErrorMsg.len > 0)
-	{
-		cdbdisp_destroyDispatcherState(&ds);
-
-		ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("%s", qeErrorMsg.data)));
-	}
-
-	if (returnPgResults)
-	{
-		PG_TRY();
-		{
-			cdb_pgresults = cdbdisp_returnResults(results);
-		}
-		PG_CATCH();
-		{
-			cdbdisp_destroyDispatcherState(&ds);
-		}
-		PG_END_TRY();
-	}
-
-	cdbdisp_destroyDispatcherState(&ds);
-
-	return cdb_pgresults;
+	return cdbdisp_dispatchCommand(strCommand, NULL, 0, flags, returnPgResults);
 }
+
 
 /*
  * Initialize CdbDispatcherState using DispatchCommandQueryParms
