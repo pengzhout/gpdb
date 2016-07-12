@@ -23,6 +23,7 @@
 #include "storage/ipc.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbdisp_dtx.h"
 #include "cdb/cdbdtxcontextinfo.h"
 
@@ -2311,44 +2312,36 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 
 
 bool
-dispatchDtxCommand(const char *cmd, bool withSnapshot, bool raiseError)
+dispatchDtxCommand(const char *cmd)
 {
-	int		i, resultCount, numOfFailed = 0;
+	int		i, numOfFailed = 0;
 
-	struct pg_result **results = NULL;
-	StringInfoData errbuf;
+	CdbPgResults *cdb_pgresults = NULL;
 
 	elog(DTM_DEBUG5, "dispatchDtxCommand: '%s'", cmd);
 
-	initStringInfo(&errbuf);
-	results = cdbdisp_dispatchRMCommand(cmd, withSnapshot,
-										&errbuf, &resultCount);
 
-	if (errbuf.len > 0)
+	cdb_pgresults = CdbDispatchCommand(cmd, EUS_NONE, true);
+
+	if (cdb_pgresults == NULL || cdb_pgresults->numResults == 0)
 	{
-		ereport((raiseError ? ERROR : WARNING),
-				(errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, cmd),
-				 errdetail("%s", errbuf.data)));
+		/* If we got no results, we need to treat it as an error! */
 		return false;
 	}
 
-	Assert(results != NULL);
-	if (results == NULL)
-	{
-		numOfFailed++; /* If we got no results, we need to treat it as an error! */
-	}
-
-	for (i = 0; i < resultCount; i++)
+	for (i = 0; i < cdb_pgresults->numResults; i++)
 	{
 		char			*cmdStatus;
 		ExecStatusType	resultStatus;
+		struct pg_result* pgresult = cdb_pgresults->pg_results[i];
 
 		/* note: PQresultStatus() is smart enough to deal with results[i] == NULL */
-		resultStatus = PQresultStatus(results[i]);
+		resultStatus = PQresultStatus(pgresult);
 		if (resultStatus != PGRES_COMMAND_OK &&
 			resultStatus != PGRES_TUPLES_OK)
 		{
 			numOfFailed++;
+			break;
 		}
 		else
 		{
@@ -2359,24 +2352,19 @@ dispatchDtxCommand(const char *cmd, bool withSnapshot, bool raiseError)
 			 * status, otherwise we could issue a COMMIT when we don't want
 			 * to!
 			 */
-			cmdStatus = PQcmdStatus(results[i]);
+			cmdStatus = PQcmdStatus(pgresult);
 
 			elog(DEBUG3, "DTM: status message cmd '%s' [%d] result '%s'", cmd, i, cmdStatus);
 			if (strncmp(cmdStatus, cmd, strlen(cmdStatus)) != 0)
 			{
 				/* failed */
 				numOfFailed++;
+				break;
 			}
 		}
 	}
 
-	/* discard the errbuf text */
-	pfree(errbuf.data);
-
-	/* Now we clean up the results array. */
-	for (i = 0; i < resultCount; i++)
-		PQclear(results[i]);
-	free(results);
+	cdbdisp_freeCdbPgResults(cdb_pgresults);
 
 	return (numOfFailed == 0);
 }
@@ -3360,74 +3348,37 @@ determineSegmentMaxDistributedXid(void)
 {
 	DistributedTransactionId max = 0;
 	int		i;
-	int 	resultCount = 0;
-	struct pg_result **results = NULL;
-	StringInfoData buffer;
-	StringInfoData errbuf;
+	CdbPgResults *cdb_pgresults = NULL;
+	const char* cmd = "select gp_max_distributed_xid()";
 
-#define FUNCTION_DOES_NOT_EXIST "function gp_max_distributed_xid() does not exist"
+	cdb_pgresults = CdbDispatchCommand(cmd, EUS_NONE, true);
 
-	initStringInfo(&buffer);
-
-	appendStringInfo(&buffer, "select gp_max_distributed_xid()");
-
-	initStringInfo(&errbuf);
-
-	results = cdbdisp_dispatchRMCommand(buffer.data, /* Snapshot */ false,
-		                                &errbuf, &resultCount);
-
-	if (errbuf.len > 0)
+	for (i = 0; i < cdb_pgresults->numResults; i++)
 	{
-		int cmplen = strlen(FUNCTION_DOES_NOT_EXIST);
-
-		if (strlen(errbuf.data) >= cmplen &&
-			strncmp(errbuf.data, FUNCTION_DOES_NOT_EXIST, cmplen ) == 0)
+		if (PQresultStatus(cdb_pgresults->pg_results[i]) != PGRES_TUPLES_OK)
 		{
-			elog(LOG, "The function gp_max_distributed_xid is missing on one or more segments.  The beta 3.0 upgrade steps are necessary");
-
+			elog(ERROR, "gp_max_distributed_xid: resultStatus not tuples_Ok");
 		}
 		else
 		{
-			ereport(ERROR,
-					(errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-					 errdetail("%s", errbuf.data)));
-		}
-	}
-	else
-	{
-		elog(DTM_DEBUG5, "determineSegmentMaxDistributedXid resultCount = %d",resultCount);
-
-		for (i = 0; i < resultCount; i++)
-		{
-			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+			/*
+			 * Due to funkyness in the current dispatch agent code, instead of 1 result
+			 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
+			 * one row per QE controlled by that agent.
+			 */
+			int j;
+			for (j = 0; j < PQntuples(cdb_pgresults->pg_results[i]); j++)
 			{
-				elog(ERROR, "gp_max_distributed_xid: resultStatus not tuples_Ok");
-			}
-			else
-			{
-				/*
-				 * Due to funkyness in the current dispatch agent code, instead of 1 result
-				 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
-				 * one row per QE controlled by that agent.
-				 */
-				int j;
-				for (j = 0; j < PQntuples(results[i]); j++)
-				{
-					DistributedTransactionId temp = 0;
-					temp  =  atol(PQgetvalue(results[i], j, 0));
-					elog(DTM_DEBUG5, "determineSegmentMaxDistributedXid value = %d",temp);
-					if (temp  > max)
-						max = temp;
-				}
+				DistributedTransactionId temp = 0;
+				temp  =  atol(PQgetvalue(cdb_pgresults->pg_results[i], j, 0));
+				elog(DTM_DEBUG5, "determineSegmentMaxDistributedXid value = %d",temp);
+				if (temp  > max)
+					max = temp;
 			}
 		}
 	}
 
-	pfree(errbuf.data);
-
-	for (i = 0; i < resultCount; i++)
-		PQclear(results[i]);
-	free(results);
+	cdbdisp_freeCdbPgResults(cdb_pgresults);
 
 	return max;
 }
@@ -3445,9 +3396,7 @@ determineSegmentMaxDistributedXid(void)
 static HTAB *
 gatherRMInDoubtTransactions(void)
 {
-	PGresult  **pgresultSets;
-	int			nresultSets;
-	StringInfoData errmsgbuf;
+	CdbPgResults *pgresultSets;
 	const char *cmdbuf = "select gid from pg_prepared_xacts";
 	PGresult   *rs;
 
@@ -3460,32 +3409,13 @@ gatherRMInDoubtTransactions(void)
 				rows;
 	bool		found;
 
-	initStringInfo(&errmsgbuf);
-
 	/* call to all QE to get in-doubt transactions */
-	pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, /* withSnapshot */false,
-											 &errmsgbuf, &nresultSets);
-
-	/* display error messages */
-	if (errmsgbuf.len > 0)
-	{
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-					errmsg("Unable to collect list of prepared transactions "
-						   "from all segment databases."),
-						errdetail("%s", errmsgbuf.data)));
-
-		pfree(errmsgbuf.data);
-
-		/* need recovery */
-		return NULL;
-	}
-
-	pfree(errmsgbuf.data);
+	pgresultSets = CdbDispatchCommand(cmdbuf, EUS_NONE, true);
 
 	/* If any result set is nonempty, there are in-doubt transactions. */
-	for (i = 0; i < nresultSets; i++)
+	for (i = 0; i < pgresultSets->numResults; i++)
 	{
-		rs  = pgresultSets[i];
+		rs  = pgresultSets->pg_results[i];
 		rows = PQntuples(rs);
 
 		for (j = 0; j < rows; j++)
@@ -3531,9 +3461,7 @@ gatherRMInDoubtTransactions(void)
 		}
 	}
 
-	for (i = 0; i < nresultSets; i++)
-		PQclear(pgresultSets[i]);
-	free(pgresultSets);
+	cdbdisp_freeCdbPgResults(pgresultSets);
 
 	return htab;
 }
@@ -3659,8 +3587,11 @@ void verify_shared_snapshot_ready(void)
 {
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDoCommand("set gp_write_shared_snapshot=true", true, true);
-
+		CdbDispatchCommand("set gp_write_shared_snapshot=true",
+							EUS_CANCEL_ON_ERROR|
+							EUS_NEED_TWO_PHASE|
+							EUS_WITH_SNAPSHOT,
+							false);
 		dumpSharedLocalSnapshot_forCursor();
 
 		/*
@@ -4160,7 +4091,7 @@ sendDtxExplicitBegin(void)
 	 * dispatch a DTX command, in the event of an error, this call
 	 * will either exit via elog()/ereport() or return false
 	 */
-	if (!dispatchDtxCommand(cmdbuf, false, /* raiseError */ false))
+	if (!dispatchDtxCommand(cmdbuf))
 	{
 		ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error",
 							   currentGxact->gid)));

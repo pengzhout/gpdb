@@ -1491,7 +1491,10 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "LOAD '%s'", stmt->filename);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false);
+					CdbDispatchCommand(buffer.data,
+										EUS_WITH_SNAPSHOT,
+										false);
+					pfree(buffer.data);
 				}
 			}
 			break;
@@ -1538,7 +1541,7 @@ ProcessUtility(Node *parsetree,
 						else
 							appendStringInfo(&buffer, "RESET %s", n->name);
 
-						CdbDoCommand(buffer.data, false, /*no txn*/ false);
+						CdbDispatchCommand(buffer.data, false, /*no txn*/ false);
 					}
 				}
 				else
@@ -1728,7 +1731,7 @@ ProcessUtility(Node *parsetree,
 
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDoCommand("CHECKPOINT", false, false);
+				CdbDispatchCommand("CHECKPOINT", false, false);
 			}
 			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 			break;

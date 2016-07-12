@@ -907,6 +907,10 @@ cdbdisp_makeDispatchResults(int sliceCapacity,
 void cdbdisp_freeCdbPgResults(CdbPgResults* cdb_pgresults)
 {
 	int i = 0;
+
+	if (cdb_pgresults == NULL)
+		return;
+
 	for (i = 0; i < cdb_pgresults->numResults; i++)
 		PQclear(cdb_pgresults->pg_results[i]);
 

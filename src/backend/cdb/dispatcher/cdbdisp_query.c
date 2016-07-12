@@ -588,38 +588,6 @@ cdbdisp_dispatchCommand(const char *strCommand,
 }
 
 /*
- * CdbDoCommand:
- * Combination of cdbdisp_dispatchCommand and cdbdisp_finishCommand.
- * If not all QEs execute the command successfully, throws an error and
- * does not return.
- *
- * needTwoPhase specifies a desire to include global transaction control
- * before dispatch.
- */
-void
-CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase)
-{
-	CdbDispatcherState ds = {NULL, NULL, NULL};
-	const bool withSnapshot = true;
-
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "CdbDoCommand for command = '%s', needTwoPhase = %s", strCommand,
-		 (needTwoPhase ? "true" : "false"));
-
-	dtmPreCommand("CdbDoCommand", strCommand, NULL, needTwoPhase, withSnapshot,
-				  false /* inCursor */ );
-
-	cdbdisp_dispatchCommand(strCommand, NULL, 0, cancelOnError, needTwoPhase,
-							true, &ds);
-
-	/*
-	 * Wait for all QEs to finish. If not all of our QEs were successful,
-	 * report the error and throw up.
-	 */
-	cdbdisp_finishCommand(&ds, NULL, NULL);
-}
-
-/*
  * CdbDispatchUtilityStatement
  *
  * Dispatch an already parsed statement to all primary writer QEs, wait until
@@ -737,69 +705,81 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 }
 
 /*
- * cdbdisp_dispatchRMCommand:
- * Sends a non-cancelable command to all segment dbs.
+ * CdbDispatchCommand:
  *
- * Returns a malloc'ed array containing the PGresult objects thus
- * produced; the caller must PQclear() them and free() the array.
- * A NULL entry follows the last used entry in the array.
+ * Execute plain command on all primary writer QEs.
+ * If one or more QEs got error, throw a Error.
  *
- * Any error messages - whether or not they are associated with
- * PGresult objects - are appended to a StringInfo buffer provided
- * by the caller.
+ * -flags:
+ * 	Is the combination of EUS_NEED_TWO_PHASE, EUS_WITH_SNAPSHOT,EUS_CANCEL_ON_ERROR
+ *
+ * -returnPgResults:
+ * 	Indicate whether return the pg_result for each QE connection.
+ *
+ * If returnPgResults is true, caller need to call cdbdisp_freeCdbPgResults() to
+ * clear pg_results.
  */
-struct pg_result **
-cdbdisp_dispatchRMCommand(const char *strCommand,
-						  bool withSnapshot,
-						  StringInfo errmsgbuf,
-						  int *numresults)
+CdbPgResults*
+CdbDispatchCommand(const char* strCommand,
+					int flags,
+					bool returnPgResults)
 {
 	volatile struct CdbDispatcherState ds = {NULL, NULL, NULL};
 
-	CdbPgResults* pg_results = NULL;
-
-	/*
-	 * never want to start a global transaction for these
-	 */
-	bool needTwoPhase = false;
+    CdbDispatchResults* results = NULL;
+    StringInfoData qeErrorMsg;
+    CdbPgResults *cdb_pgresults = NULL;
 
 	elog(((Debug_print_full_dtm || Debug_print_snapshot_dtm) ? LOG : DEBUG5),
-		 "cdbdisp_dispatchRMCommand for command = '%s', withSnapshot = %s",
-		 strCommand, (withSnapshot ? "true" : "false"));
+		 "CdbDispatchCommand for command = '%s', withSnapshot = %s",
+		 strCommand, (flags&EUS_WITH_SNAPSHOT ? "true" : "false"));
 
-	PG_TRY();
+	dtmPreCommand("CdbDispatchCommand", strCommand, NULL,
+					flags & EUS_NEED_TWO_PHASE,
+					flags & EUS_WITH_SNAPSHOT,
+					false /* inCursor */ );
+	/*
+	 * Launch the command.	Don't cancel on error.
+	 */
+	cdbdisp_dispatchCommand(strCommand, NULL, 0,
+							flags & EUS_CANCEL_ON_ERROR,
+							flags & EUS_NEED_TWO_PHASE,
+							flags & EUS_WITH_SNAPSHOT,
+							(struct CdbDispatcherState *) &ds);
+
+    /*
+     * Block until valid results is available or one or more QEs got errors.
+     */
+    results = cdbdisp_getDispatchResults(&ds, &qeErrorMsg);
+
+	/*
+	 * If QEs have errors, throw it up
+	 */
+	if (!results && qeErrorMsg.len > 0)
 	{
-		/*
-		 * Launch the command.	Don't cancel on error. 
-		 */
-		cdbdisp_dispatchCommand(strCommand, NULL, 0,
-								false, /* cancelOnError */
-								needTwoPhase, withSnapshot,
-								(struct CdbDispatcherState *) &ds);
+		cdbdisp_destroyDispatcherState(&ds);
 
-		/*
-		 * Wait for all QEs to finish.	Don't cancel. 
-		 */
-		CdbCheckDispatchResult((struct CdbDispatcherState *) &ds, DISPATCH_WAIT_NONE);
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg("%s", qeErrorMsg.data)));
 	}
-	PG_CATCH();
+
+	if (returnPgResults)
 	{
-		/*
-		 * Something happend, clean up after ourselves
-		 */
-		CdbCheckDispatchResult((struct CdbDispatcherState *) &ds, DISPATCH_WAIT_NONE);
-
-		cdbdisp_destroyDispatcherState((struct CdbDispatcherState *) &ds);
-		PG_RE_THROW();
+		PG_TRY();
+		{
+			cdb_pgresults = cdbdisp_returnResults(results);
+		}
+		PG_CATCH();
+		{
+			cdbdisp_destroyDispatcherState(&ds);
+		}
+		PG_END_TRY();
 	}
-	PG_END_TRY();
 
-	pg_results = cdbdisp_returnResults(ds.primaryResults);
+	cdbdisp_destroyDispatcherState(&ds);
 
-	*numresults = pg_results->numResults;
-	cdbdisp_destroyDispatcherState((struct CdbDispatcherState *) &ds);
-
-	return pg_results->pg_results;
+	return cdb_pgresults;
 }
 
 /*

@@ -20,6 +20,7 @@
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdispatchresult.h"
 #include "gp-libpq-fe.h"
 #include "lib/stringinfo.h"
 #include "utils/int8.h"
@@ -55,9 +56,7 @@ int64 cdbRelSize(Relation rel)
 {
 	int64	size = 0;
 	int		i;
-	int 	resultCount = 0;
-	struct pg_result **results = NULL;
-	StringInfoData errbuf;
+	CdbPgResults *cdb_pgresults = NULL;
 	StringInfoData buffer;
 
 	char	*schemaName;
@@ -76,7 +75,6 @@ int64 cdbRelSize(Relation rel)
 	 * Let's ask the QEs for the size of the relation
 	 */
 	initStringInfo(&buffer);
-	initStringInfo(&errbuf);
 
 	schemaName = get_namespace_name(RelationGetNamespace(rel));
 	if (schemaName == NULL)
@@ -91,57 +89,62 @@ int64 cdbRelSize(Relation rel)
 	appendStringInfo(&buffer, "select pg_relation_size('%s.%s')",
 					 quote_identifier(schemaName), quote_identifier(relName));
 
+	bool hasError = false;
+
 	/* 
 	 * In the future, it would be better to send the command to only one QE for the optimizer's needs,
 	 * but for ALTER TABLE, we need to be sure if the table has any rows at all.
 	 */
-	results = cdbdisp_dispatchRMCommand(buffer.data, true, &errbuf, &resultCount);
-
-	if (errbuf.len > 0)
+	PG_TRY();
 	{
-		ereport(WARNING, (errmsg("cdbRelSize error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-						  errdetail("%s", errbuf.data)));
-		pfree(errbuf.data);
-		pfree(buffer.data);
-		
-		return -1;
+		cdb_pgresults = CdbDispatchCommand(buffer.data, EUS_WITH_SNAPSHOT, true);
 	}
-	else
+	PG_CATCH();
 	{
-										
-		for (i = 0; i < resultCount; i++)
+		ErrorData * edata = CopyErrorData();;
+		
+		hasError = true;
+
+		/*Is WARNING the right log level here?*/
+		ereport(WARNING, (errmsg("cdbRelSize error (gathered results from cmd '%s')", buffer.data),
+						  errdetail("%s", edata->detail)));
+
+		pfree(buffer.data);
+	}
+	PG_END_TRY();
+
+	if (hasError)
+		return -1;
+
+	for (i = 0; i < cdb_pgresults->numResults; i++)
+	{
+		struct pg_result *pgresult = cdb_pgresults->pg_results[i];
+
+		if (PQresultStatus(pgresult) != PGRES_TUPLES_OK)
 		{
-			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+			elog(ERROR,"cdbRelSize: resultStatus not tuples_Ok: %s   %s",PQresStatus(PQresultStatus(pgresult)),PQresultErrorMessage(pgresult));
+		}
+		else
+		{
+			/*
+			 * Due to funkyness in the current dispatch agent code, instead of 1 result
+			 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
+			 * one row per QE controlled by that agent.
+			 */
+			int j;
+			for (j = 0; j < PQntuples(pgresult); j++)
 			{
-				elog(ERROR,"cdbRelSize: resultStatus not tuples_Ok: %s   %s",PQresStatus(PQresultStatus(results[i])),PQresultErrorMessage(results[i]));
-			}
-			else
-			{
-				/*
-				 * Due to funkyness in the current dispatch agent code, instead of 1 result 
-				 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
-				 * one row per QE controlled by that agent.
-				 */
-				int j;
-				for (j = 0; j < PQntuples(results[i]); j++)
-				{
-					int64 tempsize = 0;
-					(void) scanint8(PQgetvalue(results[i], j, 0), false, &tempsize);
-					if (tempsize > size)
-					 	size = tempsize;
-				}
+				int64 tempsize = 0;
+				(void) scanint8(PQgetvalue(pgresult, j, 0), false, &tempsize);
+				if (tempsize > size)
+					size = tempsize;
 			}
 		}
-	
-		pfree(errbuf.data);
-		pfree(buffer.data);
-
-		for (i = 0; i < resultCount; i++)
-			PQclear(results[i]);
-	
-		free(results);
 	}
 
+	pfree(buffer.data);
+	cdbdisp_freeCdbPgResults(cdb_pgresults);
+	
 	if (size >= 0)	/* Cache the size even if it is zero, as table might be empty */
 	{
 		if (last_cache_entry < 0)
