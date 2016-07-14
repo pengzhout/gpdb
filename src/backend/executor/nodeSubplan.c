@@ -1250,8 +1250,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *queryDesc
          * Replace current error info with QE error info if more interesting.
 		 */
         if (shouldDispatch && queryDesc && queryDesc->estate && queryDesc->estate->dispatcherState && queryDesc->estate->dispatcherState->primaryResults)
-			cdbdisp_handleError(queryDesc->estate->dispatcherState);
-		
+        {
+        		cdbdisp_cancelDispatch(queryDesc->estate->dispatcherState);
+        		cdbdisp_destroyDispatcherState(queryDesc->estate->dispatcherState);
+        }
+
 		/* teardown the sequence server */
 		TeardownSequenceServer();
 		

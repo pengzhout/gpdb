@@ -3201,7 +3201,10 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
  * checkForCancelFromQD
  * 		Check for cancel from QD.
  *
- * Should be called only inside the dispatcher
+ * When interconnect wait data for a long time, it need to check if
+ * something bad happened in sub slices. otherwise interconnect may hang
+ * forever.
+ *
  */
 static void
 checkForCancelFromQD(ChunkTransportState *pTransportStates)
@@ -3211,11 +3214,16 @@ checkForCancelFromQD(ChunkTransportState *pTransportStates)
 	Assert(pTransportStates->estate);
 	Assert(pTransportStates->estate->dispatcherState);
 
-	if (cdbdisp_checkResultsErrcode(pTransportStates->estate->dispatcherState->primaryResults))
+	CdbDispatcherState* ds = pTransportStates->estate->dispatcherState;
+
+	if (cdbdisp_checkResultsErrcode(ds->primaryResults))
 	{
+		StringInfoData errorMsgBuf;
+		initStringInfo(&errorMsgBuf);
+		cdbdisp_dumpDispatchResults(ds->primaryResults, &errorMsgBuf);
+
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg(CDB_MOTION_LOST_CONTACT_STRING)));
-		/* not reached */
+				errmsg("%s", errorMsgBuf.data)));
 	}
 }
 
