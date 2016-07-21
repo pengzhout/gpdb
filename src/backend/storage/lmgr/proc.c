@@ -369,7 +369,7 @@ InitProcess(void)
 		MyProc->vacuumFlags |= PROC_IS_AUTOVACUUM;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
-	MyProc->lwWaitLink = NULL;
+	DLInitElem(&MyProc->lwWaitLink, (void*)MyProc);
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
 	for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
@@ -556,7 +556,7 @@ InitAuxiliaryProcess(void)
 	MyProc->vacuumFlags = 0;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
-	MyProc->lwWaitLink = NULL;
+	DLInitElem(&MyProc->lwWaitLink, (void*)MyProc);
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
 	for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
