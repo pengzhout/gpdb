@@ -40,6 +40,7 @@ cdbRelMaxSegSize(Relation rel)
 	char *schemaName;
 	char *relName;
 
+	MemoryContext oldcontext = CurrentMemoryContext;
 	/*
 	 * Let's ask the QEs for the size of the relation
 	 */
@@ -70,6 +71,12 @@ cdbRelMaxSegSize(Relation rel)
 	}
 	PG_CATCH();
 	{
+		/*
+		 * To pass through this error, we need to set CurrentMemoryContext back,
+		 * because current memory context is pointing to ErrorContext.
+		 */
+		MemoryContextSwitchTo(oldcontext);
+
 		ErrorData *edata = CopyErrorData();
 		hasError = true;
 
