@@ -631,21 +631,21 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 			CdbDispatchResult *dispatchResult = pParms->dispatchResultPtrArray[i];
 			SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 
-			if (cdbconn_isBadConnection(segdbDesc))
-			{
-				char *msg = PQerrorMessage(segdbDesc->conn);
-				cdbdisp_appendMessage(dispatchResult, LOG,
-									  "Lost connection to %s: %s.",
-									  segdbDesc->whoami, msg ?  msg : "unknown error");
-				dispatchResult->stillRunning = false;
-				continue;
-			}
-
 			/*
 			 * Already finished with this QE?
 			 */
 			if (!dispatchResult->stillRunning)
 				continue;
+
+			if (cdbconn_isBadConnection(segdbDesc))
+			{
+				dispatchResult->stillRunning = false;
+				char *msg = PQerrorMessage(segdbDesc->conn);
+				cdbdisp_appendMessage(dispatchResult, LOG,
+									  "Lost connection to %s: %s.",
+									  segdbDesc->whoami, msg ?  msg : "unknown error");
+				continue;
+			}
 
 			/*
 			 * Add socket to fd_set if still connected.

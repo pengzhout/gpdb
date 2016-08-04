@@ -294,21 +294,21 @@ checkDispatchResult(CdbDispatcherState *ds,
 			dispatchResult = pParms->dispatchResultPtrArray[i];
 			segdbDesc = dispatchResult->segdbDesc;
 
-			if (cdbconn_isBadConnection(segdbDesc))
-			{
-				char *msg = PQerrorMessage(segdbDesc->conn);
-				dispatchResult->stillRunning = false;
-				cdbdisp_appendMessageNonThread(dispatchResult, LOG,
-									  "Connection lost during dispatch to %s: %s",
-									  dispatchResult->segdbDesc->whoami, msg ? msg : "unknown error");
-
-			}
-
 			/*
 			 * Already finished with this QE?
 			 */
 			if (!dispatchResult->stillRunning)
 				continue;
+
+			if (cdbconn_isBadConnection(segdbDesc))
+			{
+				dispatchResult->stillRunning = false;
+				char *msg = PQerrorMessage(segdbDesc->conn);
+				cdbdisp_appendMessageNonThread(dispatchResult, LOG,
+									  "Connection lost during dispatch to %s: %s",
+									  dispatchResult->segdbDesc->whoami, msg ? msg : "unknown error");
+				continue;
+			}
 
 			/*
 			 * Add socket to fd_set if still connected.
