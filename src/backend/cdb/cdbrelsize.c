@@ -40,7 +40,6 @@ cdbRelMaxSegSize(Relation rel)
 	char *schemaName;
 	char *relName;
 
-	MemoryContext oldcontext = CurrentMemoryContext;
 	/*
 	 * Let's ask the QEs for the size of the relation
 	 */
@@ -59,35 +58,7 @@ cdbRelMaxSegSize(Relation rel)
 	appendStringInfo(&buffer, "select pg_relation_size('%s.%s')",
 					 quote_identifier(schemaName), quote_identifier(relName));
 
-	bool hasError = false;
-
-	/*
-	 * In the future, it would be better to send the command to only one QE for the optimizer's needs,
-	 * but for ALTER TABLE, we need to be sure if the table has any rows at all.
-	 */
-	PG_TRY();
-	{
-		CdbDispatchCommand(buffer.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
-	}
-	PG_CATCH();
-	{
-		/*
-		 * To pass through this error, we need to set CurrentMemoryContext back,
-		 * because current memory context is pointing to ErrorContext.
-		 */
-		MemoryContextSwitchTo(oldcontext);
-
-		ErrorData *edata = CopyErrorData();
-		hasError = true;
-
-		ereport(WARNING,(errmsg("cdbRelSize error (gathered results from cmd '%s')", buffer.data),
-				errdetail("%s", edata->detail)));
-		pfree(buffer.data);
-	}
-	PG_END_TRY();
-
-	if (hasError)
-		return -1;
+	CdbDispatchCommand(buffer.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
 
 	for (i = 0; i < cdb_pgresults.numResults; i++)
 	{
