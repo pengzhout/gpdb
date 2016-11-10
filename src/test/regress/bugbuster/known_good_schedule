@@ -16,7 +16,6 @@ test: mpp-11333
 test: gist_indexes
 ignore: failover
 test: launch_oid_inconsistency
-test: gp_persistent_table
 #mpp23872: Disabling gpcheckmirrorseg as it is erroring out bugbuster on some platforms.
 ignore: gpcheckmirrorseg
 test: AOCO_Compression2 schema_topology table_statistics
