@@ -15,11 +15,11 @@ function set_env() {
 
 function install_gpdb() {
     [ ! -d /usr/local/greenplum-db-devel ] && mkdir -p /usr/local/greenplum-db-devel
-    tar -xzf bin_gpdb/bin_gpdb.tar.gz -C /usr/local/greenplum-db-devel
+    tar -xzf bin_gpdb/bin_gpdb_with_cassert.tar.gz -C /usr/local/greenplum-db-devel
 }
 
 function install_sync_tools() {
-    tar -xzf sync_tools_gpdb_centos/sync_tools_gpdb.tar.gz -C gpdb_src/gpAux
+    tar -xzf sync_tools_gpdb_centos/sync_tools_gpdb_with_cassert.tar.gz -C gpdb_src/gpAux
 }
 
 function configure() {
