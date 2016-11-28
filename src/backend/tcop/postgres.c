@@ -4961,8 +4961,6 @@ PostgresMain(int argc, char *argv[],
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Simple query stmt: %s.",query_string);
 
-					setupRegularDtxContext();
-
 					if (am_walsender)
 						exec_replication_command(query_string);
 					else
@@ -5233,8 +5231,6 @@ PostgresMain(int argc, char *argv[],
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Parse: %s.",query_string);
 
-					setupRegularDtxContext();
-					
 					exec_parse_message(query_string, stmt_name,
 									   paramTypes, numParams);
 				}
@@ -5246,8 +5242,6 @@ PostgresMain(int argc, char *argv[],
 				/* Set statement_timestamp() */
 				SetCurrentStatementStartTimestamp();
 
-                setupRegularDtxContext();
-                
 				/*
 				 * this message is complex enough that it seems best to put
 				 * the field extraction out-of-line
@@ -5273,8 +5267,6 @@ PostgresMain(int argc, char *argv[],
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Execute: %s.",portal_name);
 
-					setupRegularDtxContext();
-					
 					exec_execute_message(portal_name, max_rows);
 				}
 				break;
@@ -5291,8 +5283,6 @@ PostgresMain(int argc, char *argv[],
 
 				elog((Debug_print_full_dtm ? LOG : DEBUG5), "Fast path function call.");
 
-				setupRegularDtxContext();
-					
 				/* start an xact for this function invocation */
 				start_xact_command();
 
@@ -5387,8 +5377,6 @@ PostgresMain(int argc, char *argv[],
 					pq_getmsgend(&input_message);
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "Describe: %s.", describe_target);
-					
-					setupRegularDtxContext();
 					
 					switch (describe_type)
 					{

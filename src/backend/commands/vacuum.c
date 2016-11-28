@@ -569,11 +569,6 @@ vacuum(VacuumStmt *vacstmt, List *relids,
 		 * make sure that this transaction we're in has the right
 		 * properties
 		 */
-		if (Gp_role == GP_ROLE_DISPATCH)
-		{
-			/* Set up the distributed transaction context. */
-			setupRegularDtxContext();
-		}
 		StartTransactionCommand();
 
 		/*
@@ -978,10 +973,6 @@ vacuumStatement_Relation(VacuumStmt *vacstmt, Oid relid,
 			vacstmt->appendonly_compaction_insert_segno = NIL;
 			vacstmt->appendonly_compaction_vacuum_cleanup = false;
 		}
-
-		/* Set up the distributed transaction context. */
-		if (Gp_role == GP_ROLE_DISPATCH)
-			setupRegularDtxContext();
 
 		/*
 		 * For each iteration we start/commit our own transactions,

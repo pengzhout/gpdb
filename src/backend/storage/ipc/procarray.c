@@ -269,7 +269,7 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid, bool isCommit,
 		{
 			switch (DistributedTransactionContext)
 			{
-				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+				case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 					LocalDistribXact_ChangeState(MyProc,
 						isCommit ? 
 							LOCALDISTRIBXACT_STATE_COMMITDELIVERY :
@@ -894,7 +894,7 @@ GetDistributedSnapshotMaxCount(void)
 	case DTX_CONTEXT_QE_FINISH_PREPARED:
 		return 0;
 
-	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+	case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 		return max_prepared_xacts;
 
 	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
@@ -940,7 +940,7 @@ FillInDistributedSnapshot(Snapshot snapshot)
 		snapshot->distribSnapshotWithLocalMapping.header.count = 0;
 		break;
 
-	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+	case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 		/*
 		 * Create distributed snapshot since we are the master (QD).
 		 */

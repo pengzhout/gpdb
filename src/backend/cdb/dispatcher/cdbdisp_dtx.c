@@ -264,7 +264,7 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 
 	switch (DistributedTransactionContext)
 	{
-		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+		case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 		case DTX_CONTEXT_LOCAL_ONLY:
 			if (snapshot != NULL)
 			{
@@ -281,7 +281,7 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 			TempQDDtxContextInfo.cursorContext = inCursor;
 
 			if (DistributedTransactionContext ==
-				DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && snapshot != NULL)
+				DTX_CONTEXT_QD_DISTRIBUTED_CREATED && snapshot != NULL)
 			{
 				updateSharedLocalSnapshot(&TempQDDtxContextInfo, snapshot,
 										  "qdSerializeDtxContextInfo");

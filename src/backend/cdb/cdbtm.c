@@ -151,7 +151,6 @@ static bool doNotifyCommittedInDoubt(char *gid);
 static void doAbortInDoubt(char *gid);
 static void doQEDistributedExplicitBegin(int txnOptions);
 
-static bool isDtxQueryDispatcher(void);
 static void UtilityModeSaveRedo(bool committed, TMGXACT_LOG * gxact_log);
 static void ReplayRedoFromUtilityMode(void);
 static void RemoveRedoUtilityModeFile(void);
@@ -215,7 +214,7 @@ isQDContext(void)
 {
     switch (DistributedTransactionContext)
 	{
-		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+		case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 		case DTX_CONTEXT_QD_RETRY_PHASE_2:
 			return true;
 		default:
@@ -311,7 +310,7 @@ bool
 isPreparedDtxTransaction(void)
 {
 	if (Gp_role != GP_ROLE_DISPATCH ||
-		DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CREATED ||
 		currentGxact == NULL)
 		return false;
 
@@ -336,7 +335,7 @@ getDtxLogInfo(TMGXACT_LOG *gxact_log)
 bool
 notifyCommittedDtxTransactionIsNeeded(void)
 {
-	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CREATED)
 	{
 	    elog(DTM_DEBUG5, "notifyCommittedDtxTransaction nothing to do (DistributedTransactionContext = '%s')",
 			 DtxContextToString(DistributedTransactionContext));
@@ -359,7 +358,7 @@ notifyCommittedDtxTransactionIsNeeded(void)
 void
 notifyCommittedDtxTransaction(void)
 {
-	Assert (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE);
+	Assert (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CREATED);
 
 	Assert (currentGxact != NULL);
 
@@ -1154,7 +1153,7 @@ doAbortInDoubt(char *gid)
 void
 prepareDtxTransaction(void)
 {
-	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CREATED)
 	{
 	    elog(DTM_DEBUG5, "prepareDtxTransaction nothing to do (DistributedTransactionContext = '%s')",
 			 DtxContextToString(DistributedTransactionContext));
@@ -1195,7 +1194,7 @@ prepareDtxTransaction(void)
 void
 rollbackDtxTransaction(void)
 {
-	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
+	if (DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CREATED)
 	{
 	    elog(DTM_DEBUG5, "rollbackDtxTransaction nothing to do (DistributedTransactionContext = '%s')",
 			 DtxContextToString(DistributedTransactionContext));
@@ -3540,81 +3539,6 @@ doQEDistributedExplicitBegin(int txnOptions)
 
 }
 
-static bool
-isDtxQueryDispatcher(void)
-{
-	bool isDtmStarted;
-	bool isSharedLocalSnapshotSlotPresent;
-
-	isDtmStarted = (shmDtmStarted != NULL && *shmDtmStarted);
-	isSharedLocalSnapshotSlotPresent = (SharedLocalSnapshotSlot != NULL);
-
- 	return (Gp_role == GP_ROLE_DISPATCH &&
-		    isDtmStarted &&
-		    isSharedLocalSnapshotSlotPresent);
-}
-
-/*
- * Called prior to handling a requested that comes to the QD, or a utility request to a QE.
- *
- * Sets up the distributed transaction context value and does some basic error checking.
- *
- * Essentially:
- *     if the DistributedTransactionContext is already QD_DISTRIBUTED_CAPABLE then leave it
- *     else if the DistributedTransactionContext is already QE_TWO_PHASE_EXPLICIT_WRITER then leave it
- *     else it MUST be a LOCAL_ONLY, and is converted to QD_DISTRIBUTED_CAPABLE if this process is acting
- *          as a QE.
- */
-void
-setupRegularDtxContext(void)
-{
-	switch(DistributedTransactionContext)
-	{
-		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
-			/* Continue in this context.  Do not touch QEDtxContextInfo, etc. */
-			break;
-
-		case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
-			/* Allow this for copy...???  Do not touch QEDtxContextInfo, etc. */
-			break;
-
-		default:
-			if (DistributedTransactionContext != DTX_CONTEXT_LOCAL_ONLY)
-			{
-				/* we must be one of:
-
-				   DTX_CONTEXT_QD_RETRY_PHASE_2,
-				   DTX_CONTEXT_QE_ENTRY_DB_SINGLETON,
-				   DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT,
-				   DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER,
-				   DTX_CONTEXT_QE_READER,
-				   DTX_CONTEXT_QE_PREPARED
-				*/
-
-				elog(ERROR, "setupRegularDtxContext finds unexpected DistributedTransactionContext = '%s'",
-					 DtxContextToString(DistributedTransactionContext));
-			}
-
-			/* DistributedTransactionContext is DTX_CONTEXT_LOCAL_ONLY */
-
-			Assert(QEDtxContextInfo.distributedXid == InvalidDistributedTransactionId);
-
-			/*
-			 * Determine if we are strictly local or a distributed capable QD.
-			 */
-			Assert(DistributedTransactionContext == DTX_CONTEXT_LOCAL_ONLY);
-
-			if (isDtxQueryDispatcher())
-			{
-				setDistributedTransactionContext(DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE);
-			}
-			break;
-	}
-
-	elog(DTM_DEBUG5, "setupRegularDtxContext leaving with DistributedTransactionContext = '%s'.",
-		 DtxContextToString(DistributedTransactionContext));
-}
-
 /**
  * Called on the QE when a query to process has been received.
  *
@@ -4130,7 +4054,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					performDtxProtocolPrepare(gid);
 					break;
 
-				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+				case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 				case DTX_CONTEXT_QD_RETRY_PHASE_2:
 				case DTX_CONTEXT_QE_PREPARED:
 				case DTX_CONTEXT_QE_FINISH_PREPARED:
@@ -4166,7 +4090,7 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 					performDtxProtocolAbortPrepared(gid, /* raiseErrorIfNotFound */ true);
 					break;
 
-				case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+				case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 				case DTX_CONTEXT_QD_RETRY_PHASE_2:
 				case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
 				case DTX_CONTEXT_QE_READER:

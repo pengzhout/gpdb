@@ -325,6 +325,8 @@ static void DispatchRollbackToSavepoint(char *name);
 static bool search_binary_xids(TransactionId *ids, uint32 size,
 			       TransactionId xid, int32 *index);
 
+static bool isDtxQueryDispatcher(void);
+
 extern void FtsCondSetTxnReadOnly(bool *);
 
 /*
@@ -1592,7 +1594,7 @@ RecordSubTransactionCommit(void)
 			case DTX_CONTEXT_LOCAL_ONLY:
 				break;		// Ignore.
 
-			case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+			case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 			case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
 			case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 			case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
@@ -2100,7 +2102,7 @@ SetSharedTransactionId(void)
 
 	switch (DistributedTransactionContext)
 	{
-	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+	case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 		elog((Debug_print_full_dtm ? LOG : DEBUG5), "Query Dispatcher setting shared xid to: %u", TopTransactionStateData.transactionId);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
 	    break;
@@ -2508,7 +2510,7 @@ ResetSharedSnapshotSubxids(volatile SharedSnapshotSlot *shared_snapshot)
 	     DistributedTransactionContext ==
 		DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
 	     DistributedTransactionContext ==
-		DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		DTX_CONTEXT_QD_DISTRIBUTED_CREATED ||
 	     DistributedTransactionContext ==
 		DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT) &&
 	    (shared_snapshot != NULL))
@@ -2900,15 +2902,33 @@ StartTransaction(void)
 	switch (DistributedTransactionContext)
 	{
 		case DTX_CONTEXT_LOCAL_ONLY:
-		case DTX_CONTEXT_QD_RETRY_PHASE_2:
-		case DTX_CONTEXT_QE_FINISH_PREPARED:
 		{
 			/*
-			 * MPP: we're in utility-mode or a QE starting a pure-local
-			 * transaction without any synchronization to segmates!
-			 * (e.g. CatchupInterruptHandler)
+			 * MPP: we're the dispatcher.
 			 */
-			PG_TRACE1(transaction__start, InvalidTransactionId);
+			if (isDtxQueryDispatcher())
+			{
+				DistributedTransactionContext = DTX_CONTEXT_QD_DISTRIBUTED_CREATED;
+				/*
+				 * Create distributed transaction which will map the
+				 * distributed transaction to a local transaction id for the
+				 * master database.
+				 */
+				createDtx(&s->distribXid, &s->transactionId);
+
+				XactLockTableInsert(s->transactionId);
+			
+				if (SharedLocalSnapshotSlot != NULL)
+				{
+					elog((Debug_print_full_dtm ? LOG : DEBUG5),
+						 "setting SharedLocalSnapshotSlot->startTimestamp = " INT64_FORMAT "[cur=" INT64_FORMAT "])", 
+						xactStartTimestamp, SharedLocalSnapshotSlot->startTimestamp);
+
+					SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
+				}
+			}
+
+			PG_TRACE1(transaction__start, s->transactionId);
 
 			/*
 		 	 * set transaction_timestamp() (a/k/a now()).  We want this to be the
@@ -2921,22 +2941,16 @@ StartTransaction(void)
 		}
 		break;
 
-		case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+		case DTX_CONTEXT_QD_RETRY_PHASE_2:
+		case DTX_CONTEXT_QE_FINISH_PREPARED:
+		case DTX_CONTEXT_QD_DISTRIBUTED_CREATED:
 		{
 			/*
-			 * MPP: we're the dispatcher.
+			 * MPP: we're in utility-mode or a QD started a transaction or a QE
+			 * starting a pure-local transaction without any synchronization to
+			 * segmates!(e.g. CatchupInterruptHandler)
 			 */
-
-			/*
-			 * Create distributed transaction which will map the
-			 * distributed transaction to a local transaction id for the
-			 * master database.
-			 */
-			createDtx(&s->distribXid, &s->transactionId);
-
-			XactLockTableInsert(s->transactionId);
-			
-			PG_TRACE1(transaction__start, s->transactionId);
+			PG_TRACE1(transaction__start, InvalidTransactionId);
 
 			/*
 		 	 * set transaction_timestamp() (a/k/a now()).  We want this to be the
@@ -2946,14 +2960,6 @@ StartTransaction(void)
 		  	xactStartTimestamp = stmtStartTimestamp;
 		  	xactStopTimestamp = 0;
 			pgstat_report_xact_timestamp(xactStartTimestamp);
-			if (SharedLocalSnapshotSlot != NULL)
-			{
-				elog((Debug_print_full_dtm ? LOG : DEBUG5),
-					 "setting SharedLocalSnapshotSlot->startTimestamp = " INT64_FORMAT "[cur=" INT64_FORMAT "])", 
-					xactStartTimestamp, SharedLocalSnapshotSlot->startTimestamp);
-
-				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
-			}
 		}
 		break;
 
@@ -7220,4 +7226,18 @@ xact_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record)
 	}
 	else
 		appendStringInfo(buf, "UNKNOWN");
+}
+
+static bool
+isDtxQueryDispatcher(void)
+{
+	bool isDtmStarted;
+	bool isSharedLocalSnapshotSlotPresent;
+
+	isDtmStarted = (shmDtmStarted != NULL && *shmDtmStarted);
+	isSharedLocalSnapshotSlotPresent = (SharedLocalSnapshotSlot != NULL);
+
+ 	return (Gp_role == GP_ROLE_DISPATCH &&
+		    isDtmStarted &&
+		    isSharedLocalSnapshotSlotPresent);
 }

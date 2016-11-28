@@ -129,7 +129,7 @@ typedef enum
 	 *    DTX_CONTEXT_QE* values on the QE process, and by updating the state field of the
 	 *    currentGxact.
 	 */
-	DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE,
+	DTX_CONTEXT_QD_DISTRIBUTED_CREATED,
 
 	/**
 	 * On QD: indicates that the second-phase of the two-phase commit is being retried.

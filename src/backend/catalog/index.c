@@ -2905,9 +2905,6 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 	HeapTuple	indexTuple;
 	Form_pg_index indexForm;
 
-	/* Assert that current xact hasn't done any transactional updates */
-	Assert(GetTopTransactionIdIfAny() == InvalidTransactionId);
-
 	/* Open pg_index and fetch a writable copy of the index's tuple */
 	pg_index = heap_open(IndexRelationId, RowExclusiveLock);
 
