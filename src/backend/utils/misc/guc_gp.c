@@ -5200,6 +5200,15 @@ struct config_string ConfigureNamesString_gp[] =
 	},
 
 	{
+			{"cg_name", PGC_USERSET, LOGGING_WHAT,
+				gettext_noop("Sets the verbosity of logged messages pertaining to worker process creation and management."),
+				gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\"."),
+				GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			},
+			&cg_name,
+			"unlimited", NULL, NULL
+		},
+	{
 		{"gp_log_fts", PGC_SIGHUP, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to fault probing."),
 			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\"."),

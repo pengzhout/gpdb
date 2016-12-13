@@ -68,7 +68,7 @@ static int64 DoPortalRunFetch(Portal portal,
 				 DestReceiver *dest);
 static void DoPortalRewind(Portal portal);
 static void PortalSetBackoffWeight(Portal portal);
-
+static void AddToCgroups(void);
 /*
  * CreateQueryDesc
  *
@@ -583,6 +583,24 @@ FetchStatementTargetList(Node *stmt)
 	return NIL;
 }
 
+static
+void AddToCgroups(void)
+{
+	char cgroup_path[1024];
+	char procid[16];
+	memset(cgroup_path, 0, sizeof(cgroup_path));
+	memset(procid, 0, sizeof(procid));
+	snprintf(cgroup_path, sizeof(cgroup_path), "/sys/fs/cgroups/cpu/%s/tasks", cg_name);
+	snprintf(procid, sizeof(procid), "%d\n", procid);
+
+	int fd = open(cgroup_path, O_RDWR | O_APPEND);
+	if (fd == -1)
+		elog(ERROR, "cgroup open file %s fail", cgroup_path);
+	int rc = write(fd, procid, sizeof(procid));
+	if (rc == -1)
+		elog(ERROR, "cgroup writing file %s fail", cgroup_path);
+	close(fd);
+}
 /*
  * PortalStart
  *		Prepare a portal for execution.
@@ -629,6 +647,9 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 	saveActiveSnapshot = ActiveSnapshot;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
+
+	AddToCgroups();
+
 	PG_TRY();
 	{
 		ActivePortal = portal;
@@ -764,6 +785,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 					eflags = EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD;
 				else
 					eflags = 0; /* default run-to-completion flags */
+
 
 				/*
 				 * Call ExecutorStart to prepare the plan for execution
