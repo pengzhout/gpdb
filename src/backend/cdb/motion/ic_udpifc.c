@@ -36,6 +36,7 @@
 #include "utils/faultinjector.h"
 #include "utils/pg_crc.h"
 #include "port/pg_crc32c.h"
+#include "storage/pmsignal.h"
 
 #include "cdb/cdbselect.h"
 #include "cdb/tupchunklist.h"
@@ -3719,9 +3720,20 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 			checkForCancelFromQD(pTransportStates);
 		}
 
-		/* NIC on master (and thus the QD connection) may become bad, check it. */
+
+		/*
+		 * 1. NIC on master (and thus the QD connection) may become bad, check it.
+		 * 2. Postmaster may become invalid, check it
+		 */
 		if ((retries & 0x3f) == 0)
+		{
 			checkQDConnectionAlive();
+
+			if (!PostmasterIsAlive(true))
+				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Interconnect failed to recv chunks"),
+							errdetail("Postmaster is not alive\n")));
+		}
 
 		pthread_mutex_lock(&ic_control_info.lock);
 
@@ -5143,12 +5155,21 @@ checkExceptions(ChunkTransportState *transportStates, ChunkTransportStateEntry *
 	}
 
 	/*
-	 * NIC on master (and thus the QD connection) may become bad, check it.
+	 * 1. NIC on master (and thus the QD connection) may become bad, check it.
+	 * 2. Postmaster may become invalid, check it
+	 *
 	 * We check modulo 2 to correlate with the deadlock check above at the
 	 * initial iteration.
 	 */
 	if ((retry & 0x3f) == 2)
+	{
 		checkQDConnectionAlive();
+
+		if (!PostmasterIsAlive(true))
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect failed to send chunks"),
+						errdetail("Postmaster is not alive\n")));
+	}
 }
 
 /*
