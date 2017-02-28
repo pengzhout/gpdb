@@ -445,6 +445,7 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateDomainStmt:
 		case T_CreateFunctionStmt:
 		case T_CreateQueueStmt:
+		case T_CreateResourceGroupStmt:
 		case T_CreateRoleStmt:
 		case T_IndexStmt:
 		case T_CreateExtensionStmt:
@@ -1727,6 +1728,10 @@ ProcessUtility(Node *parsetree,
 			CreateQueue((CreateQueueStmt *) parsetree);
 			break;
 
+		case T_CreateResourceGroupStmt:
+			elog(ERROR, "create resource group is not implemented yet");
+			break;
+
 		case T_AlterQueueStmt:
 			AlterQueue((AlterQueueStmt *) parsetree);
 			break;
@@ -2615,6 +2620,10 @@ CreateCommandTag(Node *parsetree)
 
 		case T_DropQueueStmt:
 			tag = "DROP QUEUE";
+			break;
+
+		case T_CreateResourceGroupStmt:
+			tag = "CREATE RESOURCE GROUP";
 			break;
 
 		case T_CreateRoleStmt:
