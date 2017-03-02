@@ -96,6 +96,7 @@
 #include "catalog/pg_partition_rule.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_resqueue.h"
+#include "catalog/pg_resgroup.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
@@ -361,6 +362,22 @@ CreateKeyFromCatalogTuple(Relation catalogrel, HeapTuple tuple,
 
 				key.namespaceOid = typForm->typnamespace;
 				key.objname = NameStr(typForm->typname);
+				break;
+			}
+
+		case ResGroupRelationId:
+			{
+				Form_pg_resgroup typForm = (Form_pg_resgroup) GETSTRUCT(tuple);
+
+				key.objname = NameStr(typForm->rsgname);
+				break;
+			}
+		case ResGroupCapabilityRelationId:
+			{
+				Form_pg_resgroupcapability rqcForm = (Form_pg_resgroupcapability) GETSTRUCT(tuple);
+
+				key.keyOid1 = rqcForm->resgroupid;
+				key.keyOid2 = (Oid) rqcForm->reslimittype;
 				break;
 			}
 
