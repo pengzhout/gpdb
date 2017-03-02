@@ -40,6 +40,7 @@
 #include "commands/lockcmds.h"
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
+#include "commands/group.h"
 #include "commands/queue.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
@@ -1729,7 +1730,9 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateResourceGroupStmt:
-			elog(ERROR, "create resource group is not implemented yet");
+			if (Gp_role == GP_ROLE_DISPATCH)
+				PreventTransactionChain(isTopLevel, "CREATE RESOURCE GROUP");
+			CreateResourceGroup((CreateResourceGroupStmt *) parsetree);
 			break;
 
 		case T_AlterQueueStmt:
