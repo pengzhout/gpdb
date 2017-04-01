@@ -848,11 +848,9 @@ record_cmp(FunctionCallInfo fcinfo)
 	/* Build temporary HeapTuple control structures */
 	tuple1.t_len = HeapTupleHeaderGetDatumLength(record1);
 	ItemPointerSetInvalid(&(tuple1.t_self));
-	tuple1.t_tableOid = InvalidOid;
 	tuple1.t_data = record1;
 	tuple2.t_len = HeapTupleHeaderGetDatumLength(record2);
 	ItemPointerSetInvalid(&(tuple2.t_self));
-	tuple2.t_tableOid = InvalidOid;
 	tuple2.t_data = record2;
 
 	/*
@@ -1074,11 +1072,9 @@ record_eq(PG_FUNCTION_ARGS)
 	/* Build temporary HeapTuple control structures */
 	tuple1.t_len = HeapTupleHeaderGetDatumLength(record1);
 	ItemPointerSetInvalid(&(tuple1.t_self));
-	tuple1.t_tableOid = InvalidOid;
 	tuple1.t_data = record1;
 	tuple2.t_len = HeapTupleHeaderGetDatumLength(record2);
 	ItemPointerSetInvalid(&(tuple2.t_self));
-	tuple2.t_tableOid = InvalidOid;
 	tuple2.t_data = record2;
 
 	/*
