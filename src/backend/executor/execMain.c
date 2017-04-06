@@ -1909,8 +1909,10 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 						ExecCheckPlanOutput(resultRelInfo->ri_RelationDesc,
 											subplan->targetlist);
 
+					TupleDesc cleanTupType = ExecCleanTypeFromTL(subplan->targetlist, 
+										     resultRelInfo->ri_RelationDesc->rd_att->tdhasoid);
 					j = ExecInitJunkFilter(subplan->targetlist,
-								   resultRelInfo->ri_RelationDesc->rd_att->tdhasoid,
+							       cleanTupType,
 							       ExecInitExtraTupleSlot(estate));
 					/*
 					 * Since it must be UPDATE/DELETE, there had better be a
@@ -1953,8 +1955,11 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 					ExecCheckPlanOutput(estate->es_result_relation_info->ri_RelationDesc,
 										planstate->plan->targetlist);
 
+				TupleDesc cleanTupType = ExecCleanTypeFromTL(planstate->plan->targetlist, 
+									     tupType->tdhasoid);
+
 				j = ExecInitJunkFilter(planstate->plan->targetlist,
-						       tupType->tdhasoid,
+						       cleanTupType,
 						       ExecInitExtraTupleSlot(estate));
 				estate->es_junkFilter = j;
 				if (estate->es_result_relation_info)
