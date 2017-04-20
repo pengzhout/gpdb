@@ -180,6 +180,11 @@ CreateResourceGroup(CreateResourceGroupStmt *stmt)
 
 		AllocResGroupEntry(groupid);
 
+		/* Create os dependent part for this resource group */
+
+		ResGroupOps_CreateGroup(groupid);
+		ResGroupOps_SetCpuRateLimit(groupid, options.cpuRateLimit);
+
 		/* Argument of callback function should be allocated in heap region */
 		callbackArg = (Oid *)MemoryContextAlloc(TopMemoryContext, sizeof(Oid));
 		*callbackArg = groupid;
@@ -643,6 +648,9 @@ createResGroupAbortCallback(ResourceReleasePhase phase,
 		 * after LWLockReleaseAll in AbortTransaction, it is safe here
 		 */
 		FreeResGroupEntry(groupId, NULL);
+
+		/* remove the os dependent part for this resource group */
+		ResGroupOps_DestroyGroup(groupId);
 	}
 
 	UnregisterResourceReleaseCallback(createResGroupAbortCallback, arg);
@@ -674,6 +682,12 @@ dropResGroupAbortCallback(ResourceReleasePhase phase,
 		 * after LWLockReleaseAll in AbortTransaction, it is safe here
 		 */
 		AllocResGroupEntry(groupId);
+	}
+	else
+	{
+		groupId = *(Oid *)arg;
+
+		ResGroupOps_DestroyGroup(groupId);
 	}
 
 	UnregisterResourceReleaseCallback(dropResGroupAbortCallback, arg);
