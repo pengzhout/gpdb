@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "pgstat.h"
+#include "miscadmin.h"
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/pg_language.h"
@@ -102,6 +103,8 @@ extern Datum test_atomic_ops(PG_FUNCTION_ARGS);
 
 extern Datum udf_setenv(PG_FUNCTION_ARGS);
 extern Datum udf_unsetenv(PG_FUNCTION_ARGS);
+
+extern Datum high_cpu(PG_FUNCTION_ARGS);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -2761,6 +2764,25 @@ udf_setenv(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(ret == 0);
 }
 
+PG_FUNCTION_INFO_V1(high_cpu);
+Datum
+high_cpu(PG_FUNCTION_ARGS)
+{
+	int cpu_rate = (int) PG_GETARG_INT32(1);
+	int i;
+
+	while (true)
+	{
+		i++;
+		if (i > cpu_rate)
+		{
+			i = 0;
+			pg_usleep(1);
+			CHECK_FOR_INTERRUPTS();
+		}
+	}
+	PG_RETURN_BOOL(true);
+}
 
 PG_FUNCTION_INFO_V1(udf_unsetenv);
 Datum
