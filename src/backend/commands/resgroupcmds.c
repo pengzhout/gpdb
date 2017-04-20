@@ -245,7 +245,7 @@ DropResourceGroup(DropResourceGroupStmt *stmt)
 	 * Check the pg_resgroup relation to be certain the resource group already
 	 * exists.
 	 */
-	pg_resgroup_rel = heap_open(ResGroupRelationId, RowExclusiveLock);
+	pg_resgroup_rel = heap_open(ResGroupRelationId, ExclusiveLock);
 
 	ScanKeyInit(&scankey,
 				Anum_pg_resgroup_rsgname,
@@ -621,7 +621,7 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 			funcctx->user_fctx = palloc(ctxsize);
 			ctx = (ResourceGroupStatusContext *) funcctx->user_fctx;
 
-			pg_resgroup_rel = heap_open(ResGroupRelationId, AccessShareLock);
+			pg_resgroup_rel = heap_open(ResGroupRelationId, RowExclusiveLock);
 
 			sscan = systable_beginscan(pg_resgroup_rel, InvalidOid, false,
 									   SnapshotNow, 0, NULL);
@@ -633,7 +633,7 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 			}
 			systable_endscan(sscan);
 
-			heap_close(pg_resgroup_rel, AccessShareLock);
+			heap_close(pg_resgroup_rel, RowExclusiveLock);
 
 			ctx->nrows = funcctx->max_calls;
 			ctx->type = propNameToType(prop);
