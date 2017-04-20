@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include "funcapi.h"
+#include "gp-libpq-fe.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/xact.h"
@@ -21,6 +22,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_resgroup.h"
 #include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbvars.h"
 #include "commands/comment.h"
 #include "commands/defrem.h"
@@ -47,6 +49,25 @@ typedef struct ResourceGroupOptions
 	float redzoneLimit;
 } ResourceGroupOptions;
 
+typedef struct ResourceGroupStatusRow
+{
+	Datum oid;
+
+	double cpu_avg_usage;
+	int64 cpu_usage1;
+	int64 cpu_usage2;
+	TimestampTz cpu_timestamp1;
+	TimestampTz cpu_timestamp2;
+} ResourceGroupStatusRow;
+
+typedef struct ResourceGroupStatusContext
+{
+	ResGroupStatType type;
+
+	int nrows;
+	ResourceGroupStatusRow rows[1];
+} ResourceGroupStatusContext;
+
 static float text2Float(const text *text, const char *prop);
 static int text2int(const text *value);
 static void updateResgroupCapability(Oid groupid, ResourceGroupOptions *options);
@@ -58,6 +79,8 @@ static text getCapabilityForGroup(int groupId, int type);
 static void insertTupleIntoResCapability(Relation rel, Oid groupid, uint16 type, char *value);
 static void createResGroupAbortCallback(ResourceReleasePhase phase, bool isCommit, bool isTopLevel, void *arg);
 static void dropResGroupAbortCallback(ResourceReleasePhase phase, bool isCommit, bool isTopLevel, void *arg);
+static ResGroupStatType propNameToType(const char *name);
+static void getCpuUsage(ResourceGroupStatusContext *ctx);
 
 /*
  * CREATE RESOURCE GROUP
@@ -410,12 +433,159 @@ GetResGroupIdForRole(Oid roleid)
 }
 
 /*
+ * Convert from property name to ResGroupStatType.
+ */
+static ResGroupStatType
+propNameToType(const char *name)
+{
+	if (!strcmp(name, "num_running"))
+		return RES_GROUP_STAT_NRUNNING;
+	else if (!strcmp(name, "num_queueing"))
+		return RES_GROUP_STAT_NQUEUEING;
+	else if (!strcmp(name, "cpu_usage"))
+		return RES_GROUP_STAT_CPU_USAGE;
+	else if (!strcmp(name, "memory_usage"))
+		return RES_GROUP_STAT_MEM_USAGE;
+	else if (!strcmp(name, "total_queue_duration"))
+		return RES_GROUP_STAT_TOTAL_QUEUE_TIME;
+	else if (!strcmp(name, "num_queued"))
+		return RES_GROUP_STAT_TOTAL_QUEUED;
+	else if (!strcmp(name, "num_executed"))
+		return RES_GROUP_STAT_TOTAL_EXECUTED;
+	else
+		return RES_GROUP_STAT_UNKNOWN;
+}
+
+/*
+ * Get cpu usage.
+ *
+ * On QD this function dispatch the request to all QEs, collecting both
+ * QEs' and QD's cpu usage and calculate the average.
+ *
+ * On QE this function only collect the cpu usage on itself.
+ *
+ * Cpu usage is a ratio within [0%, 100%], however due to error the actual
+ * value might be greater than 100%, that's not a bug.
+ */
+static void
+getCpuUsage(ResourceGroupStatusContext *ctx)
+{
+	int nsegs = 1;
+	int ncores;
+	int i, j;
+
+	if (!IsResGroupEnabled())
+		return;
+
+	ncores = ResGroupOps_GetCpuCores();
+
+	for (j = 0; j < ctx->nrows; j++)
+	{
+		ResourceGroupStatusRow *row = &ctx->rows[j];
+		Oid rsgid = DatumGetObjectId(row->oid);
+
+		row->cpu_usage1 = ResGroupOps_GetCpuUsage(rsgid);
+		row->cpu_timestamp1 = GetCurrentTimestamp();
+
+		row->cpu_avg_usage = 0;
+	}
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbPgResults cdb_pgresults = {NULL, 0};
+		StringInfoData buffer;
+
+		initStringInfo(&buffer);
+		appendStringInfo(&buffer, "SELECT rsgid, value FROM pg_resgroup_get_status_kv('cpu_usage')");
+
+		CdbDispatchCommand(buffer.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
+
+		if (cdb_pgresults.numResults == 0)
+			elog(ERROR, "gp_resgroup_status didn't get back any cpu usage statistics from the segDBs");
+
+		nsegs += cdb_pgresults.numResults;
+
+		for (i = 0; i < cdb_pgresults.numResults; i++)
+		{
+			struct pg_result *pg_result = cdb_pgresults.pg_results[i];
+
+			/*
+			 * Any error here should have propagated into errbuf, so we shouldn't
+			 * ever see anything other that tuples_ok here.  But, check to be
+			 * sure.
+			 */
+			if (PQresultStatus(pg_result) != PGRES_TUPLES_OK)
+			{
+				cdbdisp_clearCdbPgResults(&cdb_pgresults);
+				elog(ERROR, "gp_resgroup_status: resultStatus not tuples_Ok");
+			}
+			else
+			{
+				Assert(PQntuples(pg_result) == ctx->nrows);
+				for (j = 0; j < ctx->nrows; j++)
+				{
+					double usage;
+					const char *result;
+					ResourceGroupStatusRow *row = &ctx->rows[j];
+					Oid rsgid = pg_atoi(PQgetvalue(pg_result, j, 0),
+										sizeof(Oid), 0);
+					Assert(rsgid == DatumGetObjectId(row->oid));
+
+					result = PQgetvalue(pg_result, j, 1);
+					sscanf(result, "%lf", &usage);
+
+					row->cpu_avg_usage += usage;
+				}
+			}
+		}
+
+		cdbdisp_clearCdbPgResults(&cdb_pgresults);
+	}
+	else
+	{
+		pg_usleep(300000);
+	}
+
+	for (j = 0; j < ctx->nrows; j++)
+	{
+		int64 duration;
+		long secs;
+		int usecs;
+		int64 usage;
+		ResourceGroupStatusRow *row = &ctx->rows[j];
+		Oid rsgid = DatumGetObjectId(row->oid);
+
+		row->cpu_usage2 = ResGroupOps_GetCpuUsage(rsgid);
+		row->cpu_timestamp2 = GetCurrentTimestamp();
+
+		TimestampDifference(row->cpu_timestamp1, row->cpu_timestamp2,
+							&secs, &usecs);
+
+		duration = secs * 1000000 + usecs;
+		usage = row->cpu_usage2 - row->cpu_usage1;
+
+		/* 
+		 * usage is the cpu time (nano seconds) obtained by this group
+		 * in the time duration (micro seconds), so cpu time on one core
+		 * can be calculated as:
+		 *
+		 *     usage / 1000 / duration / ncores
+		 *
+		 * To convert it to percentange we should multiple 100%.
+		 */
+		row->cpu_avg_usage += usage / 10.0 / duration / ncores;
+		row->cpu_avg_usage /= nsegs;
+	}
+}
+
+/*
  * Get status of resource groups
  */
 Datum
 pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
+	ResourceGroupStatusContext *ctx;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -443,8 +613,13 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 			Relation pg_resgroup_rel;
 			SysScanDesc sscan;
 			HeapTuple tuple;
+			char *		prop = text_to_cstring(PG_GETARG_TEXT_P(0));
 
-			funcctx->user_fctx = palloc0(sizeof(Datum) * MaxResourceGroups);
+			int ctxsize = sizeof(ResourceGroupStatusContext) +
+				sizeof(ResourceGroupStatusRow) * (MaxResourceGroups - 1);
+
+			funcctx->user_fctx = palloc(ctxsize);
+			ctx = (ResourceGroupStatusContext *) funcctx->user_fctx;
 
 			pg_resgroup_rel = heap_open(ResGroupRelationId, AccessShareLock);
 
@@ -453,11 +628,23 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 			while (HeapTupleIsValid(tuple = systable_getnext(sscan)))
 			{
 				Assert(funcctx->max_calls < MaxResourceGroups);
-				((Datum *) funcctx->user_fctx)[funcctx->max_calls++] = ObjectIdGetDatum(HeapTupleGetOid(tuple));
+				ctx->rows[funcctx->max_calls++].oid =
+					ObjectIdGetDatum(HeapTupleGetOid(tuple));
 			}
 			systable_endscan(sscan);
 
 			heap_close(pg_resgroup_rel, AccessShareLock);
+
+			ctx->nrows = funcctx->max_calls;
+			ctx->type = propNameToType(prop);
+			switch (ctx->type)
+			{
+				case RES_GROUP_STAT_CPU_USAGE:
+					getCpuUsage(ctx);
+					break;
+				default:
+					break;
+			}
 		}
 
 		MemoryContextSwitchTo(oldcontext);
@@ -465,6 +652,7 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 
 	/* stuff done on every call of the function */
 	funcctx = SRF_PERCALL_SETUP();
+	ctx = (ResourceGroupStatusContext *) funcctx->user_fctx;
 
 	if (funcctx->call_cntr < funcctx->max_calls)
 	{
@@ -476,36 +664,42 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 		Oid			groupId;
 		int			statVal;
 		char		statValStr[10];
+		ResourceGroupStatusRow *row = &ctx->rows[funcctx->call_cntr];
 
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, 0, sizeof(nulls));
 
-		values[0] = ((Datum *) funcctx->user_fctx)[funcctx->call_cntr];
+		values[0] = row->oid;
 		values[1] = CStringGetTextDatum(prop);
 
 		groupId = DatumGetObjectId(values[0]);
 
-		/* Fill with dummy values */
-		if (!strcmp(prop, "num_running"))
-			statVal = ResGroupGetStat(groupId, RES_GROUP_STAT_NRUNNING);
-		else if (!strcmp(prop, "num_queueing"))
-			statVal = ResGroupGetStat(groupId, RES_GROUP_STAT_NQUEUEING);
-		else if (!strcmp(prop, "cpu_usage"))
-			statVal = 0;
-		else if (!strcmp(prop, "memory_usage"))
-			statVal = 0;
-		else if (!strcmp(prop, "total_queue_duration"))
-			statVal = ResGroupGetStat(groupId, RES_GROUP_STAT_TOTAL_QUEUE_TIME);
-		else if (!strcmp(prop, "num_queued"))
-			statVal = ResGroupGetStat(groupId, RES_GROUP_STAT_TOTAL_QUEUED);
-		else if (!strcmp(prop, "num_executed"))
-			statVal = ResGroupGetStat(groupId, RES_GROUP_STAT_TOTAL_EXECUTED);
-		else
-			/* unknown property name */
-			nulls[2] = true;
+		switch (ctx->type)
+		{
+			default:
+			case RES_GROUP_STAT_NRUNNING:
+			case RES_GROUP_STAT_NQUEUEING:
+			case RES_GROUP_STAT_TOTAL_EXECUTED:
+			case RES_GROUP_STAT_TOTAL_QUEUED:
+			case RES_GROUP_STAT_TOTAL_QUEUE_TIME:
+				statVal = ResGroupGetStat(groupId, ctx->type, prop);
+				snprintf(statValStr, sizeof(statValStr), "%d", statVal);
+				values[2] = CStringGetTextDatum(statValStr);
+				break;
 
-		snprintf(statValStr, sizeof(statValStr), "%d", statVal);
-		values[2] = CStringGetTextDatum(statValStr);
+			case RES_GROUP_STAT_CPU_USAGE:
+				snprintf(statValStr, sizeof(statValStr), "%.2lf%%",
+						 row->cpu_avg_usage);
+				values[2] = CStringGetTextDatum(statValStr);
+				break;
+
+			case RES_GROUP_STAT_MEM_USAGE:
+				/* not supported yet, fill with dummy value */
+				statVal = 0;
+				snprintf(statValStr, sizeof(statValStr), "%d", statVal);
+				values[2] = CStringGetTextDatum(statValStr);
+				break;
+		}
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 

@@ -46,11 +46,15 @@ typedef struct ResGroupControl
 /* Type of statistic infomation */
 typedef enum
 {
+	RES_GROUP_STAT_UNKNOWN = -1,
+
 	RES_GROUP_STAT_NRUNNING = 0,
 	RES_GROUP_STAT_NQUEUEING,
 	RES_GROUP_STAT_TOTAL_EXECUTED,
 	RES_GROUP_STAT_TOTAL_QUEUED,
 	RES_GROUP_STAT_TOTAL_QUEUE_TIME,
+	RES_GROUP_STAT_CPU_USAGE,
+	RES_GROUP_STAT_MEM_USAGE,
 } ResGroupStatType;
 
 /*
@@ -74,7 +78,7 @@ extern void ResGroupSlotRelease(void);
 extern void AssignResGroup(void);
 
 /* Retrieve statistic information of type from resource group */
-extern int ResGroupGetStat(Oid groupId, ResGroupStatType type);
+extern int ResGroupGetStat(Oid groupId, ResGroupStatType type, const char *prop);
 
 /*
  * Interfaces for OS dependent operations in resgroup-ops.c
