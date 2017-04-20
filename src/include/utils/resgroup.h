@@ -70,6 +70,9 @@ extern void FreeResGroupEntry(Oid groupId, char *name);
 extern void ResGroupSlotAcquire(void);
 extern void ResGroupSlotRelease(void);
 
+/* Assign current process to the associated resource group */
+extern void AssignResGroup(void);
+
 /* Retrieve statistic information of type from resource group */
 extern int ResGroupGetStat(Oid groupId, ResGroupStatType type);
 

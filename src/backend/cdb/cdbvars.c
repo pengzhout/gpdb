@@ -1212,6 +1212,9 @@ gpvars_assign_gp_resource_manager_policy(const char *newval, bool doit, GucSourc
 
 	if (doit)
 	{
+		if (newtype == RESOURCE_MANAGER_POLICY_GROUP)
+			ResGroupOps_CheckPermission();
+
 		Gp_resource_manager_policy = newtype;
 	}
 

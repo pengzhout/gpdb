@@ -42,6 +42,7 @@
 #include "storage/procarray.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/resgroup.h"
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
@@ -563,6 +564,11 @@ InitializeSessionUserId(const char *rolename)
 		SetResQueueId();
 	}
 
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResGroupEnabled())
+	{
+		AssignResGroup();
+	}
+
 	/* Record username and superuser status as GUC settings too */
 	SetConfigOption("session_authorization", rolename,
 					PGC_BACKEND, PGC_S_OVERRIDE);
@@ -626,6 +632,11 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 		SetResQueueId();
 	}
 
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResGroupEnabled())
+	{
+		AssignResGroup();
+	}
+
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
 					PGC_INTERNAL, PGC_S_OVERRIDE);
@@ -687,6 +698,11 @@ SetCurrentRoleId(Oid roleid, bool is_superuser)
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResQueueEnabled())
 	{
 		SetResQueueId();
+	}
+
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResGroupEnabled())
+	{
+		AssignResGroup();
 	}
 
 	SetConfigOption("is_superuser",

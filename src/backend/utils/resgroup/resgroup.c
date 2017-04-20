@@ -17,6 +17,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/memquota.h"
 #include "commands/resgroupcmds.h"
+#include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/ipc.h"
@@ -221,16 +222,23 @@ InitResGroups(void)
 	if (pResGroupControl->loaded)
 		goto exit;
 
+	ResGroupOps_Init();
+
 	numGroups = 0;
 	sscan = systable_beginscan(relResGroup, InvalidOid, false, SnapshotNow, 0, NULL);
 	while (HeapTupleIsValid(tuple = systable_getnext(sscan)))
 	{
-		bool groupOK = ResGroupCreate(HeapTupleGetOid(tuple));
+		Oid groupId = HeapTupleGetOid(tuple);
+		bool groupOK = ResGroupCreate(groupId);
+		float cpu_rate_limit = GetCpuRateLimitForGroup(groupId);
 
 		if (!groupOK)
 			ereport(PANIC,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 			 		errmsg("not enough shared memory for resource groups")));
+
+		ResGroupOps_CreateGroup(groupId);
+		ResGroupOps_SetCpuRateLimit(groupId, cpu_rate_limit);
 
 		numGroups++;
 		Assert(numGroups <= MaxResourceGroups);
@@ -435,6 +443,13 @@ ResGroupSlotRelease(void)
 	SetLatch(&waitProc->procLatch);
 
 	CurrentResGroupId = InvalidOid;
+}
+
+void
+AssignResGroup(void)
+{
+	Oid groupId = GetResGroupIdForRole(GetUserId());
+	ResGroupOps_AssignGroup(groupId, MyProcPid);
 }
 
 static void

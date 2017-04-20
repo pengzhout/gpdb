@@ -22,6 +22,7 @@ extern void DropResourceGroup(DropResourceGroupStmt *stmt);
 extern Oid GetResGroupIdForName(char *name, LOCKMODE lockmode);
 extern char *GetResGroupNameForId(Oid oid, LOCKMODE lockmode);
 extern int GetConcurrencyForGroup(int groupId);
+extern float GetCpuRateLimitForGroup(int groupId);
 extern Oid GetResGroupIdForRole(Oid roleid);
 
 #endif   /* RESGROUPCMDS_H */

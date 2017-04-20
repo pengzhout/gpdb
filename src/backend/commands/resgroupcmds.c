@@ -314,13 +314,23 @@ DropResourceGroup(DropResourceGroupStmt *stmt)
 }
 
 /*
- * Get 'concurrency' of on resource group in pg_resgroupcapability.
+ * Get 'concurrency' of one resource group in pg_resgroupcapability.
  */
 int
 GetConcurrencyForGroup(int groupId)
 {
 	text value = getCapabilityForGroup(groupId, RESGROUP_LIMIT_TYPE_CONCURRENCY);
 	return text2int(&value);
+}
+
+/*
+ * Get 'cpu_rate_limit' of one resource group in pg_resgroupcapability.
+ */
+float
+GetCpuRateLimitForGroup(int groupId)
+{
+	text value = getCapabilityForGroup(groupId, RESGROUP_LIMIT_TYPE_CPU);
+	return text2Float(&value, "cpu_rate_limit");
 }
 
 /*
