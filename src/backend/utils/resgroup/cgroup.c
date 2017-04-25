@@ -104,15 +104,15 @@ writeData(Oid group, const char *prop, char *data, size_t datasize)
 
 	int fd = open(path, O_WRONLY);
 	if (fd < 0)
-		elog(ERROR, "cgroup: can't open file '%s': %s", path, strerror(errno));
+		elog(LOG, "cgroup: can't open file '%s': %s", path, strerror(errno));
 
 	size_t ret = write(fd, data, datasize);
 	close(fd);
 
 	if (ret < 0)
-		elog(ERROR, "cgroup: can't write data to file '%s': %s", path, strerror(errno));
+		elog(LOG, "cgroup: can't write data to file '%s': %s", path, strerror(errno));
 	if (ret != datasize)
-		elog(ERROR, "cgroup: can't write all data to file '%s'", path);
+		elog(LOG, "cgroup: can't write all data to file '%s'", path);
 }
 
 static int64

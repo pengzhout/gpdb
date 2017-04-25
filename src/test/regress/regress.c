@@ -2769,7 +2769,7 @@ Datum
 high_cpu(PG_FUNCTION_ARGS)
 {
 	int cpu_rate = (int) PG_GETARG_INT32(1);
-	int i;
+	int i = 0;
 
 	while (true)
 	{
@@ -2777,7 +2777,7 @@ high_cpu(PG_FUNCTION_ARGS)
 		if (i > cpu_rate)
 		{
 			i = 0;
-			pg_usleep(1);
+			//pg_usleep(1);
 			CHECK_FOR_INTERRUPTS();
 		}
 	}
