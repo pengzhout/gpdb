@@ -32,7 +32,8 @@ resources:
     bucket: {{bucket-name}}
     region_name: {{aws-region}}
     secret_access_key: {{bucket-secret-access-key}}
-    versioned_file: {{bin_gpdb_centos_versioned_file}}
+    #versioned_file: {{bin_gpdb_centos_versioned_file}}
+    regexp: gpdb_artifacts/bin_gpdb.(.*).tar.gz
 
 ## ======================================================================
 ## jobs
@@ -42,7 +43,7 @@ resources:
 
 jobs:
 
-- name: compile_gpdb_centos6
+- name: compile_gpdb_centos6_resgroup
   plan:
   - aggregate:
     - get: gpdb_src
@@ -50,7 +51,7 @@ jobs:
     - get: gpaddon_src
     - get: centos-gpdb-dev-6
   - task: compile_gpdb
-    file: gpdb_src/concourse/tasks/compile_gpdb.yml
+    file: gpdb_src/concourse/tasks/compile_gpdb_resgroup.yml
     image: centos-gpdb-dev-6
     params:
       IVYREPO_HOST: {{ivyrepo_host}}
@@ -63,7 +64,7 @@ jobs:
   - aggregate:
     - put: bin_gpdb_centos6
       params:
-        file: gpdb_artifacts/bin_gpdb.tar.gz
+        file: gpdb_artifacts/bin_gpdb.*.tar.gz
 
 # Stage 2a: Run regression tests against binaries (make installcheck-world and similar)
 
