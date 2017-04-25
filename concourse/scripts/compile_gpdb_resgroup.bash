@@ -7,7 +7,7 @@ GPDB_ARTIFACTS_DIR=$(pwd)/$OUTPUT_ARTIFACT_DIR
 
 CWDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-${CWDIR}/ic_gpdb.bash
+${CWDIR}/compile_gpdb.bash
 
 pushd gpdb_src
 version="$(git describe)"
