@@ -34,8 +34,8 @@ atmsort.pm:
 explain.pm:
 	rm -f $@ && $(LN_S) $(top_builddir)/src/test/regress/explain.pm
 
-pg_isolation2_regress$(X): isolation2_main.o pg_regress.o
-	$(CC) $(CFLAGS) $^ $(libpq_pgport) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@
+pg_isolation2_regress$(X): isolation2_main.o pg_regress.o submake-libpq submake-libpgport
+	$(CC) $(CFLAGS) $(filter %.o,$^) $(libpq_pgport) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@
 
 clean distclean:
 	rm -f pg_isolation2_regress$(X) $(OBJS) isolation2_main.o
