@@ -4,7 +4,7 @@ set -eox pipefail
 
 basedir=/sys/fs/cgroup
 options=rw,nosuid,nodev,noexec,relatime
-groups="hugetlb freezer pids devices cpuset blkio net_prio,net_cls cpuacct,cpu memory perf_event"
+groups="hugetlb freezer pids devices cpuset blkio net_prio net_cls cpuacct cpu memory perf_event"
 
 my_link()
 {
@@ -28,14 +28,9 @@ mounts="$basedir"
 
 for group in $groups; do
 	mkdir -p $basedir/$group || :
-	mount -t cgroup -o $options,$group cgroup-${group/,/-} $basedir/$group || cleanup
+	mount -t cgroup -o $options,$group cgroup $basedir/$group || cleanup
 	mounts="$basedir/$group $mounts"
 done
-
-my_link net_prio,net_cls net_prio || cleanup
-my_link net_prio,net_cls net_cls || cleanup
-my_link cpuacct,cpu cpuacct || cleanup
-my_link cpuacct,cpu cpu || cleanup
 
 mkdir -p $basedir/cpu/gpdb || :
 

@@ -25,23 +25,24 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-static char * buildPath(Oid group, const char *prop, char *path, size_t pathsize);
+static char * buildPath(Oid group, const char *comp, const char *prop, char *path, size_t pathsize);
 static int getCpuCores(void);
-static size_t readData(Oid group, const char *prop, char *data, size_t datasize);
-static void writeData(Oid group, const char *prop, char *data, size_t datasize);
-static int64 readInt64(Oid group, const char *prop);
-static void writeInt64(Oid group, const char *prop, int64 x);
+static size_t readData(Oid group, const char *comp, const char *prop, char *data, size_t datasize);
+static void writeData(Oid group, const char *comp, const char *prop, char *data, size_t datasize);
+static int64 readInt64(Oid group, const char *comp, const char *prop);
+static void writeInt64(Oid group, const char *comp, const char *prop, int64 x);
 
 static char *
 buildPath(Oid group,
+		  const char *comp,
 		  const char *prop,
 		  char *path,
 		  size_t pathsize)
 {
 	if (group)
-		snprintf(path, pathsize, "/sys/fs/cgroup/cpu/gpdb/%d/%s", group, prop);
+		snprintf(path, pathsize, "/sys/fs/cgroup/%s/gpdb/%d/%s", comp, group, prop);
 	else
-		snprintf(path, pathsize, "/sys/fs/cgroup/cpu/gpdb/%s", prop);
+		snprintf(path, pathsize, "/sys/fs/cgroup/%s/gpdb/%s", comp, prop);
 
 	return path;
 }
@@ -74,12 +75,12 @@ getCpuCores(void)
 }
 
 static size_t
-readData(Oid group, const char *prop, char *data, size_t datasize)
+readData(Oid group, const char *comp, const char *prop, char *data, size_t datasize)
 {
 	char path[1024];
 	size_t pathsize = sizeof(path);
 
-	buildPath(group, prop, path, pathsize);
+	buildPath(group, comp, prop, path, pathsize);
 
 	int fd = open(path, O_RDONLY);
 	if (fd < 0)
@@ -95,12 +96,12 @@ readData(Oid group, const char *prop, char *data, size_t datasize)
 }
 
 static void
-writeData(Oid group, const char *prop, char *data, size_t datasize)
+writeData(Oid group, const char *comp, const char *prop, char *data, size_t datasize)
 {
 	char path[1024];
 	size_t pathsize = sizeof(path);
 
-	buildPath(group, prop, path, pathsize);
+	buildPath(group, comp, prop, path, pathsize);
 
 	int fd = open(path, O_WRONLY);
 	if (fd < 0)
@@ -116,13 +117,13 @@ writeData(Oid group, const char *prop, char *data, size_t datasize)
 }
 
 static int64
-readInt64(Oid group, const char *prop)
+readInt64(Oid group, const char *comp, const char *prop)
 {
 	int64 x;
 	char data[64];
 	size_t datasize = sizeof(data);
 
-	readData(group, prop, data, datasize);
+	readData(group, comp, prop, data, datasize);
 
 	if (sscanf(data, "%lld", (long long *) &x) != 1)
 		elog(ERROR, "invalid number '%s'", data);
@@ -131,14 +132,14 @@ readInt64(Oid group, const char *prop)
 }
 
 static void
-writeInt64(Oid group, const char *prop, int64 x)
+writeInt64(Oid group, const char *comp, const char *prop, int64 x)
 {
 	char data[64];
 	size_t datasize = sizeof(data);
 
 	snprintf(data, datasize, "%lld", (long long) x);
 
-	writeData(group, prop, data, strlen(data));
+	writeData(group, comp, prop, data, strlen(data));
 }
 
 void
@@ -146,17 +147,18 @@ CGroupCheckPermission(Oid group)
 {
 	char path[1024];
 	size_t pathsize = sizeof(path);
+	const char *comp = "cpu";
 
-	if (access(buildPath(group, "", path, pathsize), R_OK | W_OK | X_OK))
+	if (access(buildPath(group, comp, "", path, pathsize), R_OK | W_OK | X_OK))
 		elog(ERROR, "can't access directory '%s': %s", path, strerror(errno));
 
-	if (access(buildPath(group, "cgroup.procs", path, pathsize), R_OK | W_OK))
+	if (access(buildPath(group, comp, "cgroup.procs", path, pathsize), R_OK | W_OK))
 		elog(ERROR, "can't access file '%s': %s", path, strerror(errno));
-	if (access(buildPath(group, "cpu.cfs_period_us", path, pathsize), R_OK | W_OK))
+	if (access(buildPath(group, comp, "cpu.cfs_period_us", path, pathsize), R_OK | W_OK))
 		elog(ERROR, "can't access file '%s': %s", path, strerror(errno));
-	if (access(buildPath(group, "cpu.cfs_quota_us", path, pathsize), R_OK | W_OK))
+	if (access(buildPath(group, comp, "cpu.cfs_quota_us", path, pathsize), R_OK | W_OK))
 		elog(ERROR, "can't access file '%s': %s", path, strerror(errno));
-	if (access(buildPath(group, "cpu.shares", path, pathsize), R_OK | W_OK))
+	if (access(buildPath(group, comp, "cpu.shares", path, pathsize), R_OK | W_OK))
 		elog(ERROR, "can't access file '%s': %s", path, strerror(errno));
 }
 
@@ -166,13 +168,14 @@ CGroupInitTop(void)
 	/* cfs_quota_us := cfs_period_us * ncores * gp_resource_group_cpu_limit */
 	/* shares := 1024 * ncores */
 
-	int ncores = getCpuCores();
 	int64 cfs_period_us;
+	int ncores = getCpuCores();
+	const char *comp = "cpu";
 
-	cfs_period_us = readInt64(0, "cpu.cfs_period_us");
-	writeInt64(0, "cpu.cfs_quota_us",
-					 cfs_period_us * ncores * gp_resource_group_cpu_limit);
-	writeInt64(0, "cpu.shares", 1024 * ncores);
+	cfs_period_us = readInt64(0, comp, "cpu.cfs_period_us");
+	writeInt64(0, comp, "cpu.cfs_quota_us",
+			   cfs_period_us * ncores * gp_resource_group_cpu_limit);
+	writeInt64(0, comp, "cpu.shares", 1024 * ncores);
 }
 
 void
@@ -180,8 +183,9 @@ CGroupCreateSub(Oid group)
 {
 	char path[1024];
 	size_t pathsize = sizeof(path);
+	const char *comp = "cpu";
 
-	buildPath(group, "", path, pathsize);
+	buildPath(group, comp, "", path, pathsize);
 
 	if (access(path, F_OK))
 	{
@@ -199,8 +203,9 @@ CGroupDestroySub(Oid group)
 {
 	char path[1024];
 	size_t pathsize = sizeof(path);
+	const char *comp = "cpu";
 
-	buildPath(group, "", path, pathsize);
+	buildPath(group, comp, "", path, pathsize);
 
 	if (!access(path, F_OK))
 	{
@@ -213,22 +218,28 @@ CGroupDestroySub(Oid group)
 void
 CGroupAssignGroup(Oid group, int pid)
 {
-	writeInt64(group, "cgroup.procs", pid);
+	const char *comp = "cpu";
+
+	writeInt64(group, comp, "cgroup.procs", pid);
 }
 
 void
 CGroupSetCpuRateLimit(Oid group, float cpu_rate_limit)
 {
+	const char *comp = "cpu";
+
 	/* SUB/shares := TOP/shares * cpu_rate_limit */
 
-	int64 shares = readInt64(0, "cpu.shares");
-	writeInt64(group, "cpu.shares", shares * cpu_rate_limit);
+	int64 shares = readInt64(0, comp, "cpu.shares");
+	writeInt64(group, comp, "cpu.shares", shares * cpu_rate_limit);
 }
 
 int64
 CGroupGetCpuUsage(Oid group)
 {
-	return readInt64(group, "cpuacct.usage");
+	const char *comp = "cpuacct";
+
+	return readInt64(group, comp, "cpuacct.usage");
 }
 
 int
