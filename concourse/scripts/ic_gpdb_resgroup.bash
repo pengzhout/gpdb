@@ -28,8 +28,8 @@ mounts="$basedir"
 
 for group in $groups; do
 	mkdir -p $basedir/$group || :
-	mount -t cgroup -o $options,$group cgroup $basedir/$group || cleanup
-	mounts="$mounts $basedir/$group"
+	mount -t cgroup -o $options,$group cgroup-$group $basedir/$group || cleanup
+	mounts="$$basedir/$group $mounts"
 done
 
 my_link net_prio,net_cls net_prio || cleanup
