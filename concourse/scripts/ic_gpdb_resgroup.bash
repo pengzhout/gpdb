@@ -2,6 +2,8 @@
 
 set -eox pipefail
 
+CWDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 basedir=/sys/fs/cgroup
 options=rw,nosuid,nodev,noexec,relatime
 groups="hugetlb freezer pids devices cpuset blkio net_prio net_cls cpuacct cpu memory perf_event"
