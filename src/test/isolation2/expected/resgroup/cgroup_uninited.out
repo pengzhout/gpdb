@@ -1,0 +1,89 @@
+-- resgroup is enabled but cgroup is not properly setup yet
+
+-- start_ignore
+! gpconfig -r gp_resource_manager;
+20170426:02:50:08:033572 gpconfig:sdw6:gpadmin-[INFO]:-completed successfully
+
+! gpstop -rai;
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Starting gpstop with args: -rai
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Gathering information and validating the environment...
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Obtaining Greenplum Master catalog information
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Obtaining Segment details from master...
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Greenplum Version: 'postgres (Greenplum Database) 5.0.0-alpha.1+dev.100.g5716465 build dev'
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-There are 0 connections to the database
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Commencing Master instance shutdown with mode='immediate'
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Master host=sdw6
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Commencing Master instance shutdown with mode=immediate
+20170426:02:50:08:033647 gpstop:sdw6:gpadmin-[INFO]:-Master segment instance directory=/data1/tpz/gpdb/gpAux/gpdemo/datadirs/qddir/demoDataDir-1
+20170426:02:50:09:033647 gpstop:sdw6:gpadmin-[INFO]:-Attempting forceful termination of any leftover master process
+20170426:02:50:09:033647 gpstop:sdw6:gpadmin-[INFO]:-Terminating processes for segment /data1/tpz/gpdb/gpAux/gpdemo/datadirs/qddir/demoDataDir-1
+20170426:02:50:09:033647 gpstop:sdw6:gpadmin-[INFO]:-No standby master host configured
+20170426:02:50:09:033647 gpstop:sdw6:gpadmin-[INFO]:-Commencing parallel primary segment instance shutdown, please wait...
+20170426:02:50:09:033647 gpstop:sdw6:gpadmin-[INFO]:-0.00% of jobs completed
+20170426:02:50:19:033647 gpstop:sdw6:gpadmin-[INFO]:-100.00% of jobs completed
+20170426:02:50:19:033647 gpstop:sdw6:gpadmin-[INFO]:-Commencing parallel mirror segment instance shutdown, please wait...
+20170426:02:50:19:033647 gpstop:sdw6:gpadmin-[INFO]:-0.00% of jobs completed
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-100.00% of jobs completed
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-----------------------------------------------------
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-   Segments stopped successfully      = 6
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-   Segments with errors during stop   = 0
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-----------------------------------------------------
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-Successfully shutdown 6 of 6 segment instances 
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-Database successfully shutdown with no errors reported
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-Cleaning up leftover gpmmon process
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-No leftover gpmmon process found
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-Cleaning up leftover gpsmon processes
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-No leftover gpsmon processes on some hosts. not attempting forceful termination on these hosts
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-Cleaning up leftover shared memory
+20170426:02:50:29:033647 gpstop:sdw6:gpadmin-[INFO]:-Restarting System...
+
+! rmdir /sys/fs/cgroup/cpu/gpdb/*/;
+
+-- */
+! rmdir /sys/fs/cgroup/cpu/gpdb;
+
+-- end_ignore
+
+-- gpdb cgroup is missing
+! gpconfig -c gp_resource_manager -v group | cut -d' ' -f2-;
+gpconfig:sdw6:gpadmin-[WARNING]:-Managing queries with resource groups is an experimental feature. A work-in-progress version is enabled.
+gpconfig:sdw6:gpadmin-[CRITICAL]:-new GUC value failed validation: cgroup is not properly configured on segments: sdw6
+GUC value failed validation: cgroup is not properly configured on segments: sdw6
+
+
+-- start_ignore
+! mkdir /sys/fs/cgroup/cpu/gpdb;
+
+! chmod 644 /sys/fs/cgroup/cpu/gpdb;
+
+-- end_ignore
+
+-- no enough permission on gpdb cgroup
+! gpconfig -c gp_resource_manager -v group | cut -d' ' -f2-;
+gpconfig:sdw6:gpadmin-[WARNING]:-Managing queries with resource groups is an experimental feature. A work-in-progress version is enabled.
+gpconfig:sdw6:gpadmin-[CRITICAL]:-new GUC value failed validation: cgroup is not properly configured on segments: sdw6
+GUC value failed validation: cgroup is not properly configured on segments: sdw6
+
+
+-- start_ignore
+! chmod 755 /sys/fs/cgroup/cpu/gpdb;
+
+! chmod 444 /sys/fs/cgroup/cpu/gpdb/cgroup.procs;
+
+-- end_ignore
+
+-- no enough permission on gpdb cgroup's config files
+! gpconfig -c gp_resource_manager -v group | cut -d' ' -f2-;
+gpconfig:sdw6:gpadmin-[WARNING]:-Managing queries with resource groups is an experimental feature. A work-in-progress version is enabled.
+gpconfig:sdw6:gpadmin-[CRITICAL]:-new GUC value failed validation: cgroup is not properly configured on segments: sdw6
+GUC value failed validation: cgroup is not properly configured on segments: sdw6
+
+
+-- start_ignore
+! rmdir /sys/fs/cgroup/cpu/gpdb;
+
+! gpconfig -r gp_resource_manager;
+20170426:02:50:36:034294 gpconfig:sdw6:gpadmin-[INFO]:-completed successfully
+
+-- end_ignore
+

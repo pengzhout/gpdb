@@ -1,0 +1,7 @@
+-- start_ignore
+! mkdir /sys/fs/cgroup/cpu/gpdb;
+mkdir: cannot create directory ‘/sys/fs/cgroup/cpu/gpdb’: File exists
+
+! chmod 755 /sys/fs/cgroup/cpu/gpdb;
+
+-- end_ignore

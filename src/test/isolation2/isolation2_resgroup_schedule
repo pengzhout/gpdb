@@ -1,0 +1,9 @@
+test: resgroup/cgroup_uninited
+
+test: resgroup/init_cgroup
+
+test: resgroup/enable_resgroup
+
+test: resgroup/cgroup_inited
+
+test: resgroup/disable_resgroup
