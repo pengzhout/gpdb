@@ -1208,13 +1208,10 @@ gpvars_assign_gp_resource_manager_policy(const char *newval, bool doit, GucSourc
 	else if (!pg_strcasecmp("group", newval))
 		newtype = RESOURCE_MANAGER_POLICY_GROUP;
 	else
-		elog(PANIC, "unknown resource manager policy: current policy is '%s'", gpvars_show_gp_resource_manager_policy());
+		elog(ERROR, "unknown resource manager policy: current policy is '%s'", gpvars_show_gp_resource_manager_policy());
 
 	if (doit)
 	{
-		if (newtype == RESOURCE_MANAGER_POLICY_GROUP)
-			ResGroupOps_CheckPermission();
-
 		Gp_resource_manager_policy = newtype;
 	}
 
