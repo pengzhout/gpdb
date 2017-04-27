@@ -9,7 +9,7 @@
 -- end_ignore
 
 -- gpdb cgroup is missing
-! gpconfig -c gp_resource_manager -v group | cut -d' ' -f2-;
+! gpconfig -c gp_resource_manager -v group;
 
 -- start_ignore
 ! mkdir /sys/fs/cgroup/cpu/gpdb;
@@ -17,7 +17,7 @@
 -- end_ignore
 
 -- no enough permission on gpdb cgroup
-! gpconfig -c gp_resource_manager -v group | cut -d' ' -f2-;
+! gpconfig -c gp_resource_manager -v group;
 
 -- start_ignore
 ! chmod 755 /sys/fs/cgroup/cpu/gpdb;
@@ -25,7 +25,7 @@
 -- end_ignore
 
 -- no enough permission on gpdb cgroup's config files
-! gpconfig -c gp_resource_manager -v group | cut -d' ' -f2-;
+! gpconfig -c gp_resource_manager -v group;
 
 -- start_ignore
 ! rmdir /sys/fs/cgroup/cpu/gpdb;

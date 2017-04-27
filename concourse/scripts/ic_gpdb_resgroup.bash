@@ -17,9 +17,9 @@ cleanup()
 {
 	ret=$?
 
-	for mnt in $mounts; do
-		umount $mnt || :
-	done
+	#for mnt in $mounts; do
+	#	umount $mnt || :
+	#done
 
 	exit $ret
 }

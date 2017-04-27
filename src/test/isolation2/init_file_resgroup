@@ -1,0 +1,7 @@
+-- start_matchsubs
+m/^[0-9:]*\s(gpstop|gpconfig):/
+s/^[0-9:]* /TIMESTAMP /
+
+m/cgroup is not properly configured on segments: \S+$/
+s/\s(\S+)$/ SEGMENT/
+-- end_matchsubs
