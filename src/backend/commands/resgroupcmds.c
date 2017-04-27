@@ -475,7 +475,10 @@ getCpuUsage(ResourceGroupStatusContext *ctx)
 	int i, j;
 
 	if (!IsResGroupEnabled())
+	{
+		row->cpu_avg_usage = 0;
 		return;
+	}
 
 	ncores = ResGroupOps_GetCpuCores();
 

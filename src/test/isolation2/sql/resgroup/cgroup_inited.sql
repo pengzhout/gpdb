@@ -48,7 +48,7 @@ create view busy as
 -- shares := 1024 * ncores
 --
 
-! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/cpu.cfs_quota_us) == $(cat /sys/fs/cgroup/cpu/gpdb/cpu.cfs_period_us) * $(nproc) * $(psql -d isolation2resgrouptest -Aqtc "show gp_resource_group_cpu_limit;")";
+! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/cpu.cfs_quota_us) == int($(cat /sys/fs/cgroup/cpu/gpdb/cpu.cfs_period_us) * $(nproc) * $(psql -d isolation2resgrouptest -Aqtc "show gp_resource_group_cpu_limit;"))";
 
 ! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) == 1024 * $(nproc)";
 
@@ -57,9 +57,9 @@ create view busy as
 -- SUB/shares := TOP/shares * cpu_rate_limit
 --
 
-! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/$(psql -d isolation2resgrouptest -Aqtc "select oid from pg_resgroup where rsgname='default_group';")/cpu.shares) == $(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) * $(psql -d isolation2resgrouptest -Aqtc "select value from pg_resgroupcapability c, pg_resgroup g where c.resgroupid=g.oid and reslimittype=2 and g.rsgname='default_group'")";
+! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/$(psql -d isolation2resgrouptest -Aqtc "select oid from pg_resgroup where rsgname='default_group';")/cpu.shares) == int($(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) * $(psql -d isolation2resgrouptest -Aqtc "select value from pg_resgroupcapability c, pg_resgroup g where c.resgroupid=g.oid and reslimittype=2 and g.rsgname='default_group'"))";
 
-! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/$(psql -d isolation2resgrouptest -Aqtc "select oid from pg_resgroup where rsgname='admin_group';")/cpu.shares) == $(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) * $(psql -d isolation2resgrouptest -Aqtc "select value from pg_resgroupcapability c, pg_resgroup g where c.resgroupid=g.oid and reslimittype=2 and g.rsgname='admin_group'")";
+! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/$(psql -d isolation2resgrouptest -Aqtc "select oid from pg_resgroup where rsgname='admin_group';")/cpu.shares) == int($(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) * $(psql -d isolation2resgrouptest -Aqtc "select value from pg_resgroupcapability c, pg_resgroup g where c.resgroupid=g.oid and reslimittype=2 and g.rsgname='admin_group'"))";
 
 0: select * from cpu_status;
 
@@ -67,10 +67,10 @@ create view busy as
 0: create resource group g2 with (cpu_rate_limit=0.4, memory_limit=0.4);
 
 -- check g1 configuration
-! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/$(psql -d isolation2resgrouptest -Aqtc "select oid from pg_resgroup where rsgname='g1';")/cpu.shares) == $(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) * 0.1";
+! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/$(psql -d isolation2resgrouptest -Aqtc "select oid from pg_resgroup where rsgname='g1';")/cpu.shares) == int($(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) * 0.1)";
 
 -- check g2 configuration
-! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/$(psql -d isolation2resgrouptest -Aqtc "select oid from pg_resgroup where rsgname='g2';")/cpu.shares) == $(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) * 0.4";
+! python -c "print $(cat /sys/fs/cgroup/cpu/gpdb/$(psql -d isolation2resgrouptest -Aqtc "select oid from pg_resgroup where rsgname='g2';")/cpu.shares) == int($(cat /sys/fs/cgroup/cpu/gpdb/cpu.shares) * 0.4)";
 
 0: create role r1 resource group g1;
 0: create role r2 resource group g2;

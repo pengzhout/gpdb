@@ -109,7 +109,9 @@ getCpuCores(void)
 			return count;
 	}
 
-	return -1;
+	elog(ERROR, "cgroup: can't get cpu cores");
+
+	return 1;
 }
 
 static size_t
@@ -252,9 +254,8 @@ CGroupDestroySub(Oid group)
 void
 CGroupAssignGroup(Oid group, int pid)
 {
-	const char *comp = "cpu";
-
-	writeInt64(group, comp, "cgroup.procs", pid);
+	writeInt64(group, "cpu", "cgroup.procs", pid);
+	writeInt64(group, "cpuacct", "cgroup.procs", pid);
 }
 
 void
@@ -279,12 +280,7 @@ CGroupGetCpuUsage(Oid group)
 int
 CGroupGetCpuCores(void)
 {
-	int cores = getCpuCores();
-
-	if (cores < 0)
-		elog(ERROR, "cgroup: can't get cpu cores");
-
-	return cores;
+	return getCpuCores();
 }
 
 #endif//__linux__
