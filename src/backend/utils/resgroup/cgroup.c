@@ -26,6 +26,8 @@
 #include <sys/types.h>
 
 static char * buildPath(Oid group, const char *comp, const char *prop, char *path, size_t pathsize);
+static bool createDir(Oid group, const char *comp);
+static bool removeDir(Oid group, const char *comp);
 static int getCpuCores(void);
 static size_t readData(Oid group, const char *comp, const char *prop, char *data, size_t datasize);
 static void writeData(Oid group, const char *comp, const char *prop, char *data, size_t datasize);
@@ -45,6 +47,42 @@ buildPath(Oid group,
 		snprintf(path, pathsize, "/sys/fs/cgroup/%s/gpdb/%s", comp, prop);
 
 	return path;
+}
+
+static bool
+createDir(Oid group, const char *comp)
+{
+	char path[128];
+	size_t pathsize = sizeof(path);
+
+	buildPath(group, comp, "", path, pathsize);
+
+	if (access(path, F_OK))
+	{
+		/* the dir is not created yet, create it */
+		if (mkdir(path, 0755) && errno != EEXIST)
+			return false;
+	}
+
+	return true;
+}
+
+static bool
+removeDir(Oid group, const char *comp)
+{
+	char path[128];
+	size_t pathsize = sizeof(path);
+
+	buildPath(group, comp, "", path, pathsize);
+
+	if (!access(path, F_OK))
+	{
+		/* the dir exists, remove it */
+		if (rmdir(path) && errno != ENOENT)
+			return false;
+	}
+
+	return true;
 }
 
 static int
@@ -77,7 +115,7 @@ getCpuCores(void)
 static size_t
 readData(Oid group, const char *comp, const char *prop, char *data, size_t datasize)
 {
-	char path[1024];
+	char path[128];
 	size_t pathsize = sizeof(path);
 
 	buildPath(group, comp, prop, path, pathsize);
@@ -98,7 +136,7 @@ readData(Oid group, const char *comp, const char *prop, char *data, size_t datas
 static void
 writeData(Oid group, const char *comp, const char *prop, char *data, size_t datasize)
 {
-	char path[1024];
+	char path[128];
 	size_t pathsize = sizeof(path);
 
 	buildPath(group, comp, prop, path, pathsize);
@@ -145,7 +183,7 @@ writeInt64(Oid group, const char *comp, const char *prop, int64 x)
 void
 CGroupCheckPermission(Oid group)
 {
-	char path[1024];
+	char path[128];
 	size_t pathsize = sizeof(path);
 	const char *comp = "cpu";
 
@@ -159,6 +197,16 @@ CGroupCheckPermission(Oid group)
 	if (access(buildPath(group, comp, "cpu.cfs_quota_us", path, pathsize), R_OK | W_OK))
 		elog(ERROR, "can't access file '%s': %s", path, strerror(errno));
 	if (access(buildPath(group, comp, "cpu.shares", path, pathsize), R_OK | W_OK))
+		elog(ERROR, "can't access file '%s': %s", path, strerror(errno));
+
+	comp = "cpuacct";
+
+	if (access(buildPath(group, comp, "", path, pathsize), R_OK | W_OK | X_OK))
+		elog(ERROR, "can't access directory '%s': %s", path, strerror(errno));
+
+	if (access(buildPath(group, comp, "cpuacct.usage", path, pathsize), R_OK))
+		elog(ERROR, "can't access file '%s': %s", path, strerror(errno));
+	if (access(buildPath(group, comp, "cpuacct.stat", path, pathsize), R_OK))
 		elog(ERROR, "can't access file '%s': %s", path, strerror(errno));
 }
 
@@ -181,17 +229,10 @@ CGroupInitTop(void)
 void
 CGroupCreateSub(Oid group)
 {
-	char path[1024];
-	size_t pathsize = sizeof(path);
-	const char *comp = "cpu";
-
-	buildPath(group, comp, "", path, pathsize);
-
-	if (access(path, F_OK))
+	if (!createDir(group, "cpu") || !createDir(group, "cpuacct"))
 	{
-		/* the dir is not created yet, create it */
-		if (mkdir(path, 0755) && errno != EEXIST)
-			elog(ERROR, "cgroup: can't create cgroup for resgroup '%d': %s", group, strerror(errno));
+		elog(ERROR, "cgroup: can't create cgroup for resgroup '%d': %s",
+			 group, strerror(errno));
 	}
 
 	/* check the permission */
@@ -201,17 +242,10 @@ CGroupCreateSub(Oid group)
 void
 CGroupDestroySub(Oid group)
 {
-	char path[1024];
-	size_t pathsize = sizeof(path);
-	const char *comp = "cpu";
-
-	buildPath(group, comp, "", path, pathsize);
-
-	if (!access(path, F_OK))
+	if (!removeDir(group, "cpu") || !removeDir(group, "cpuacct"))
 	{
-		/* the dir is already created, remove it */
-		if (rmdir(path) && errno != ENOENT)
-			elog(ERROR, "cgroup: can't remove cgroup for resgroup '%d': %s", group, strerror(errno));
+		elog(ERROR, "cgroup: can't remove cgroup for resgroup '%d': %s",
+			 group, strerror(errno));
 	}
 }
 

@@ -33,6 +33,12 @@ class resgroup(object):
         test -r /sys/fs/cgroup/cpu/gpdb/cpu.cfs_period_us &&
         test -w /sys/fs/cgroup/cpu/gpdb/cpu.cfs_quota_us &&
         test -w /sys/fs/cgroup/cpu/gpdb/cpu.shares &&
+        test -d /sys/fs/cgroup/cpuacct/gpdb &&
+        test -r /sys/fs/cgroup/cpuacct/gpdb &&
+        test -w /sys/fs/cgroup/cpuacct/gpdb &&
+        test -x /sys/fs/cgroup/cpuacct/gpdb &&
+        test -r /sys/fs/cgroup/cpuacct/gpdb/cpuacct.usage &&
+        test -r /sys/fs/cgroup/cpuacct/gpdb/cpuacct.stat &&
         true
         '''
         pool = base.WorkerPool()
