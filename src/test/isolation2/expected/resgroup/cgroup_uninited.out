@@ -39,8 +39,12 @@
 
 ! rmdir /sys/fs/cgroup/cpu/gpdb/*/;
 
--- */
+! rmdir /sys/fs/cgroup/cpuacct/gpdb/*/;
+
+-- to make vim happy */
 ! rmdir /sys/fs/cgroup/cpu/gpdb;
+
+! rmdir /sys/fs/cgroup/cpuacct/gpdb;
 
 -- end_ignore
 
@@ -54,7 +58,11 @@ new GUC value failed validation: cgroup is not properly configured on segments: 
 -- start_ignore
 ! mkdir /sys/fs/cgroup/cpu/gpdb;
 
+! mkdir /sys/fs/cgroup/cpuacct/gpdb;
+
 ! chmod 644 /sys/fs/cgroup/cpu/gpdb;
+
+! chmod 644 /sys/fs/cgroup/cpuacct/gpdb;
 
 -- end_ignore
 
@@ -67,6 +75,8 @@ new GUC value failed validation: cgroup is not properly configured on segments: 
 
 -- start_ignore
 ! chmod 755 /sys/fs/cgroup/cpu/gpdb;
+
+! chmod 755 /sys/fs/cgroup/cpuacct/gpdb;
 
 ! chmod 444 /sys/fs/cgroup/cpu/gpdb/cgroup.procs;
 
@@ -81,6 +91,8 @@ new GUC value failed validation: cgroup is not properly configured on segments: 
 
 -- start_ignore
 ! rmdir /sys/fs/cgroup/cpu/gpdb;
+
+! rmdir /sys/fs/cgroup/cpuacct/gpdb;
 
 ! gpconfig -r gp_resource_manager;
 20170426:21:13:34:017456 gpconfig:sdw6:gpadmin-[INFO]:-completed successfully

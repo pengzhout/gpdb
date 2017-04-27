@@ -3,7 +3,6 @@
 ! gpconfig -c gp_resource_manager -v group;
 20170426:02:18:49:012889 gpconfig:sdw6:gpadmin-[WARNING]:-Managing queries with resource groups is an experimental feature. A work-in-progress version is enabled.
 20170426:02:18:49:012889 gpconfig:sdw6:gpadmin-[CRITICAL]:-new GUC value failed validation: cgroup is not properly configured on segments: sdw6
-new GUC value failed validation: cgroup is not properly configured on segments: sdw6
 
 ! gpstop -rai;
 20170426:02:18:49:012940 gpstop:sdw6:gpadmin-[INFO]:-Starting gpstop with args: -rai
