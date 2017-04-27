@@ -475,10 +475,7 @@ getCpuUsage(ResourceGroupStatusContext *ctx)
 	int i, j;
 
 	if (!IsResGroupEnabled())
-	{
-		row->cpu_avg_usage = 0;
 		return;
-	}
 
 	ncores = ResGroupOps_GetCpuCores();
 
@@ -691,9 +688,16 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 				break;
 
 			case RES_GROUP_STAT_CPU_USAGE:
-				snprintf(statValStr, sizeof(statValStr), "%.2lf%%",
-						 row->cpu_avg_usage);
-				values[2] = CStringGetTextDatum(statValStr);
+				if (IsResGroupEnabled())
+				{
+					snprintf(statValStr, sizeof(statValStr), "%.2lf%%",
+							 row->cpu_avg_usage);
+					values[2] = CStringGetTextDatum(statValStr);
+				}
+				else
+				{
+					values[2] = CStringGetTextDatum("0.00%");
+				}
 				break;
 
 			case RES_GROUP_STAT_MEM_USAGE:
