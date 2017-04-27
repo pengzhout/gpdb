@@ -486,8 +486,6 @@ getCpuUsage(ResourceGroupStatusContext *ctx)
 
 		row->cpu_usage1 = ResGroupOps_GetCpuUsage(rsgid);
 		row->cpu_timestamp1 = GetCurrentTimestamp();
-
-		row->cpu_avg_usage = 0;
 	}
 
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -628,6 +626,7 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 			while (HeapTupleIsValid(tuple = systable_getnext(sscan)))
 			{
 				Assert(funcctx->max_calls < MaxResourceGroups);
+				ctx->rows[funcctx->max_calls].cpu_avg_usage = 0;
 				ctx->rows[funcctx->max_calls++].oid =
 					ObjectIdGetDatum(HeapTupleGetOid(tuple));
 			}
@@ -688,16 +687,9 @@ pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
 				break;
 
 			case RES_GROUP_STAT_CPU_USAGE:
-				if (IsResGroupEnabled())
-				{
-					snprintf(statValStr, sizeof(statValStr), "%.2lf%%",
-							 row->cpu_avg_usage);
-					values[2] = CStringGetTextDatum(statValStr);
-				}
-				else
-				{
-					values[2] = CStringGetTextDatum("0.00%");
-				}
+				snprintf(statValStr, sizeof(statValStr), "%.2lf%%",
+						 row->cpu_avg_usage);
+				values[2] = CStringGetTextDatum(statValStr);
 				break;
 
 			case RES_GROUP_STAT_MEM_USAGE:
