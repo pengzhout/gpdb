@@ -2764,6 +2764,7 @@ udf_setenv(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(ret == 0);
 }
 
+/* FIXME: keep this function or not? */
 PG_FUNCTION_INFO_V1(high_cpu);
 Datum
 high_cpu(PG_FUNCTION_ARGS)

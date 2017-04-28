@@ -4354,8 +4354,7 @@ struct config_int ConfigureNamesInt_gp[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_segworker_relative_priority,
-		0,
-		//PRIO_MAX,
+		PRIO_MAX,
 		0, PRIO_MAX, NULL, NULL
 	},
 

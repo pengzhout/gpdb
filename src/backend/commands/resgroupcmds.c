@@ -562,7 +562,7 @@ getCpuUsage(ResourceGroupStatusContext *ctx)
 		duration = secs * 1000000 + usecs;
 		usage = row->cpu_usage2 - row->cpu_usage1;
 
-		/* 
+		/*
 		 * usage is the cpu time (nano seconds) obtained by this group
 		 * in the time duration (micro seconds), so cpu time on one core
 		 * can be calculated as:
@@ -1083,7 +1083,7 @@ getCapabilityForGroup(int groupId, int type)
 	return capability->value;
 }
 
-/* 
+/*
  * Delete capability entries of one resource group.
  */
 static void

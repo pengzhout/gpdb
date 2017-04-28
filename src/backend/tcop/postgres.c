@@ -4631,6 +4631,18 @@ PostgresMain(int argc, char *argv[],
 	{
 		InitResGroups();
 		AssignResGroup();
+
+		/*
+		 * cgroup cpu limitation works best when all processes have equal
+		 * priorities, so we force all the segments and postmaster to
+		 * work with nice=0.
+		 */
+		/* FIXME: we should only do this when cgroup is enabled, but not resgroup,
+		 *        e.g. on Solaris resgroup can be enabled without cgroup,
+		 *             we should not set setments' nice to 0 in such a case. */
+		/* TODO: when cgroup is enabled we should move postmaster and
+		 *       maybe also other processes to a separate group or gpdb toplevel */
+		gp_segworker_relative_priority = 0;
 	}
 
 	/*
