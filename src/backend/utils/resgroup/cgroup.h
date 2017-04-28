@@ -17,6 +17,7 @@
 
 extern void CGroupCheckPermission(Oid group);
 extern void CGroupInitTop(void);
+extern void CGroupHackGUCs(void);
 extern void CGroupCreateSub(Oid group);
 extern void CGroupDestroySub(Oid group);
 extern void CGroupAssignGroup(Oid group, int pid);

@@ -11,7 +11,9 @@
  */
 #include "postgres.h"
 
+#include "cdb/cdbvars.h"
 #include "postmaster/backoff.h"
+
 #include "cgroup.h"
 
 #ifdef __linux__
@@ -226,6 +228,25 @@ CGroupInitTop(void)
 	writeInt64(0, comp, "cpu.cfs_quota_us",
 			   cfs_period_us * ncores * gp_resource_group_cpu_limit);
 	writeInt64(0, comp, "cpu.shares", 1024 * ncores);
+}
+
+void
+CGroupHackGUCs(void)
+{
+	/*
+	 * cgroup cpu limitation works best when all processes have equal
+	 * priorities, so we force all the segments and postmaster to
+	 * work with nice=0.
+	 *
+	 * this function should be called before GUCs are dispatched to segments.
+	 */
+	/* TODO: when cgroup is enabled we should move postmaster and maybe
+	 *       also other processes to a separate group or gpdb toplevel */
+	if (gp_segworker_relative_priority != 0)
+	{
+		/* TODO: produce a warning */
+		gp_segworker_relative_priority = 0;
+	}
 }
 
 void

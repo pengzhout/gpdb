@@ -25,10 +25,12 @@
  * resources like cpu usage, such as cgroup on Linux system.
  * We call it OS group in below function description.
  *
- * All the functions with bool return type will return false if the OS group
- * is not available or not properly configured or the operation failed.
+ * So far these operations are mainly for CPU rate limitation and accounting.
  */
 
+/* FIXME: which one should we report as unsupported,
+ *        'resource group' or 'cpu rate limitation'? */
+/* FIXME: should we report it as an error? */
 #define unsupported_system() \
 	elog(ERROR, "resource group is unsupported on this system")
 
@@ -61,6 +63,16 @@ ResGroupOps_Init(void)
 {
 #ifdef __linux__
 	CGroupInitTop();
+#else
+	unsupported_system();
+#endif
+}
+
+void
+ResGroupOps_HackGUCs(void)
+{
+#ifdef __linux__
+	CGroupHackGUCs();
 #else
 	unsupported_system();
 #endif
