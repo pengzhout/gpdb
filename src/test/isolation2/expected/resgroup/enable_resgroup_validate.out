@@ -12,9 +12,9 @@
 -- gpdb top group is not created
 ! gpconfig -c gp_resource_manager -v group;
 20170504:06:08:32:016418 gpconfig:sdw6:gpadmin-[WARNING]:-Managing queries with resource groups is an experimental feature. A work-in-progress version is enabled.
-20170504:06:08:33:016418 gpconfig:sdw6:gpadmin-[CRITICAL]:-new GUC value failed validation: [sdw6:cgroup is not properly configured: directory /sys/fs/cgroup/cpu/gpdb do not exist
+20170504:06:08:33:016418 gpconfig:sdw6:gpadmin-[CRITICAL]:-new GUC value failed validation: [sdw6:cgroup is not properly configured: directory /sys/fs/cgroup/cpu/gpdb does not exist
 ]
-new GUC value failed validation: [sdw6:cgroup is not properly configured: directory /sys/fs/cgroup/cpu/gpdb do not exist
+new GUC value failed validation: [sdw6:cgroup is not properly configured: directory /sys/fs/cgroup/cpu/gpdb does not exist
 ]
 
 

@@ -94,6 +94,7 @@
 #include <pthread.h>
 #include "utils/resscheduler.h"
 #include "utils/resgroup.h"
+#include "utils/resgroup-ops.h"
 #include "pgstat.h"
 #include "executor/nodeFunctionscan.h"
 #include "cdb/cdbfilerep.h"

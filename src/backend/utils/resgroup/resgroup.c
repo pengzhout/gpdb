@@ -30,6 +30,7 @@
 #include "utils/fmgroids.h"
 #include "utils/memutils.h"
 #include "utils/resgroup.h"
+#include "utils/resgroup-ops.h"
 #include "utils/resowner.h"
 #include "utils/resource_manager.h"
 

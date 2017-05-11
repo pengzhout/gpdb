@@ -1,10 +1,10 @@
 /*-------------------------------------------------------------------------
  *
- * cgroup.c
- *	  CGroup based cpu resource group implementation.
+ * resgroup-ops-cgroup.c
+ *	  OS dependent resource group operations - cgroup implementation
  *
  *
- * Copyright (c) 2006-2017, Greenplum inc.
+ * Copyright (c) 2017, Pivotal Software Inc.
  *
  *
  *-------------------------------------------------------------------------
@@ -13,21 +13,31 @@
 
 #include "cdb/cdbvars.h"
 #include "postmaster/backoff.h"
+#include "utils/resgroup-ops.h"
 
-#include "cgroup.h"
-
-/* cgroup is only available on linux */
+#ifndef __linux__
+#error  cgroup is only available on linux
+#endif
 
 #include <unistd.h>
 #include <sched.h>
 #include <sys/stat.h>
+
+/*
+ * Interfaces for OS dependent operations.
+ *
+ * Resource group relies on OS dependent group implementation to manage
+ * resources like cpu usage, such as cgroup on Linux system.
+ * We call it OS group in below function description.
+ *
+ * So far these operations are mainly for CPU rate limitation and accounting.
+ */
 
 #define CGROUP_ERROR_PREFIX "cgroup is not properly configured: "
 #define CGROUP_ERROR(...) do { \
 	elog(ERROR, CGROUP_ERROR_PREFIX __VA_ARGS__); \
 } while(false);
 
-static bool isLinuxPlatform(void);
 static char * buildPath(Oid group, const char *comp, const char *prop, char *path, size_t pathsize);
 static bool createDir(Oid group, const char *comp);
 static bool removeDir(Oid group, const char *comp);
@@ -36,18 +46,9 @@ static size_t readData(Oid group, const char *comp, const char *prop, char *data
 static void writeData(Oid group, const char *comp, const char *prop, char *data, size_t datasize);
 static int64 readInt64(Oid group, const char *comp, const char *prop);
 static void writeInt64(Oid group, const char *comp, const char *prop, int64 x);
+static void checkPermission(Oid group);
 
 static int cpucores = 0;
-
-static bool
-isLinuxPlatform(void)
-{
-#ifdef __linux__
-	return true;
-#else
-	return false;
-#endif
-}
 
 static char *
 buildPath(Oid group,
@@ -103,7 +104,6 @@ removeDir(Oid group, const char *comp)
 static int
 getCpuCores(void)
 {
-#ifdef __linux__
 	if (cpucores == 0)
 	{
 		/*
@@ -128,10 +128,6 @@ getCpuCores(void)
 		CGROUP_ERROR("can't get cpu cores");
 
 	return cpucores;
-#else
-	CGROUP_ERROR("unsupported platform");
-	return -1;
-#endif
 }
 
 static size_t
@@ -202,15 +198,12 @@ writeInt64(Oid group, const char *comp, const char *prop, int64 x)
 	writeData(group, comp, prop, data, strlen(data));
 }
 
-void
-CGroupCheckPermission(Oid group)
+static void
+checkPermission(Oid group)
 {
 	char path[128];
 	size_t pathsize = sizeof(path);
 	const char *comp = "cpu";
-
-	if (!isLinuxPlatform())
-		CGROUP_ERROR("unsupported platform");
 
 	if (access(buildPath(group, comp, "", path, pathsize), R_OK | W_OK | X_OK))
 		CGROUP_ERROR("can't access directory '%s': %s", path, strerror(errno));
@@ -235,8 +228,23 @@ CGroupCheckPermission(Oid group)
 		CGROUP_ERROR("can't access file '%s': %s", path, strerror(errno));
 }
 
+/* Return the name for the OS group implementation */
+const char *
+ResGroupOps_Name(void)
+{
+	return "cgroup";
+}
+
+/* Check whether the OS group implementation is available and useable */
 void
-CGroupInitTop(void)
+ResGroupOps_Bless(void)
+{
+	checkPermission(0);
+}
+
+/* Initialize the OS group */
+void
+ResGroupOps_Init(void)
 {
 	/* cfs_quota_us := cfs_period_us * ncores * gp_resource_group_cpu_limit */
 	/* shares := 1024 * 256 (max possible value) */
@@ -251,8 +259,9 @@ CGroupInitTop(void)
 	writeInt64(0, comp, "cpu.shares", 1024 * 256);
 }
 
+/* Adjust GUCs for this OS group implementation */
 void
-CGroupAdjustGUCs(void)
+ResGroupOps_AdjustGUCs(void)
 {
 	/*
 	 * cgroup cpu limitation works best when all processes have equal
@@ -270,8 +279,11 @@ CGroupAdjustGUCs(void)
 	}
 }
 
+/*
+ * Create the OS group for group.
+ */
 void
-CGroupCreateSub(Oid group)
+ResGroupOps_CreateGroup(Oid group)
 {
 	if (!createDir(group, "cpu") || !createDir(group, "cpuacct"))
 	{
@@ -280,11 +292,16 @@ CGroupCreateSub(Oid group)
 	}
 
 	/* check the permission */
-	CGroupCheckPermission(group);
+	checkPermission(group);
 }
 
+/*
+ * Destroy the OS group for group.
+ *
+ * Fail if any process is running under it.
+ */
 void
-CGroupDestroySub(Oid group)
+ResGroupOps_DestroyGroup(Oid group)
 {
 	if (!removeDir(group, "cpu") || !removeDir(group, "cpuacct"))
 	{
@@ -293,15 +310,27 @@ CGroupDestroySub(Oid group)
 	}
 }
 
+/*
+ * Assign a process to the OS group. A process can only be assigned to one
+ * OS group, if it's already running under other OS group then it'll be moved
+ * out that OS group.
+ *
+ * pid is the process id.
+ */
 void
-CGroupAssignGroup(Oid group, int pid)
+ResGroupOps_AssignGroup(Oid group, int pid)
 {
 	writeInt64(group, "cpu", "cgroup.procs", pid);
 	writeInt64(group, "cpuacct", "cgroup.procs", pid);
 }
 
+/*
+ * Set the cpu rate limit for the OS group.
+ *
+ * cpu_rate_limit should be within (0.0, 1.0].
+ */
 void
-CGroupSetCpuRateLimit(Oid group, float cpu_rate_limit)
+ResGroupOps_SetCpuRateLimit(Oid group, float cpu_rate_limit)
 {
 	const char *comp = "cpu";
 
@@ -311,16 +340,23 @@ CGroupSetCpuRateLimit(Oid group, float cpu_rate_limit)
 	writeInt64(group, comp, "cpu.shares", shares * cpu_rate_limit);
 }
 
+/*
+ * Get the cpu usage of the OS group, that is the total cpu time obtained
+ * by this OS group, in nano seconds.
+ */
 int64
-CGroupGetCpuUsage(Oid group)
+ResGroupOps_GetCpuUsage(Oid group)
 {
 	const char *comp = "cpuacct";
 
 	return readInt64(group, comp, "cpuacct.usage");
 }
 
+/*
+ * Get the count of cpu cores on the system.
+ */
 int
-CGroupGetCpuCores(void)
+ResGroupOps_GetCpuCores(void)
 {
 	return getCpuCores();
 }

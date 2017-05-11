@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) GPDB 2017. All Rights Reserved.
+# Copyright (c) 2017, Pivotal Software Inc.
 
 import sys
 
@@ -21,13 +21,13 @@ def validiate_permission(path, mode):
         exit("cgroup is not properly configured: %s expect permission: %s"%(str(e), mode))
 
 if (not os.access(os.path.join(cgroup_mount_location, "cpu/gpdb"), os.F_OK)):
-    exit("cgroup is not properly configured: directory %s do not exist"%os.path.join(cgroup_mount_location, "cpu/gpdb"))
+    exit("cgroup is not properly configured: directory %s does not exist"%os.path.join(cgroup_mount_location, "cpu/gpdb"))
 
 if (not os.access(os.path.join(cgroup_mount_location, "cpu/gpdb"), os.R_OK|os.W_OK|os.X_OK)):
     exit("cgroup is not properly configured: directory %s Permission denied, expect permission: rwx"%os.path.join(cgroup_mount_location, "cpu/gpdb"))
 
 if (not os.access(os.path.join(cgroup_mount_location, "cpuacct/gpdb"), os.F_OK)):
-    exit("cgroup is not properly configured: directory %s do not exist"%os.path.join(cgroup_mount_location, "cpuacct/gpdb"))
+    exit("cgroup is not properly configured: directory %s does not exist"%os.path.join(cgroup_mount_location, "cpuacct/gpdb"))
 
 if (not os.access(os.path.join(cgroup_mount_location, "cpuacct/gpdb"), os.R_OK|os.W_OK|os.X_OK)):
     exit("cgroup is not properly configured: directory %s Permission denied, expect permission: rwx"%os.path.join(cgroup_mount_location, "cpuacct/gpdb"))

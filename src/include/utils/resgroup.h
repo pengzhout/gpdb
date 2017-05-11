@@ -80,20 +80,6 @@ extern void AssignResGroup(void);
 /* Retrieve statistic information of type from resource group */
 extern void ResGroupGetStat(Oid groupId, ResGroupStatType type, char *retStr, int retStrLen, const char *prop);
 
-/*
- * Interfaces for OS dependent operations in resgroup-ops.c
- */
-extern const char * ResGroupOps_Name(void);
-extern void ResGroupOps_CheckPermission(void);
-extern void ResGroupOps_Init(void);
-extern void ResGroupOps_AdjustGUCs(void);
-extern void ResGroupOps_CreateGroup(Oid group);
-extern void ResGroupOps_DestroyGroup(Oid group);
-extern void ResGroupOps_AssignGroup(Oid group, int pid);
-extern void ResGroupOps_SetCpuRateLimit(Oid group, float cpu_rate_limit);
-extern int64 ResGroupOps_GetCpuUsage(Oid group);
-extern int ResGroupOps_GetCpuCores(void);
-
 #define LOG_RESGROUP_DEBUG(...) \
 	do {if (Debug_resource_group) elog(__VA_ARGS__); } while(false);
 

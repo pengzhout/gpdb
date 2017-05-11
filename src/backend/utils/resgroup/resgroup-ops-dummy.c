@@ -1,20 +1,17 @@
 /*-------------------------------------------------------------------------
  *
- * resgroup-ops.c
- *	  OS independent resource group operations.
+ * resgroup-ops-dummy.c
+ *	  OS dependent resource group operations - dummy implementation
  *
  *
- * Copyright (c) 2006-2017, Greenplum inc.
+ * Copyright (c) 2017, Pivotal Software Inc.
  *
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "postmaster/backoff.h"
-#include "utils/resgroup.h"
-
-#include "cgroup.h"
+#include "utils/resgroup-ops.h"
 
 /*
  * Interfaces for OS dependent operations.
@@ -27,33 +24,34 @@
  */
 
 #define unsupported_system() \
-	elog(ERROR, "cpu rate limitation for resource group is unsupported on this system")
+	elog(WARNING, "cpu rate limitation for resource group is unsupported on this system")
 
-/* Return the name for the OS group implementation, such as cgroup */
+/* Return the name for the OS group implementation */
 const char *
 ResGroupOps_Name(void)
 {
-	return "cgroup";
+	return "unsupported";
 }
 
 /* Check whether the OS group implementation is available and useable */
 void
-ResGroupOps_CheckPermission(void)
+ResGroupOps_Bless(void)
 {
-	CGroupCheckPermission(0);
+	unsupported_system();
 }
 
 /* Initialize the OS group */
 void
 ResGroupOps_Init(void)
 {
-	CGroupInitTop();
+	unsupported_system();
 }
 
+/* Adjust GUCs for this OS group implementation */
 void
 ResGroupOps_AdjustGUCs(void)
 {
-	CGroupAdjustGUCs();
+	unsupported_system();
 }
 
 /*
@@ -62,7 +60,7 @@ ResGroupOps_AdjustGUCs(void)
 void
 ResGroupOps_CreateGroup(Oid group)
 {
-	CGroupCreateSub(group);
+	unsupported_system();
 }
 
 /*
@@ -73,7 +71,7 @@ ResGroupOps_CreateGroup(Oid group)
 void
 ResGroupOps_DestroyGroup(Oid group)
 {
-	CGroupDestroySub(group);
+	unsupported_system();
 }
 
 /*
@@ -86,7 +84,7 @@ ResGroupOps_DestroyGroup(Oid group)
 void
 ResGroupOps_AssignGroup(Oid group, int pid)
 {
-	CGroupAssignGroup(group, pid);
+	unsupported_system();
 }
 
 /*
@@ -97,7 +95,7 @@ ResGroupOps_AssignGroup(Oid group, int pid)
 void
 ResGroupOps_SetCpuRateLimit(Oid group, float cpu_rate_limit)
 {
-	CGroupSetCpuRateLimit(group, cpu_rate_limit);
+	unsupported_system();
 }
 
 /*
@@ -107,7 +105,8 @@ ResGroupOps_SetCpuRateLimit(Oid group, float cpu_rate_limit)
 int64
 ResGroupOps_GetCpuUsage(Oid group)
 {
-	return CGroupGetCpuUsage(group);
+	unsupported_system();
+	return 0;
 }
 
 /*
@@ -116,5 +115,6 @@ ResGroupOps_GetCpuUsage(Oid group)
 int
 ResGroupOps_GetCpuCores(void)
 {
-	return CGroupGetCpuCores();
+	unsupported_system();
+	return 1;
 }

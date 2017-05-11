@@ -32,6 +32,7 @@
 #include "utils/datetime.h"
 #include "utils/fmgroids.h"
 #include "utils/resgroup.h"
+#include "utils/resgroup-ops.h"
 #include "utils/resource_manager.h"
 #include "utils/syscache.h"
 
