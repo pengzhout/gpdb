@@ -840,7 +840,6 @@ static void
 createResGroupAbortCallback(ResourceReleasePhase phase,
 							bool isCommit, bool isTopLevel, void *arg)
 {
-	volatile int savedInterruptHoldoffCount;
 	Oid groupId;
 
 	if (!isTopLevel ||
@@ -859,19 +858,7 @@ createResGroupAbortCallback(ResourceReleasePhase phase,
 		FreeResGroupEntry(groupId, NULL);
 
 		/* remove the os dependent part for this resource group */
-		PG_TRY();
-		{
-			ResGroupOps_DestroyGroup(groupId);
-		}
-		PG_CATCH();
-		{
-			/*
-			 * leaving a directory behind do no big harm to the whole system, here in a critical section ignore it.
-			 */
-			InterruptHoldoffCount = savedInterruptHoldoffCount;
-		}
-		PG_END_TRY();
-
+		ResGroupOps_DestroyGroup(groupId);
 	}
 
 	UnregisterResourceReleaseCallback(createResGroupAbortCallback, arg);
@@ -888,7 +875,6 @@ dropResGroupAbortCallback(ResourceReleasePhase phase,
 						  bool isCommit, bool isTopLevel, void *arg)
 {
 	Oid groupId;
-	volatile int savedInterruptHoldoffCount;
 
 	if (!isTopLevel ||
 		IsTransactionPreparing() ||
@@ -908,19 +894,9 @@ dropResGroupAbortCallback(ResourceReleasePhase phase,
 	else
 	{
 		groupId = *(Oid *)arg;
-		savedInterruptHoldoffCount = InterruptHoldoffCount;
-		PG_TRY();
-		{
-			ResGroupOps_DestroyGroup(groupId);
-		}
-		PG_CATCH();
-		{
-			/*
-			 * leaving a directory behind do no big harm to the whole system, here in a critical section ignore it.
-			 */
-			InterruptHoldoffCount = savedInterruptHoldoffCount;
-		}
-		PG_END_TRY();
+
+		/* remove the os dependent part for this resource group */
+		ResGroupOps_DestroyGroup(groupId);
 	}
 
 	UnregisterResourceReleaseCallback(dropResGroupAbortCallback, arg);
