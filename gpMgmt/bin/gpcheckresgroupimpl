@@ -25,6 +25,9 @@ class cgroup(object):
         src/backend/utils/resgroup/resgroup-ops-cgroup.c
         """
 
+        if len(sys.argv) > 1:
+            self.mount_point = sys.argv[1]
+
         self.validate_permission("cpu/gpdb/", "rwx")
         self.validate_permission("cpu/gpdb/cgroup.procs", "rw")
         self.validate_permission("cpu/gpdb/cpu.cfs_period_us", "rw")
