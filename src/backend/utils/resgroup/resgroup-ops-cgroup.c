@@ -475,6 +475,11 @@ checkPermission(Oid group, bool report)
 	} \
 } while (0)
 
+    /*
+     * These checks should keep in sync with
+     * gpMgmt/bin/gpcheckresgroupimpl
+     */
+
 	comp = "cpu";
 
 	__CHECK("", R_OK | W_OK | X_OK);
