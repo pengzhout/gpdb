@@ -13,6 +13,8 @@
 
 #include "miscadmin.h"
 #include "access/htup.h"
+#include "gp-libpq-fe.h"
+#include "gp-libpq-int.h"
 #include "cdb/cdbconn.h"
 #include "nodes/execnodes.h" //SliceTable
 #include "cdb/cdbmotion.h"
