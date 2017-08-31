@@ -169,10 +169,7 @@ struct PGPROC
 	 * Information for resource group
 	 */
 	bool		resWaiting;	/* true if waiting for an Resource Group lock */
-	bool		resGranted;	/* true means a resource group slot is granted.
-							   false when wake up from a resource group which
-							   is locked for drop */
-	int			resSlotId;	/* the resource group slot id granted */
+	char		resWakeReason;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */

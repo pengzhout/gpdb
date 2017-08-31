@@ -2249,10 +2249,6 @@ StartTransaction(void)
 		elog(WARNING, "StartTransaction while in %s state",
 			 TransStateAsString(s->state));
 
-	/* Acquire a resource group slot at the beginning of a transaction */
-	if (ShouldAssignResGroupOnMaster())
-		AssignResGroupOnMaster();
-
 	/*
 	 * set the current transaction state information appropriately during
 	 * start processing
@@ -2501,6 +2497,7 @@ StartTransaction(void)
 	AtStart_GUC();
 	AtStart_Inval();
 	AtStart_Cache();
+	AtStart_ResourceGroup();
 	AfterTriggerBeginXact();
 
 	/*
@@ -2741,9 +2738,6 @@ CommitTransaction(void)
 	/* All relations that are in the vacuum process are being commited now. */
 	ResetVacuumRels();
 
-	/* Process resource group related callbacks */
-	AtEOXact_ResGroup(true);
-
 	/* Check we've released all buffer pins */
 	AtEOXact_Buffers(true);
 
@@ -2810,6 +2804,8 @@ CommitTransaction(void)
 
 	AtCommit_Memory();
 
+	AtEOXact_ResGroup(true);
+
 	finishDistributedTransactionContext("CommitTransaction", false);
 
 	if (gp_local_distributed_cache_stats)
@@ -2837,10 +2833,6 @@ CommitTransaction(void)
 	RESUME_INTERRUPTS();
 
 	freeGangsForPortal(NULL);
-
-	/* Release resource group slot at the end of a transaction */
-	if (ShouldAssignResGroupOnMaster())
-		UnassignResGroupOnMaster();
 }
 
 
@@ -3046,9 +3038,6 @@ PrepareTransaction(void)
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
 						 true, true);
 
-	/* Process resource group related callbacks */
-	AtEOXact_ResGroup(true);
-
 	/* Check we've released all buffer pins */
 	AtEOXact_Buffers(true);
 
@@ -3102,6 +3091,13 @@ PrepareTransaction(void)
 	TopTransactionResourceOwner = NULL;
 
 	AtCommit_Memory();
+
+	/*
+	 * TODO: Is here the right location to release resource group stuff ?
+	 * Process resource group related stuff
+	 */
+	AtEOXact_ResGroup(true);
+
 
 	if (gp_local_distributed_cache_stats)
 	{
@@ -3272,7 +3268,6 @@ AbortTransaction(void)
 		ResourceOwnerRelease(TopTransactionResourceOwner,
 							 RESOURCE_RELEASE_BEFORE_LOCKS,
 							 false, true);
-		AtEOXact_ResGroup(false);
 		AtEOXact_Buffers(false);
 		AtEOXact_RelationCache(false);
 		AtEOXact_Inval(false);
@@ -3372,6 +3367,7 @@ CleanupTransaction(void)
 	TopTransactionResourceOwner = NULL;
 
 	AtCleanup_Memory();			/* and transaction memory */
+	AtEOXact_ResGroup(false); 	/* can release resource group after memory is cleaned up */
 
 	s->distribXid = InvalidDistributedTransactionId;
 	s->transactionId = InvalidTransactionId;
@@ -3390,10 +3386,6 @@ CleanupTransaction(void)
 	s->state = TRANS_DEFAULT;
 
 	finishDistributedTransactionContext("CleanupTransaction", true);
-
-	/* Release resource group slot at the end of a transaction */
-	if (ShouldAssignResGroupOnMaster())
-		UnassignResGroupOnMaster();
 }
 
 /*

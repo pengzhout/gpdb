@@ -5152,7 +5152,7 @@ PostgresMain(int argc, char *argv[],
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
 
 					if (IsResGroupActivated() && resgroupInfoLen > 0)
-						SwitchResGroupOnSegment(resgroupInfoBuf, resgroupInfoLen);
+						DeserializeResGroupInfo(resgroupInfoBuf, resgroupInfoLen);
 
 					if (suid > 0)
 						SetSessionUserId(suid, suid_is_super); /* Set the session UserId */
@@ -5226,6 +5226,9 @@ PostgresMain(int argc, char *argv[],
 					int serializedDtxContextInfolen;
 					const char *serializedDtxContextInfo;
 
+					int resgroupInfoLen = 0;
+					const char *resgroupInfoBuf;
+
 					if (Gp_role != GP_ROLE_EXECUTE)
 						ereport(ERROR,
 								(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -5263,8 +5266,14 @@ PostgresMain(int argc, char *argv[],
 						serializedDtxContextInfo = pq_getmsgbytes(&input_message,serializedDtxContextInfolen);
 
 					DtxContextInfo_Deserialize(serializedDtxContextInfo, serializedDtxContextInfolen, &TempDtxContextInfo);
+					resgroupInfoLen = pq_getmsgint(&input_message, 4);
+					if (resgroupInfoLen > 0)
+						resgroupInfoBuf = pq_getmsgbytes(&input_message, resgroupInfoLen);
 
 					pq_getmsgend(&input_message);
+
+					if (IsResGroupActivated() && resgroupInfoLen > 0)
+						DeserializeResGroupInfo(resgroupInfoBuf, resgroupInfoLen);
 
 					exec_mpp_dtx_protocol_command(dtxProtocolCommand, flags, loggingStr, gid, gxid, &TempDtxContextInfo);
 

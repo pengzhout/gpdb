@@ -197,20 +197,20 @@ VmemTracker_ReserveVmemChunks(int32 numChunksToReserve)
 	Assert(NULL != MySessionState);
 
 	Assert(0 < numChunksToReserve);
+
+	bool waiverUsed = false;
+	if (!ResGroupReserveMemory(numChunksToReserve, waivedChunks, &waiverUsed))
+	{
+		return MemoryFailure_ResourceGroupMemoryExhausted;
+	}
+
 	int32 total = pg_atomic_add_fetch_u32((pg_atomic_uint32 *)&MySessionState->sessionVmem, numChunksToReserve);
 	Assert(total > (int32) 0);
 
+	waiverUsed = false;
 
 	/* We don't support vmem usage from non-owner thread */
 	Assert(MemoryProtection_IsOwnerThread());
-
-	bool waiverUsed = false;
-
-	if (!ResGroupReserveMemory(numChunksToReserve, waivedChunks, &waiverUsed))
-	{
-		pg_atomic_sub_fetch_u32((pg_atomic_uint32 *)&MySessionState->sessionVmem, numChunksToReserve);
-		return MemoryFailure_ResourceGroupMemoryExhausted;
-	}
 
 	/*
 	 * Query vmem quota exhausted, so rollback the reservation and return error.

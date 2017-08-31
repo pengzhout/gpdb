@@ -19,8 +19,9 @@
  */
 typedef struct ResGroupCap
 {
-	int		value;
-	int		proposed;
+	float	value;
+	float	proposed;
+	float	newProposed;
 } ResGroupCap;
 
 /*
@@ -103,13 +104,7 @@ extern void AllocResGroupEntry(Oid groupId, const ResGroupOpts *opts);
 extern void FreeResGroupEntry(Oid groupId);
 
 extern void SerializeResGroupInfo(StringInfo str);
-extern void DeserializeResGroupInfo(struct ResGroupCaps *capsOut,
-									const char *buf, int len);
-
-extern bool ShouldAssignResGroupOnMaster(void);
-extern void AssignResGroupOnMaster(void);
-extern void UnassignResGroupOnMaster(void);
-extern void SwitchResGroupOnSegment(const char *buf, int len);
+extern void DeserializeResGroupInfo(const char *buf, int len);
 
 /* Retrieve statistic information of type from resource group */
 extern Datum ResGroupGetStat(Oid groupId, ResGroupStatType type);
@@ -128,9 +123,7 @@ extern bool ResGroupReserveMemory(int32 memoryChunks, int32 overuseChunks, bool 
 /* Update the memory usage of resource group */
 extern void ResGroupReleaseMemory(int32 memoryChunks);
 
-extern void ResGroupAlterOnCommit(Oid groupId,
-								  ResGroupLimitType limittype,
-								  const ResGroupCaps *caps);
+extern void ResGroupAlterOnCommit(Oid groupId, ResGroupLimitType limitType, int value);
 extern void ResGroupDropCheckForWakeup(Oid groupId, bool isCommit);
 extern void ResGroupCheckForDrop(Oid groupId, char *name);
 extern int32 ResGroupAllocStocks(Oid groupId, int32 stocks);
@@ -147,6 +140,11 @@ extern void ResGroupGetMemInfo(int *memLimit, int *slotQuota, int *sharedQuota);
 
 extern int64 ResourceGroupGetQueryMemoryLimit(void);
 extern int32 ResGroupGetMemStocks(Oid groupId);
+
+extern void AtStart_ResourceGroup(void);
+extern void AtEOXact_ResGroup(bool isCommit);
+
+extern void ResGroupSetNewProposed(Oid groupId, ResGroupLimitType limitType, int value);
 
 #define LOG_RESGROUP_DEBUG(...) \
 	do {if (Debug_resource_group) elog(__VA_ARGS__); } while(false);

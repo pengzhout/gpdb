@@ -2064,7 +2064,6 @@ _SPI_assign_query_mem(QueryDesc * queryDesc)
 		{
 			queryDesc->plannedstmt->query_mem = SPI_GetMemoryReservation();
 		}
-		Assert(queryDesc->plannedstmt->query_mem > 0);
 	}
 }
 

@@ -325,8 +325,13 @@ buildGpDtxProtocolCommand(struct CdbDispatcherState *ds,
 	int	gxid = pDtxProtocolParms->gxid;
 	char *serializedDtxContextInfo = pDtxProtocolParms->serializedDtxContextInfo;
 	int	serializedDtxContextInfoLen = pDtxProtocolParms->serializedDtxContextInfoLen;
+	StringInfoData resgroupInfo;
 	int	tmp = 0;
 	int	len = 0;
+
+	initStringInfo(&resgroupInfo);
+	if (IsResGroupActivated())
+		SerializeResGroupInfo(&resgroupInfo);
 
 	int	loggingStrLen = strlen(dtxProtocolCommandLoggingStr) + 1;
 	int	gidLen = strlen(gid) + 1;
@@ -340,7 +345,9 @@ buildGpDtxProtocolCommand(struct CdbDispatcherState *ds,
 		gidLen +
 		sizeof(gxid) +
 		sizeof(serializedDtxContextInfoLen) +
-		serializedDtxContextInfoLen;
+		serializedDtxContextInfoLen +
+		sizeof(resgroupInfo.len) +
+		resgroupInfo.len;
 
 	char *shared_query = NULL;
 	char *pos = NULL;
@@ -393,6 +400,16 @@ buildGpDtxProtocolCommand(struct CdbDispatcherState *ds,
 	{
 		memcpy(pos, serializedDtxContextInfo, serializedDtxContextInfoLen);
 		pos += serializedDtxContextInfoLen;
+	}
+
+	tmp = htonl(resgroupInfo.len);
+	memcpy(pos, &tmp, sizeof(resgroupInfo.len));
+	pos += sizeof(resgroupInfo.len);
+
+	if (resgroupInfo.len > 0)
+	{
+		memcpy(pos, resgroupInfo.data, resgroupInfo.len);
+		pos += resgroupInfo.len;
 	}
 
 	len = pos - shared_query - 1;

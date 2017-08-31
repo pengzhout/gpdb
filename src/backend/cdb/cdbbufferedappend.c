@@ -435,4 +435,9 @@ void BufferedAppendFinish(
 		pfree(bufferedAppend->relationName);
 		bufferedAppend->relationName = NULL;
 	}
+	if (bufferedAppend->memory != NULL)
+	{
+		pfree(bufferedAppend->memory);
+		bufferedAppend->memory = NULL;
+	}
 }
