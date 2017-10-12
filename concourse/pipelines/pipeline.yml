@@ -81,7 +81,8 @@ groups:
   - regression_tests_pxf_cdh
   - regression_tests_gphdfs_centos
   - regression_tests_gpcloud_centos
-  - mpp_resource_group
+  - mpp_resource_group_centos6
+  - mpp_resource_group_centos7
   - gate_general_misc_end
 ################################
   - gate_filerep_start
@@ -109,9 +110,10 @@ groups:
 
 - name: Adopted CCP
   jobs:
-  - mpp_resource_group
   - cs_walrep_1
   - cs_walrep_2
+  - mpp_resource_group_centos6
+  - mpp_resource_group_centos7
   - cs_filerep_e2e_full_primary
   - cs_filerep_e2e_incr_primary
   - cs_filerep_e2e_full_mirror
@@ -221,7 +223,8 @@ groups:
   - regression_tests_pxf_cdh
   - regression_tests_gphdfs_centos
   - regression_tests_gpcloud_centos
-  - mpp_resource_group
+  - mpp_resource_group_centos6
+  - mpp_resource_group_centos7
   - gate_general_misc_end
 
 - name: G:FileRep
@@ -2598,7 +2601,7 @@ jobs:
       overwrite_gpcloud: false
       TARGET_OS: centos
       TARGET_OS_VERSION: 6
-- name: mpp_resource_group
+- name: mpp_resource_group_centos6
   plan:
   - aggregate:
     - get: gpdb_src
@@ -2625,6 +2628,39 @@ jobs:
   - task: run_tests
     file: gpdb_src/concourse/tasks/ic_gpdb_resgroup.yml
     image: centos-gpdb-dev-6
+    params:
+      TEST_OS: centos6
+    on_failure:
+      <<: *debug_sleep
+  - *ccp_destroy
+- name: mpp_resource_group_centos7
+  plan:
+  - aggregate:
+    - get: gpdb_src
+      passed: [gate_general_misc_start]
+    - get: bin_gpdb
+      resource: bin_gpdb_centos7
+    - get: ccp_src
+    - get: centos-gpdb-dev-7
+  - put: terraform
+    params:
+      <<: *ccp_default_params
+      vars:
+        <<: *ccp_default_vars
+        platform: centos7
+  - task: gen_cluster
+    file: ccp_src/ci/tasks/gen_cluster.yml
+    params:
+      <<: *ccp_gen_cluster_default_params
+    input_mapping:
+      gpdb_binary: bin_gpdb
+    on_failure:
+      <<: *ccp_destroy
+  - task: run_tests
+    file: gpdb_src/concourse/tasks/ic_gpdb_resgroup.yml
+    image: centos-gpdb-dev-7
+    params:
+      TEST_OS: centos7
     on_failure:
       <<: *debug_sleep
   - *ccp_destroy
@@ -2640,7 +2676,6 @@ jobs:
     - QP_runaway-query
     - QP_optimizer-functional
     - MM_gpcheckcat
-    - mpp_resource_group
     trigger: true
   - get: bin_gpdb_centos6
     passed: *gate_general_misc_end
@@ -2820,8 +2855,9 @@ jobs:
     - icw_gporca_centos7
     - icw_gporca_sles11
     - icw_planner_ictcp_centos6
-    - mpp_resource_group
     - client_loader_remote_test_aix
+    - mpp_resource_group_centos6
+    - mpp_resource_group_centos7
     - MU_check_centos
     - MM_analyzedb
     - MM_gpinitsystem
