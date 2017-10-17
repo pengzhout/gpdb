@@ -16,6 +16,8 @@
 
 #include "nodes/nodes.h"
 
+#define BITS_IN_MB 20
+
 /*
  * The cleanupCountdown in the SessionState determines how many
  * processes we need to cleanup to declare a session clean. If it

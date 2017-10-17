@@ -164,6 +164,9 @@ extern void ResGroupDecideConcurrencyCaps(Oid groupId,
 										  ResGroupCaps *caps,
 										  const ResGroupOpts *opts);
 
+extern int32 ResGroupGetVmemProtectLimit(void);
+extern int32 ResGroupGetVmemChunkSizeInBits(void);
+
 /* test helper function */
 extern void ResGroupGetMemInfo(int *memLimit, int *slotQuota, int *sharedQuota);
 
