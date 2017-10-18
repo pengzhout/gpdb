@@ -320,14 +320,10 @@ VmemTracker_GetNonNegativeAvailableVmemChunks()
 {
 	int32 usedChunks = *segmentVmemChunks;
 	int32 vmemLimitChunks = VmemTracker_GetVmemLimitChunks();
-	if (vmemTrackerInited && vmemLimitChunks > usedChunks)
-	{
+	if (vmemLimitChunks > usedChunks)
 		return vmemLimitChunks - usedChunks;
-	}
-	else
-	{
-		return 0;
-	}
+
+	return 0;
 }
 
 /*
@@ -339,14 +335,9 @@ VmemTracker_GetNonNegativeAvailableQueryChunks()
 {
 	int32 curSessionVmem = MySessionState->sessionVmem;
 	int32 memLimitPerQuery = VmemTracker_GetMaxChunksPerQuery();
-	if (vmemTrackerInited && memLimitPerQuery > curSessionVmem)
-	{
+	if (memLimitPerQuery > curSessionVmem)
 		return memLimitPerQuery - curSessionVmem;
-	}
-	else
-	{
-		return 0;
-	}
+	return 0;
 }
 
 /* Converts chunks to MB */
@@ -463,14 +454,7 @@ VmemTracker_GetReservedVmemBytes(void)
 int64
 VmemTracker_GetAvailableVmemBytes()
 {
-	if (vmemTrackerInited)
-	{
-		return CHUNKS_TO_BYTES(VmemTracker_GetNonNegativeAvailableVmemChunks());
-	}
-	else
-	{
-		return 0;
-	}
+	return CHUNKS_TO_BYTES(VmemTracker_GetNonNegativeAvailableVmemChunks());
 }
 
 /*
@@ -479,14 +463,7 @@ VmemTracker_GetAvailableVmemBytes()
 int32
 VmemTracker_GetAvailableVmemMB()
 {
-	if (vmemTrackerInited)
-	{
-		return CHUNKS_TO_MB(VmemTracker_GetNonNegativeAvailableVmemChunks());
-	}
-	else
-	{
-		return 0;
-	}
+	return CHUNKS_TO_MB(VmemTracker_GetNonNegativeAvailableVmemChunks());
 }
 
 /*
@@ -495,14 +472,7 @@ VmemTracker_GetAvailableVmemMB()
 int32
 VmemTracker_GetAvailableQueryVmemMB()
 {
-	if (vmemTrackerInited)
-	{
-		return CHUNKS_TO_MB(VmemTracker_GetNonNegativeAvailableQueryChunks());
-	}
-	else
-	{
-		return 0;
-	}
+	return CHUNKS_TO_MB(VmemTracker_GetNonNegativeAvailableQueryChunks());
 }
 
 /*
