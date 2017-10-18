@@ -406,7 +406,7 @@ VmemTracker_GetVmemLimitBytes(void)
 int32
 VmemTracker_GetVmemLimitChunks(void)
 {
-	return IsResGroupActivated() ?
+	return IsResGroupEnabled() ?
 		ResGroupGetVmemProtectLimit() : vmemChunksQuota;
 }
 
@@ -416,7 +416,7 @@ VmemTracker_GetVmemLimitChunks(void)
 int32
 VmemTracker_GetChunkSizeInBits(void)
 {
-	return IsResGroupActivated() ?
+	return IsResGroupEnabled() ?
 		ResGroupGetVmemChunkSizeInBits() : chunkSizeInBits;
 }
 

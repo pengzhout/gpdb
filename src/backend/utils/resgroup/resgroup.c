@@ -662,8 +662,7 @@ ResGroupAlterOnCommit(Oid groupId,
 int32
 ResGroupGetVmemProtectLimit(void)
 {
-	Assert(IsResGroupActivated());
-	Assert(pResGroupControl->totalChunks > 0);
+	Assert(IsResGroupEnabled());
 
 	return pResGroupControl->totalChunks;
 }
@@ -671,8 +670,7 @@ ResGroupGetVmemProtectLimit(void)
 int32
 ResGroupGetVmemChunkSizeInBits(void)
 {
-	Assert(IsResGroupActivated());
-	Assert(pResGroupControl->chunkSizeInBits > 0);
+	Assert(IsResGroupEnabled());
 
 	return pResGroupControl->chunkSizeInBits;
 }
@@ -1711,7 +1709,7 @@ decideTotalChunks(int32 *totalChunks, int32 *chunkSizeInBits)
 	int32 nsegments;
 	int32 l_totalChunks;
 	int32 l_chunkSizeInBits;
-		
+
 	nsegments = Gp_role == GP_ROLE_EXECUTE ? host_segments : pResGroupControl->segmentsOnMaster;
 	Assert(nsegments > 0);
 
