@@ -637,12 +637,28 @@ dumpResGroups(PGconn *conn)
 			i_memory_shared_quota,
 			i_memory_spill_ratio;
 
-	printfPQExpBuffer(buf, "SELECT groupname, cpu_rate_limit, "
-					  "proposed_concurrency as concurrency, "
-					  "proposed_memory_limit as memory_limit, "
-					  "proposed_memory_shared_quota as memory_shared_quota, "
-					  "proposed_memory_spill_ratio as memory_spill_ratio "
-					  "from gp_toolkit.gp_resgroup_config;");
+	printfPQExpBuffer(buf, "SELECT g.rsgname AS groupname, "
+					  "t1.proposed AS concurrency, "
+					  "t2.value AS cpu_rate_limit, "
+					  "t3.proposed AS memory_limit, "
+					  "t4.proposed AS memory_shared_quota, "
+					  "t5.proposed AS memory_spill_ratio "
+					  "FROM pg_resgroup g, "
+					  "pg_resgroupcapability t1, "
+					  "pg_resgroupcapability t2, "
+					  "pg_resgroupcapability t3, "
+					  "pg_resgroupcapability t4, "
+					  "pg_resgroupcapability t5 "
+					  "WHERE g.oid = t1.resgroupid AND "
+					  "g.oid = t2.resgroupid AND "
+					  "g.oid = t3.resgroupid AND "
+					  "g.oid = t4.resgroupid AND "
+					  "g.oid = t5.resgroupid AND "
+					  "t1.reslimittype = 1 AND "
+					  "t2.reslimittype = 2 AND "
+					  "t3.reslimittype = 3 AND "
+					  "t4.reslimittype = 4 AND "
+					  "t5.reslimittype = 5;");
 
 	res = executeQuery(conn, buf->data);
 
@@ -674,7 +690,7 @@ dumpResGroups(PGconn *conn)
 		const char *memory_shared_quota;
 		const char *memory_spill_ratio;
 
-		groupname = PQgetvalue(res, i, i_groupname);
+		groupname = fmtId(PQgetvalue(res, i, i_groupname));
 		cpu_rate_limit = PQgetvalue(res, i, i_cpu_rate_limit);
 		concurrency = PQgetvalue(res, i, i_concurrency);
 		memory_limit = PQgetvalue(res, i, i_memory_limit);
@@ -702,7 +718,7 @@ dumpResGroups(PGconn *conn)
 			printfPQExpBuffer(buf, "CREATE RESOURCE GROUP %s WITH ("
 							  "concurrency=%s, cpu_rate_limit=%s, "
 							  "memory_limit=%s, memory_shared_quota=%s, "
-							  "memory_spill_ratio=%s);",
+							  "memory_spill_ratio=%s);\n",
 							  groupname, concurrency, cpu_rate_limit,
 							  memory_limit, memory_shared_quota,
 							  memory_spill_ratio);
