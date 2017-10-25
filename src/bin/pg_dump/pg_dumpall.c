@@ -639,7 +639,7 @@ dumpResGroups(PGconn *conn)
 
 	printfPQExpBuffer(buf, "SELECT g.rsgname AS groupname, "
 					  "t1.proposed AS concurrency, "
-					  "t2.value AS cpu_rate_limit, "
+					  "t2.proposed AS cpu_rate_limit, "
 					  "t3.proposed AS memory_limit, "
 					  "t4.proposed AS memory_shared_quota, "
 					  "t5.proposed AS memory_spill_ratio "
