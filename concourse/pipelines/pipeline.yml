@@ -103,7 +103,8 @@ groups:
   - regression_tests_pxf_cdh_tar
   - regression_tests_gphdfs_centos
   - regression_tests_gpcloud_centos
-  - mpp_resource_group
+  - mpp_resource_group_centos6
+  - mpp_resource_group_centos7
   - gate_general_misc_end
 ################################
   - gate_filerep_start
@@ -124,9 +125,10 @@ groups:
 
 - name: Adopted CCP
   jobs:
-  - mpp_resource_group
   - cs_walrep_1
   - cs_walrep_2
+  - mpp_resource_group_centos6
+  - mpp_resource_group_centos7
   - cs_filerep_e2e_full_primary
   - cs_filerep_e2e_incr_primary
   - cs_filerep_e2e_full_mirror
@@ -274,7 +276,8 @@ groups:
   - regression_tests_pxf_cdh_tar
   - regression_tests_gphdfs_centos
   - regression_tests_gpcloud_centos
-  - mpp_resource_group
+  - mpp_resource_group_centos6
+  - mpp_resource_group_centos7
   - gate_general_misc_end
 
 - name: G:FileRep
@@ -2661,6 +2664,9 @@ jobs:
     - get: bin_gpdb_centos6
       passed: *gate_mm_misc_end_passed
     # Not used by icw group, but is passed through
+    - get: bin_gpdb_centos7
+      passed:
+      - gate_mm_misc_start
     - get: gpdb_src_tinc_tarball
       passed:
       - gate_mm_misc_start
@@ -3508,6 +3514,9 @@ jobs:
     - get: bin_gpdb_centos6
       passed:
       - gate_mm_misc_end
+    - get: bin_gpdb_centos7
+      passed:
+      - gate_mm_misc_end
 - name: MM_gpcheckcat
   plan:
   - aggregate:
@@ -3725,7 +3734,7 @@ jobs:
       overwrite_gpcloud: false
       TARGET_OS: centos
       TARGET_OS_VERSION: 6
-- name: mpp_resource_group
+- name: mpp_resource_group_centos6
   plan:
   - aggregate:
     - get: gpdb_src
@@ -3759,6 +3768,48 @@ jobs:
     tags: ["gpdb5_ccp_external_worker"]
     file: gpdb_src/concourse/tasks/ic_gpdb_resgroup.yml
     image: centos-gpdb-dev-6
+    params:
+      TEST_OS: centos6
+    on_failure:
+      <<: *debug_sleep
+  - *ccp_destroy
+- name: mpp_resource_group_centos7
+  plan:
+  - aggregate:
+    - get: gpdb_src
+      tags: ["gpdb5_ccp_external_worker"]
+      passed: [gate_general_misc_start]
+    - get: bin_gpdb
+      tags: ["gpdb5_ccp_external_worker"]
+      resource: bin_gpdb_centos7
+      passed: [gate_general_misc_start]
+      trigger: true
+    - get: ccp_src
+      tags: ["gpdb5_ccp_external_worker"]
+    - get: centos-gpdb-dev-7
+      tags: ["gpdb5_ccp_external_worker"]
+  - put: terraform
+    tags: ["gpdb5_ccp_external_worker"]
+    params:
+      <<: *ccp_default_params
+      vars:
+        <<: *ccp_default_vars
+        platform: centos7
+  - task: gen_cluster
+    tags: ["gpdb5_ccp_external_worker"]
+    file: ccp_src/ci/tasks/gen_cluster.yml
+    params:
+      <<: *ccp_gen_cluster_default_params
+    input_mapping:
+      gpdb_binary: bin_gpdb
+    on_failure:
+      <<: *ccp_destroy
+  - task: run_tests
+    tags: ["gpdb5_ccp_external_worker"]
+    file: gpdb_src/concourse/tasks/ic_gpdb_resgroup.yml
+    image: centos-gpdb-dev-7
+    params:
+      TEST_OS: centos7
     on_failure:
       <<: *debug_sleep
   - *ccp_destroy
@@ -3776,7 +3827,6 @@ jobs:
       - regression_tests_pxf_cdh_tar
       - QP_optimizer-functional
       - MM_gpcheckcat
-      - mpp_resource_group
       trigger: true
     - get: bin_gpdb_centos6
       passed: *gate_general_misc_end
@@ -3990,8 +4040,9 @@ jobs:
     - icw_planner_ubuntu16
     - icw_gporca_conan_ubuntu16
     - icw_planner_ictcp_centos6
-    - mpp_resource_group
     - client_loader_remote_test_aix
+    - mpp_resource_group_centos6
+    - mpp_resource_group_centos7
     - MU_check_centos
     - MM_analyzedb
     - MM_gpinitsystem
