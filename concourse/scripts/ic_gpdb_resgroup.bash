@@ -9,11 +9,9 @@ CLUSTER_NAME=$(cat ./cluster_env_files/terraform/name)
 
 prepare_env() {
     local gpdb_host_alias=$1
-    local pkgs='bzip2-devel'
+    local pkgs='perl-Env perl-Data-Dumper'
 
-    if [ "$TEST_OS" = "centos7" ]; then
-        pkgs+=' perl-Env perl-Data-Dumper'
-    fi
+    if [ "$TEST_OS" != "centos7" ]; then return; fi
 
     ssh -t $gpdb_host_alias sudo yum install -d1 -y $pkgs
 }
@@ -24,7 +22,7 @@ mount_cgroups() {
     local options=rw,nosuid,nodev,noexec,relatime
     
     #local groups="freezer devices cpuset blkio net_prio net_cls cpuacct cpu memory perf_event"
-    local groups="cpuacct cpu"
+    local groups="cpuacct cpu memory"
 
     if [ "$TEST_OS" = "centos7" ]; then return; fi
 
@@ -66,7 +64,7 @@ run_resgroup_test() {
             --without-zlib --without-rt --without-libcurl \
             --without-libedit-preferred --without-docdir --without-readline \
             --disable-gpcloud --disable-gpfdist --disable-orca \
-            --disable-pxf ${CONFIGURE_FLAGS}
+            --disable-pxf --without-libbz2 ${CONFIGURE_FLAGS}
 
         make -C /home/gpadmin/gpdb_src/src/test/regress
         ssh sdw1 mkdir -p /home/gpadmin/gpdb_src/src/test/regress </dev/null
@@ -92,8 +90,8 @@ EOF1
 EOF
 }
 
-#prepare_env ccp-${CLUSTER_NAME}-0
-#prepare_env ccp-${CLUSTER_NAME}-1
+prepare_env ccp-${CLUSTER_NAME}-0
+prepare_env ccp-${CLUSTER_NAME}-1
 mount_cgroups ccp-${CLUSTER_NAME}-0
 mount_cgroups ccp-${CLUSTER_NAME}-1
 make_cgroups_dir ccp-${CLUSTER_NAME}-0
