@@ -90,8 +90,8 @@ EOF1
 EOF
 }
 
-prepare_env ccp-${CLUSTER_NAME}-0
-prepare_env ccp-${CLUSTER_NAME}-1
+#prepare_env ccp-${CLUSTER_NAME}-0
+#prepare_env ccp-${CLUSTER_NAME}-1
 mount_cgroups ccp-${CLUSTER_NAME}-0
 mount_cgroups ccp-${CLUSTER_NAME}-1
 make_cgroups_dir ccp-${CLUSTER_NAME}-0
