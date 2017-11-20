@@ -22,7 +22,9 @@ mount_cgroups() {
     local gpdb_host_alias=$1
     local basedir=/cgroup
     local options=rw,nosuid,nodev,noexec,relatime
-    local groups="freezer devices cpuset blkio net_prio net_cls cpuacct cpu memory perf_event"
+    
+    #local groups="freezer devices cpuset blkio net_prio net_cls cpuacct cpu memory perf_event"
+    local groups="cpuacct cpu"
 
     if [ "$TEST_OS" = "centos7" ]; then return; fi
 
