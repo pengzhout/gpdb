@@ -1135,6 +1135,15 @@ _outCreateFdwStmt(StringInfo str, CreateFdwStmt *node)
 }
 
 static void
+_outDistributedBy(StringInfo str, DistributedBy *node)
+{
+	WRITE_NODE_TYPE("DISTRIBUTEDBY");
+
+	WRITE_ENUM_FIELD(type, GpPolicyType);
+	WRITE_NODE_FIELD(columns);
+}
+
+static void
 _outAlterFdwStmt(StringInfo str, AlterFdwStmt *node)
 {
 	WRITE_NODE_TYPE("ALTERFDWSTMT");
@@ -2141,6 +2150,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CreateFdwStmt:
 				_outCreateFdwStmt(str, obj);
+				break;
+			case T_DistributedBy:
+				_outDistributedBy(str, obj);
 				break;
 
 			default:

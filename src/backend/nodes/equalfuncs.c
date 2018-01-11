@@ -2604,6 +2604,15 @@ _equalAlterTypeStmt(AlterTypeStmt *a, AlterTypeStmt *b)
 }
 
 static bool
+_equalDistributedBy(DistributedBy *a, DistributedBy *b)
+{
+	COMPARE_SCALAR_FIELD(type);
+	COMPARE_NODE_FIELD(columns);
+
+	return true;
+}
+
+static bool
 _equalXmlSerialize(XmlSerialize *a, XmlSerialize *b)
 {
 	COMPARE_SCALAR_FIELD(xmloption);
@@ -3365,6 +3374,9 @@ equal(void *a, void *b)
 			break;
 		case T_AlterTypeStmt:
 			retval = _equalAlterTypeStmt(a, b);
+			break;
+		case T_DistributedBy:
+			retval = _equalDistributedBy(a, b);
 			break;
 
 		default:

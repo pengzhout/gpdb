@@ -4639,6 +4639,17 @@ _copyCookedConstraint(CookedConstraint *from)
 	return newnode;
 }
 
+static DistributedBy *
+_copyDistributedBy(DistributedBy *from)
+{
+	DistributedBy *newnode = makeNode(DistributedBy);
+
+	COPY_SCALAR_FIELD(type);
+	COPY_NODE_FIELD(columns);
+
+	return newnode;
+}
+
 /* ****************************************************************
  *					pg_list.h copy functions
  * ****************************************************************
@@ -5614,6 +5625,10 @@ copyObject(void *from)
 
 		case T_CookedConstraint:
 			retval = _copyCookedConstraint(from);
+			break;
+
+		case T_DistributedBy:
+			retval = _copyDistributedBy(from);
 			break;
 
 		default:

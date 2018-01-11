@@ -1063,6 +1063,21 @@ typedef enum SetOperation
 	SETOP_EXCEPT
 } SetOperation;
 
+/*
+typedef enum DistributedByType 
+{
+	DISTRIBUTEDBY_RANDOMLY = 0,
+	DISTRIBUTEDBY_REPLICATED,
+	DISTRIBUTEDBY_COLUMNS
+} DistributedByType;
+*/
+
+typedef struct DistributedBy
+{
+	GpPolicyType type;
+	List *columns; /* valid when type is DISTRIBUTEDBY_COLUMNS */
+} DistributedBy;
+
 typedef struct SelectStmt
 {
 	NodeTag		type;
@@ -1111,7 +1126,7 @@ typedef struct SelectStmt
 	/* Eventually add fields for CORRESPONDING spec here */
 
 	/* This field used by: SELECT INTO, CTAS */
-	List       *distributedBy;  /* GPDB: columns to distribute the data on. */
+	struct DistributedBy *distributedBy;  /* GPDB: columns to distribute the data on. */
 
 } SelectStmt;
 
@@ -1617,7 +1632,7 @@ typedef struct CreateStmt
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
-	List       *distributedBy;   /* what columns we distribute the data by */
+	DistributedBy *distributedBy;   /* what columns we distribute the data by */
 	Node       *partitionBy;     /* what columns we partition the data by */
 	char	    relKind;         /* CDB: force relkind to this */
 	char		relStorage;
@@ -1670,7 +1685,7 @@ typedef struct CreateExternalStmt
 	List       *extOptions;		/* generic options to external table */
 	List	   *encoding;		/* List (size 1 max) of DefElem nodes for
 								   data encoding */
-	List       *distributedBy;   /* what columns we distribute the data by */
+	struct DistributedBy       *distributedBy;   /* what columns we distribute the data by */
 	struct GpPolicy  *policy;	/* used for writable tables */
 
 } CreateExternalStmt;

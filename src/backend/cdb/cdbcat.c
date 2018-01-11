@@ -291,7 +291,8 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 	bool		nulls[2];
 	Datum		values[2];
 
-	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
+	Insist(policy->ptype == POLICYTYPE_PARTITIONED ||
+		policy->ptype == POLICYTYPE_REPLICATED);
 
 	/*
 	 * Open and lock the gp_distribution_policy catalog.
