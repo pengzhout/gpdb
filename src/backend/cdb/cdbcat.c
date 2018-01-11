@@ -46,6 +46,21 @@ createRandomDistribution(void)
 }
 
 /*
+ * createReplicatedDistribution -- Create a policy with replicated distribution
+ */
+GpPolicy *
+createReplicatedDistribution(void)
+{
+	GpPolicy   *p = NULL;
+
+	p = (GpPolicy *) palloc0(sizeof(GpPolicy));
+	p->ptype = POLICYTYPE_REPLICATED;
+	p->nattrs = 0;
+
+	return p;
+}
+
+/*
  * GpPolicyCopy -- Return a copy of a GpPolicy object.
  *
  * The copy is palloc'ed in the specified context.
@@ -216,6 +231,9 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		{
 			policy->attrs[i] = attrnums[i];
 		}
+
+		if (nattrs == 1 && policy->attrs[0] == -1)
+			policy->ptype = POLICYTYPE_REPLICATED;
 	}
 
 	/*

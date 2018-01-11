@@ -333,7 +333,11 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 		else
 			CdbPathLocus_MakeStrewn(&result);
 	}
-
+	else if (policy &&
+		policy->ptype == POLICYTYPE_REPLICATED)
+	{
+		CdbPathLocus_MakeReplicated(&result);	
+	}
 	/* Kludge used internally for querying catalogs on segment dbs */
 	else if (cdbpathlocus_querysegmentcatalogs)
 		CdbPathLocus_MakeStrewn(&result);

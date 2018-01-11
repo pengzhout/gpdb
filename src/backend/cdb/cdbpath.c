@@ -976,8 +976,12 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	else if (CdbPathLocus_IsReplicated(outer.locus) ||
 			 CdbPathLocus_IsReplicated(inner.locus))
 	{
-		Assert(false);
-		goto fail;
+		/* both inner and outer are replicated are not supported so far */
+		Assert(!(CdbPathLocus_IsReplicated(outer.locus) && CdbPathLocus_IsReplicated(inner.locus)));
+		if (CdbPathLocus_IsReplicated(outer.locus))
+			return inner.locus;
+		if (CdbPathLocus_IsReplicated(inner.locus))
+			return outer.locus;
 	}
 
 	/*
