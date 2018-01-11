@@ -215,6 +215,14 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 		}
 	}
 
+	if (policy && policy->ptype == POLICYTYPE_REPLICATED)
+	{
+		result.dd.isDirectDispatch = true;
+		result.haveProcessedAnyCalculations = true;
+		result.dd.contentIds = list_make1_int(1);
+		return result;
+	}
+
 	if (rte->forceDistRandom ||
 		policy == NULL ||
 		policy->nattrs == 0 ||

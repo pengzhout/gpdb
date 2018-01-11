@@ -217,7 +217,8 @@ cdbparallelize(PlannerInfo *root,
 
 				/* Tell caller if target rel is distributed. */
 				if (policy &&
-					policy->ptype == POLICYTYPE_PARTITIONED)
+					(policy->ptype == POLICYTYPE_PARTITIONED ||
+					policy->ptype == POLICYTYPE_REPLICATED))
 					context->resultSegments = true;
 
 				if (policy)
@@ -1022,8 +1023,8 @@ focusPlan(Plan *plan, bool stable, bool rescannable)
 		return true;
 
 	/* TODO How specify deep-six? */
-	if (plan->flow->flotype == FLOW_REPLICATED)
-		return false;
+	//if (plan->flow->flotype == FLOW_REPLICATED)
+	//	return true;
 
 	return adjustPlanFlow(plan, stable, rescannable, MOVEMENT_FOCUS, NIL);
 }

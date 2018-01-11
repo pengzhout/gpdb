@@ -248,7 +248,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	state.initPlans = NIL;
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
-	Assert(plan->flow && plan->flow->flotype != FLOW_REPLICATED);
+	//Assert(plan->flow && plan->flow->flotype != FLOW_REPLICATED);
 
 	/* Does query have a target relation?  (INSERT/DELETE/UPDATE) */
 
@@ -456,7 +456,9 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 			}
 
-			if (plan->flow->flotype == FLOW_PARTITIONED && !query->intoClause)
+			if (!query->intoClause &&
+				(plan->flow->flotype == FLOW_PARTITIONED ||
+				 plan->flow->flotype == FLOW_REPLICATED))
 			{
 				/*
 				 * Query result needs to be brought back to the QD. Ask for
@@ -719,6 +721,12 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 											errmsg("Cannot parallelize that INSERT yet")));
 						break;
 
+					case POLICYTYPE_REPLICATED:
+						if (!broadcastPlan(plan, false, false))
+							ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
+											errmsg("Cannot parallelize that INSERT yet")));
+						break;
+	
 					default:
 						Insist(0);
 				}
