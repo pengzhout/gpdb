@@ -3941,6 +3941,7 @@ OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 
 DistributedBy:   DISTRIBUTED BY  '(' columnListUnique ')'		{ $$ = $4; }
 			| DISTRIBUTED RANDOMLY			{ $$ = list_make1(NULL); }
+			| DISTRIBUTED ALL			{ $$ = list_make2(NULL, NULL); }
 		;
 
 OptDistributedBy:   DistributedBy			{ $$ = $1; }

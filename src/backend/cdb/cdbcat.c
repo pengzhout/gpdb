@@ -233,7 +233,9 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		}
 
 		if (nattrs == 1 && policy->attrs[0] == -1)
+		{
 			policy->ptype = POLICYTYPE_REPLICATED;
+		}
 	}
 
 	/*
@@ -291,7 +293,8 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 	bool		nulls[2];
 	Datum		values[2];
 
-	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
+	Insist(policy->ptype == POLICYTYPE_PARTITIONED ||
+		policy->ptype == POLICYTYPE_REPLICATED);
 
 	/*
 	 * Open and lock the gp_distribution_policy catalog.
@@ -488,6 +491,16 @@ GpPolicyIsRandomly(GpPolicy *policy)
 
 	return policy->ptype == POLICYTYPE_PARTITIONED && policy->nattrs == 0;
 }
+
+bool
+GpPolicyIsReplicated(GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return policy->ptype == POLICYTYPE_REPLICATED; 
+}
+
 
 /*
  * Does the supplied GpPolicy support unique indexing on the specified
