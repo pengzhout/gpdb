@@ -767,7 +767,10 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 					needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch;
 				}
-
+				else if (targetPolicyType == POLICYTYPE_REPLICATED)
+				{
+					/* do nothing */
+				}
 				/* Target table is not distributed.  Must be in entry db. */
 				else
 				{
