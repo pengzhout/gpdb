@@ -640,7 +640,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 
 	QUEUE
 
-	RANDOMLY READABLE READS REF REJECT_P REPLICATED RESOURCE
+	RANDOMLY READABLE READS REF REJECT_P RESOURCE
 	ROLLUP ROOTPARTITION
 
 	SCATTER SEGMENT SEGMENTS SETS SPLIT SQL SUBPARTITION
@@ -896,7 +896,6 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 			%nonassoc RENAME
 			%nonassoc REPEATABLE
 			%nonassoc REPLACE
-			%nonassoc REPLICATED
 			%nonassoc RESET
 			%nonassoc RESOURCE
 			%nonassoc RESTART
@@ -3436,7 +3435,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->options = $9;
 					n->oncommit = $10;
 					n->tablespacename = $11;
-					n->distributedBy = (DistributedBy *)$12;
+					n->distributedBy = $12;
 					n->partitionBy = $13;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
@@ -3459,7 +3458,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->options = $10;
 					n->oncommit = $11;
 					n->tablespacename = $12;
-					n->distributedBy = (DistributedBy *)$13;
+					n->distributedBy = $13;
 					n->partitionBy = $14;
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
@@ -3940,27 +3939,8 @@ OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-DistributedBy:   DISTRIBUTED BY  '(' columnListUnique ')'
-			{
-				DistributedBy *distributedBy = makeNode(DistributedBy);
-				distributedBy->type = POLICYTYPE_PARTITIONED;
-				distributedBy->columns = $4;
-				$$ = (Node *)distributedBy;
-			}
-			| DISTRIBUTED RANDOMLY
-				{
-					DistributedBy *distributedBy = makeNode(DistributedBy);
-					distributedBy->type = POLICYTYPE_PARTITIONED;
-					distributedBy->columns = NULL;
-					$$ = (Node *)distributedBy;
-				}
-			| DISTRIBUTED REPLICATED
-				{
-					DistributedBy *distributedBy = makeNode(DistributedBy);
-					distributedBy->type = POLICYTYPE_REPLICATED;
-					distributedBy->columns = NULL;
-					$$ = (Node *)distributedBy;
-				}
+DistributedBy:   DISTRIBUTED BY  '(' columnListUnique ')'		{ $$ = $4; }
+			| DISTRIBUTED RANDOMLY			{ $$ = list_make1(NULL); }
 		;
 
 OptDistributedBy:   DistributedBy			{ $$ = $1; }
@@ -4511,7 +4491,7 @@ CreateAsStmt:
 					/* Implement WITH NO DATA by forcing top-level LIMIT 0 */
 					if (!$7)
 						((SelectStmt *) $6)->limitCount = makeIntConst(0, -1);
-					n->distributedBy = (DistributedBy *)$8;
+					n->distributedBy = $8;
 
 					if ($9)
 						ereport(ERROR,
@@ -4589,7 +4569,7 @@ CreateExternalStmt:	CREATE OptWritable EXTERNAL OptWeb OptTemp TABLE qualified_n
 							n->extOptions = $15;
 							n->encoding = $16;
 							n->sreh = $17;
-							n->distributedBy = (DistributedBy *)$18;
+							n->distributedBy = $18;
 							n->policy = 0;
 							
 							/* various syntax checks for EXECUTE external table */
@@ -13739,7 +13719,6 @@ unreserved_keyword:
 			| REPEATABLE
 			| REPLACE
 			| REPLICA
-			| REPLICATED
 			| RESET
 			| RESOURCE
 			| RESTART

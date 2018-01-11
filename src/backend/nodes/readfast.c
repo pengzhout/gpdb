@@ -2679,17 +2679,6 @@ _readCreateFdwStmt(void)
 	READ_DONE();
 }
 
-static DistributedBy*
-_readDistributedBy(void)
-{
-	READ_LOCALS(DistributedBy);
-
-	READ_ENUM_FIELD(type, GpPolicyType);
-	READ_NODE_FIELD(columns);
-
-	READ_DONE();
-}
-
 static AlterFdwStmt *
 _readAlterFdwStmt(void)
 {
@@ -3698,9 +3687,6 @@ readNodeBinary(void)
 				break;
 			case T_CreateFdwStmt:
 				return_value = _readCreateFdwStmt();
-				break;
-			case T_DistributedBy:
-				return_value = _readDistributedBy();
 				break;
 
 
