@@ -22,6 +22,7 @@
 #include "catalog/gp_policy.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbrelsize.h"
@@ -111,7 +112,12 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 	Relation	gp_policy_rel;
 	ScanKeyData scankey;
 	SysScanDesc scan;
-	HeapTuple	gp_policy_tuple = NULL;
+	bool		isNull;
+	Datum		attr;
+	int			i,
+				nattrs = 0;
+	int16	   *attrnums = NULL;
+	HeapTuple	tuple = NULL;
 
 	/*
 	 * Skip if qExec or utility mode.
@@ -164,74 +170,45 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		}
 	}
 
-	/*
-	 * We need to read the gp_distribution_policy table
-	 */
-	gp_policy_rel = heap_open(GpPolicyRelationId, AccessShareLock);
+	tuple = SearchSysCache(GPPOLICYID,
+									 ObjectIdGetDatum(tbloid),
+									 0, 0, 0);
 
-	/*
-	 * Select by value of the localoid field
-	 *
-	 * SELECT * FROM gp_distribution_policy WHERE localoid = :1
-	 */
-	ScanKeyInit(&scankey, Anum_gp_policy_localoid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(tbloid));
-
-	scan = systable_beginscan(gp_policy_rel, GpPolicyLocalOidIndexId, true,
-							  SnapshotNow, 1, &scankey);
-
-	gp_policy_tuple = systable_getnext(scan);
-
-	/*
-	 * Read first (and only) tuple
-	 */
-	if (HeapTupleIsValid(gp_policy_tuple))
+	if (!HeapTupleIsValid(tuple))
 	{
-		bool		isNull;
-		Datum		attr;
-		int			i,
-					nattrs = 0;
-		int16	   *attrnums = NULL;
-
-		/*
-		 * Get the attributes on which to partition.
-		 */
-		attr = heap_getattr(gp_policy_tuple, Anum_gp_policy_attrnums,
-							RelationGetDescr(gp_policy_rel), &isNull);
-
-		/*
-		 * Get distribution keys only if this table has a policy.
-		 */
-		if (!isNull)
-		{
-			extract_INT2OID_array(attr, &nattrs, &attrnums);
-			Assert(nattrs >= 0);
-		}
-
-		/* Create a GpPolicy object. */
-		policy = (GpPolicy *) MemoryContextAlloc(mcxt, SizeOfGpPolicy(nattrs));
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = nattrs;
-		for (i = 0; i < nattrs; i++)
-		{
-			policy->attrs[i] = attrnums[i];
-		}
-	}
-
-	/*
-	 * Cleanup the scan and relation objects.
-	 */
-	systable_endscan(scan);
-	heap_close(gp_policy_rel, AccessShareLock);
-
-	/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
-	if (policy == NULL)
-	{
+		/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
 		policy = (GpPolicy *) MemoryContextAlloc(mcxt, SizeOfGpPolicy(0));
 		policy->ptype = POLICYTYPE_ENTRY;
 		policy->nattrs = 0;
+		return policy;
 	}
+
+	/*
+	 * Get the attributes on which to partition.
+	 */
+	attr = SysCacheGetAttr(GPPOLICYID, tuple, Anum_gp_policy_attrnums,
+						   &isNull);
+
+	/*
+	 * Get distribution keys only if this table has a policy.
+	 */
+	if (!isNull)
+	{
+		extract_INT2OID_array(attr, &nattrs, &attrnums);
+		Assert(nattrs >= 0);
+	}
+
+		/* Create a GpPolicy object. */
+	policy = (GpPolicy *) MemoryContextAlloc(mcxt, SizeOfGpPolicy(nattrs));
+	policy->ptype = POLICYTYPE_PARTITIONED;
+	policy->nattrs = nattrs;
+
+	for (i = 0; i < nattrs; i++)
+	{
+		policy->attrs[i] = attrnums[i];
+	}
+
+	ReleaseSysCache(tuple);
 
 	return policy;
 }								/* GpPolicyFetch */
@@ -447,6 +424,7 @@ GpPolicyRemove(Oid tbloid)
 	while ((tuple = systable_getnext(sscan)) != NULL)
 	{
 		simple_heap_delete(gp_policy_rel, &tuple->t_self);
+		CatalogUpdateIndexes(gp_policy_rel, tuple);
 	}
 
 	systable_endscan(sscan);

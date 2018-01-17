@@ -127,6 +127,7 @@ GetCCHashEqFuncs(Oid keytype, PGFunction *hashfunc, RegProcedure *eqfunc)
 			*eqfunc = F_INT2EQ;
 			break;
 		case INT2VECTOROID:
+		case INT2ARRAYOID:
 			*hashfunc = hashint2vector;
 
 			*eqfunc = F_INT2VECTOREQ;
