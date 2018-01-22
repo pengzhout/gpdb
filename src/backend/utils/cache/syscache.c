@@ -513,6 +513,17 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		1024
 	},
+	{PartitionRelationId,		/* PARTPARTIDLEVELISTEMP */
+		PartitionParrelidParlevelParistemplateIndexId,
+		3,
+		{
+			Anum_pg_partition_parrelid,
+			Anum_pg_partition_parlevel,
+			Anum_pg_partition_paristemplate,
+			0
+		},
+		1024
+	},
 	{PartitionRuleRelationId,	/* PARTRULEOID */
 		PartitionRuleOidIndexId,
 		1,
@@ -522,7 +533,29 @@ static const struct cachedesc cacheinfo[] = {
 			0,
 			0
 		},
-		256
+		1024
+	},
+	{PartitionRuleRelationId,	/* PARTRULECHILDIDPARENTRULEORD */
+		PartitionRuleParchildrelidParparentruleParruleordIndexId,
+		3,
+		{
+			Anum_pg_partition_rule_parchildrelid,
+			Anum_pg_partition_rule_parparentrule,
+			Anum_pg_partition_rule_parruleord,
+			0
+		},
+		1024
+	},
+	{PartitionRuleRelationId,	/* PARTRULEPARTIDPARENTRULEORD */
+		PartitionRuleParoidParparentruleParruleordIndexId,
+		3,
+		{
+			Anum_pg_partition_rule_paroid,
+			Anum_pg_partition_rule_parparentrule,
+			Anum_pg_partition_rule_parruleord,
+			0
+		},
+		1024
 	},
 	{ProcedureRelationId,		/* PROCNAMEARGSNSP */
 		ProcedureNameArgsNspIndexId,

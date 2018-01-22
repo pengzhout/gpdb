@@ -109,9 +109,6 @@ GpPolicy *
 GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 {
 	GpPolicy   *policy = NULL;	/* The result */
-	Relation	gp_policy_rel;
-	ScanKeyData scankey;
-	SysScanDesc scan;
 	bool		isNull;
 	Datum		attr;
 	int			i,
