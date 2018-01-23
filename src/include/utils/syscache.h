@@ -79,7 +79,9 @@ enum SysCacheIdentifier
 	TSTEMPLATEOID,
 	TYPENAMENSP,
 	TYPEOID,
-	WINFNOID
+	WINFNOID,
+	WRESGROUPNAME,
+	WRESGROUPOID
 };
 
 extern void InitCatalogCache(void);

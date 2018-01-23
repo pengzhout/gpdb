@@ -54,6 +54,7 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_window.h"
+#include "catalog/pg_resgroup.h"
 #include "utils/syscache.h"
 
 
@@ -662,6 +663,28 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		32
+	},
+	{ResGroupRelationId,		/* WRESGROUPNAME */
+		ResGroupRsgnameIndexId,
+		1,
+		{
+			Anum_pg_resgroup_rsgname,
+			0,
+			0,
+			0
+		},
+		128
+	},
+	{ResGroupRelationId,		/* WRESGROUPOID */
+		ResGroupOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		128
 	}
 };
 
