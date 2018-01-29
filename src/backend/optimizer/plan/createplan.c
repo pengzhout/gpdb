@@ -259,6 +259,7 @@ create_subplan(PlannerInfo *root, Path *best_path)
 	}
 
 	if (CdbPathLocus_IsPartitioned(best_path->locus) ||
+		CdbPathLocus_IsSegmentGeneral(best_path->locus) ||
 		CdbPathLocus_IsReplicated(best_path->locus))
 		plan->dispatch = DISPATCH_PARALLEL;
 
@@ -5689,6 +5690,31 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node)
 										errmsg("Cannot parallelize that INSERT yet")));
 				}
 			}
+			else if (targetPolicyType == POLICYTYPE_REPLICATED)
+			{
+				Assert(subplan->flow->flotype != FLOW_REPLICATED);
+
+				/*
+				 * CdbLocusType_SegmentGeneral is only used by replicated table right now,
+				 * so if both input and target are replicated table, no need to add a motion
+				 *
+				 */
+				if (subplan->flow->flotype == FLOW_SINGLETON &&
+					subplan->flow->locustype == CdbLocusType_SegmentGeneral &&
+					!contain_volatile_functions((Node *)subplan->targetlist))
+					break;
+
+				/* plan's data are available on all segment, no motion needed */
+				if (subplan->flow->flotype == FLOW_SINGLETON &&
+					subplan->flow->locustype == CdbLocusType_SegmentGeneral &&
+					!contain_volatile_functions((Node *)subplan->targetlist))
+					break;
+
+				if (!broadcastPlan(subplan, false, false))
+					ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
+								errmsg("Cannot parallelize that INSERT yet")));
+
+			}
 			else
 				elog(ERROR, "unrecognized policy type %u", targetPolicyType);
 		}
@@ -5760,6 +5786,39 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node)
 					 * Source is, presumably, a dispatcher singleton.
 					 */
 					subplan->flow->req_move = MOVEMENT_NONE;
+				}
+			}
+			else if (targetPolicyType == POLICYTYPE_REPLICATED)
+			{
+				if (subplan->flow->flotype == FLOW_SINGLETON &&
+						(subplan->flow->locustype == CdbLocusType_General ||
+						 subplan->flow->locustype == CdbLocusType_SegmentGeneral))
+				{
+					/* do nothing */
+				}
+				else if (subplan->flow->flotype == FLOW_REPLICATED)
+				{
+					/* do nothing */
+				}
+				else
+				{
+					/*
+					 * add a broadcast on top
+					 */
+
+					/* create a shallow copy of the subplan flow */
+					Flow	   *flow = subplan->flow;
+
+					subplan->flow = (Flow *) palloc(sizeof(Flow));
+					*(subplan->flow) = *flow;
+
+					/* save original flow information */
+					subplan->flow->flow_before_req_move = flow;
+
+					/* request a GatherMotion node */
+					subplan->flow->req_move = MOVEMENT_BROADCAST;
+					subplan->flow->hashExpr = NIL;
+					subplan->flow->segindex = 0;
 				}
 			}
 			else
