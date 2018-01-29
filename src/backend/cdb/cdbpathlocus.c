@@ -333,7 +333,11 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 		else
 			CdbPathLocus_MakeStrewn(&result);
 	}
-
+	else if (policy &&
+		policy->ptype == POLICYTYPE_REPLICATED)
+	{
+		CdbPathLocus_MakeSegmentGeneral(&result);	
+	}
 	/* Kludge used internally for querying catalogs on segment dbs */
 	else if (cdbpathlocus_querysegmentcatalogs)
 		CdbPathLocus_MakeStrewn(&result);
@@ -402,7 +406,14 @@ cdbpathlocus_from_subquery(struct PlannerInfo *root,
 			if (flow->segindex == -1)
 				CdbPathLocus_MakeEntry(&locus);
 			else
-				CdbPathLocus_MakeSingleQE(&locus);
+			{
+				if (flow->locustype == CdbLocusType_Single)
+					CdbPathLocus_MakeSingle(&locus);
+				else if (flow->locustype == CdbLocusType_SegmentGeneral)
+					CdbPathLocus_MakeSegmentGeneral(&locus);
+				else
+					CdbPathLocus_MakeSingleQE(&locus);
+			}
 			break;
 		case FLOW_REPLICATED:
 			CdbPathLocus_MakeReplicated(&locus);

@@ -28,5 +28,6 @@
 #define GpSegmentIdAttributeNumber			    (-8)    /*CDB*/
 #define FirstLowInvalidHeapAttributeNumber		(-9)
 
+#define GpReplicatedTableAttributerNumberIdentifier   	 (-128)    /*GPDB*/
 
 #endif   /* SYSATTR_H */

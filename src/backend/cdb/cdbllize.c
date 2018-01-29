@@ -217,7 +217,8 @@ cdbparallelize(PlannerInfo *root,
 
 				/* Tell caller if target rel is distributed. */
 				if (policy &&
-					policy->ptype == POLICYTYPE_PARTITIONED)
+					(policy->ptype == POLICYTYPE_PARTITIONED ||
+					policy->ptype == POLICYTYPE_REPLICATED))
 					context->resultSegments = true;
 
 				if (policy)
@@ -971,6 +972,15 @@ pull_up_Flow(Plan *plan, Plan *subplan)
 
 	new_flow->locustype = model_flow->locustype;
 
+	/* 
+ 	 * Adjust limit's locus type:
+ 	 * If subplan's locus type is CdbLocusType_SegmentGeneral, we
+ 	 * must force it to be CdbLocusType_Single, otherwise, LIMIT
+ 	 * node will return duplicated tuples unexceptedly.
+ 	 */
+	if (IsA(plan, Limit) && model_flow->locustype == CdbLocusType_SegmentGeneral)
+		new_flow->locustype = CdbLocusType_Single;
+
 	return new_flow;
 }
 
@@ -1017,8 +1027,10 @@ focusPlan(Plan *plan, bool stable, bool rescannable)
 {
 	Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
 
-	/* Already focused?  Do nothing. */
-	if (plan->flow->flotype == FLOW_SINGLETON)
+	/* Already focused and plan is not parallelled, Do nothing. */
+	if (plan->flow->flotype == FLOW_SINGLETON &&
+		plan->flow->locustype != CdbLocusType_SegmentGeneral && 
+		plan->flow->locustype != CdbLocusType_Single)
 		return true;
 
 	/* TODO How specify deep-six? */

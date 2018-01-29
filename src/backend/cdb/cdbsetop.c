@@ -81,7 +81,12 @@ choose_setop_type(List *planlist)
 				break;
 
 			case CdbLocusType_SingleQE:
+			case CdbLocusType_Single:
 				ok_general = ok_replicated = FALSE;
+				break;
+
+			case CdbLocusType_SegmentGeneral:
+				ok_general = ok_partitioned = ok_replicated = FALSE;
 				break;
 
 			case CdbLocusType_General:
@@ -138,6 +143,7 @@ adjust_setop_arguments(PlannerInfo *root, List *planlist, GpSetOpType setop_type
 						Assert(subplanflow->flotype == FLOW_PARTITIONED);
 						break;
 					case CdbLocusType_SingleQE:
+					case CdbLocusType_Single:
 					case CdbLocusType_General:
 						Assert(subplanflow->flotype == FLOW_SINGLETON && subplanflow->segindex > -1);
 
@@ -152,6 +158,7 @@ adjust_setop_arguments(PlannerInfo *root, List *planlist, GpSetOpType setop_type
 					case CdbLocusType_Null:
 					case CdbLocusType_Entry:
 					case CdbLocusType_Replicated:
+					case CdbLocusType_SegmentGeneral:
 					default:
 						ereport(ERROR, (
 										errcode(ERRCODE_INTERNAL_ERROR),
@@ -201,10 +208,12 @@ adjust_setop_arguments(PlannerInfo *root, List *planlist, GpSetOpType setop_type
 						break;
 
 					case CdbLocusType_SingleQE:
+					case CdbLocusType_Single:
 						Assert(subplanflow->flotype == FLOW_SINGLETON && subplanflow->segindex != -1);
 						break;
 
 					case CdbLocusType_General:
+					case CdbLocusType_SegmentGeneral:
 						break;
 
 					case CdbLocusType_Entry:
@@ -325,7 +334,8 @@ make_motion_gather(PlannerInfo *root, Plan *subplan, int segindex, List *sortPat
 
 	Assert(subplan->flow != NULL);
 	Assert(subplan->flow->flotype == FLOW_PARTITIONED ||
-		   (subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex == 0));
+			subplan->flow->flotype == FLOW_REPLICATED ||	
+			(subplan->flow->flotype == FLOW_SINGLETON && subplan->flow->segindex == 0));
 
 	if (sortPathKeys)
 	{
@@ -409,6 +419,27 @@ makeHashExprsFromNonjunkTargets(List *targetlist)
 
 }
 
+static bool
+appendContainSegmentGeneral(Plan *plan)
+{
+	ListCell   *cell;
+	Plan	   *subplan = NULL;
+	List	*planlist = ((Append *)plan)->appendplans;
+
+	foreach(cell, planlist)
+	{
+		Flow	   *subplanflow;
+
+		subplan = (Plan *) lfirst(cell);
+		subplanflow = subplan->flow;
+
+		if (subplanflow->locustype == CdbLocusType_SegmentGeneral)
+			return true;
+	}	
+
+	return false;
+}
+
 /*
  *     Marks an Append plan with its locus based on the set operation
  *     type determined during examination of the arguments.
@@ -432,6 +463,7 @@ mark_append_locus(Plan *plan, GpSetOpType optype)
 			break;
 		case PSETOP_SEQUENTIAL_QE:
 			mark_plan_singleQE(plan);
+
 		case PSETOP_NONE:
 			break;
 	}

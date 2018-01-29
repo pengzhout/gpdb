@@ -3034,7 +3034,14 @@ cdbpathlocus_from_flow(Flow *flow)
 			if (flow->segindex == -1)
 				CdbPathLocus_MakeEntry(&locus);
 			else
-				CdbPathLocus_MakeSingleQE(&locus);
+			{
+				if (flow->locustype == CdbLocusType_Single)
+					CdbPathLocus_MakeSingle(&locus);
+				else if (flow->locustype == CdbLocusType_SegmentGeneral)
+					CdbPathLocus_MakeSegmentGeneral(&locus);
+				else
+					CdbPathLocus_MakeSingleQE(&locus);
+			}
 			break;
 		case FLOW_REPLICATED:
 			CdbPathLocus_MakeReplicated(&locus);

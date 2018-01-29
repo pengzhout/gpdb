@@ -47,7 +47,8 @@ FOREIGN_KEY(localoid REFERENCES pg_class(oid));
 typedef enum GpPolicyType
 {
 	POLICYTYPE_PARTITIONED,		/* Tuples partitioned onto segment database. */
-	POLICYTYPE_ENTRY			/* Tuples stored on entry database. */
+	POLICYTYPE_ENTRY,			/* Tuples stored on entry database. */
+	POLICYTYPE_REPLICATED		/* Tuples stored on entry database. */
 } GpPolicyType;
 
 /*

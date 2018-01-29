@@ -2529,8 +2529,12 @@ create_worktablescan_path(PlannerInfo *root, RelOptInfo *rel, CdbLocusType ctelo
 		CdbPathLocus_MakeEntry(&result);
 	else if (ctelocus == CdbLocusType_SingleQE)
 		CdbPathLocus_MakeSingleQE(&result);
+	else if (ctelocus == CdbLocusType_Single)
+		CdbPathLocus_MakeSingle(&result);
 	else if (ctelocus == CdbLocusType_General)
 		CdbPathLocus_MakeGeneral(&result);
+	else if (ctelocus == CdbLocusType_SegmentGeneral)
+		CdbPathLocus_MakeSegmentGeneral(&result);
 	else
 		CdbPathLocus_MakeStrewn(&result);
 

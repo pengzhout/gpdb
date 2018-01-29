@@ -158,6 +158,7 @@ void ExecCheckRTEPerms(RangeTblEntry *rte);
 
 static PartitionNode *BuildPartitionNodeFromRoot(Oid relid);
 static void InitializeQueryPartsMetadata(PlannedStmt *plannedstmt, EState *estate);
+static void AdjustReplicatedTableCounts(EState *estate);
 
 /*
  * For a partitioned insert target only:  
@@ -2689,6 +2690,9 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 
 	/* Report how many tuples we may have inserted into AO tables */
 	SendAOTupCounts(estate);
+
+	/* Adjust INSERT/UPDATE/DELETE count for replicated table ON QD */
+	AdjustReplicatedTableCounts(estate);
 
 	/*
 	 * close the result relation(s) if any, but hold locks until xact commit.
@@ -6144,4 +6148,37 @@ InitializePartsMetadata(Oid rootOid)
 
 	metadata->accessMethods = createPartitionAccessMethods(num_partition_levels(metadata->partsAndRules));
 	return list_make1(metadata);
+}
+
+/* 
+ * Adjust INSERT/UPDATE/DELETE count for replicated table ON QD
+ */
+static void
+AdjustReplicatedTableCounts(EState *estate)
+{
+	int i;
+	ResultRelInfo *resultRelInfo;
+	bool containReplicatedTable = false;
+
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	/* check if result_relations contain replicated table*/
+	for (i = 0; i < estate->es_num_result_relations; i++)
+	{
+		GpPolicy *policy = NULL;
+		resultRelInfo = estate->es_result_relations + i;
+
+		policy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
+		if (!policy)
+			continue;
+
+		if (policy->ptype == POLICYTYPE_REPLICATED)
+			containReplicatedTable = true;
+		else if (containReplicatedTable)
+			Insist(0);
+	}
+
+	if (containReplicatedTable)
+		estate->es_processed = estate->es_processed / getgpsegmentCount();
 }

@@ -1685,7 +1685,19 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		 * set the distribution policy.
 		 */
 		policy->nattrs = 0;
-		if (!(distributedBy->length == 1 && linitial(distributedBy) == NULL))
+		if (distributedBy->length == 1 && linitial(distributedBy) == NULL)
+		{
+			/* do nothing */
+		}
+		else if (distributedBy->length == 2 &&
+			linitial(distributedBy) == NULL &&
+			lsecond(distributedBy) == NULL)
+		{
+			policy->ptype = POLICYTYPE_REPLICATED;
+			policy->nattrs = 1;
+			policy->attrs[0] = GpReplicatedTableAttributerNumberIdentifier;
+		}
+		else
 		{
 			foreach(keys, distributedBy)
 			{

@@ -1047,7 +1047,9 @@ inheritance_planner(PlannerInfo *root)
 						break;
 					case CdbLocusType_Null:
 					case CdbLocusType_SingleQE:
+					case CdbLocusType_Single:
 					case CdbLocusType_General:
+					case CdbLocusType_SegmentGeneral:
 					case CdbLocusType_Replicated:
 						/* These loci are not valid on base relations */
 						locus_ok = FALSE;

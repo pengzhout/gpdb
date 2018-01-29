@@ -47,7 +47,17 @@ cdbpathtoplan_create_flow(PlannerInfo *root,
 		flow = makeFlow(FLOW_SINGLETON);
 		flow->segindex = 0;
 	}
+	else if (CdbPathLocus_IsSingle(locus))
+	{
+		flow = makeFlow(FLOW_SINGLETON);
+		flow->segindex = 0;
+	}
 	else if (CdbPathLocus_IsGeneral(locus))
+	{
+		flow = makeFlow(FLOW_SINGLETON);
+		flow->segindex = 0;
+	}
+	else if (CdbPathLocus_IsSegmentGeneral(locus))
 	{
 		flow = makeFlow(FLOW_SINGLETON);
 		flow->segindex = 0;
@@ -97,7 +107,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo *root,
 	{
 		int			destSegIndex = -1;	/* to dispatcher */
 
-		if (CdbPathLocus_IsSingleQE(path->path.locus))
+		if (!CdbPathLocus_IsEntry(path->path.locus))
 			destSegIndex = gp_singleton_segindex;	/* to singleton qExec */
 
 		if (path->path.pathkeys)

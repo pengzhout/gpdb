@@ -103,35 +103,129 @@ cdbpath_create_motion_path(PlannerInfo *root,
 		if (CdbPathLocus_IsEqual(subpath->locus, locus))
 			return subpath;
 
-		/* entry-->singleQE?  Don't move.  Slice's QE will run on entry db. */
+		/* entry-->singleQE or entry->single?  Don't move.  Slice's QE will run on entry db. */
 		if (CdbPathLocus_IsEntry(subpath->locus))
-			return subpath;
+		{
+			/* entry-->single */
+			if (CdbPathLocus_IsSingle(locus))
+			{
+				pathnode = makeNode(CdbMotionPath);
+				pathnode->path.pathtype = T_Motion;
+				pathnode->path.parent = subpath->parent;
+				pathnode->path.locus = locus;
+				pathnode->path.pathkeys = pathkeys;
+				pathnode->subpath = subpath;
 
-		/* singleQE-->entry?  Don't move.  Slice's QE will run on entry db. */
+				/* Costs, etc, are same as subpath. */
+				pathnode->path.startup_cost = subpath->total_cost;
+				pathnode->path.total_cost = subpath->total_cost;
+				pathnode->path.memory = subpath->memory;
+				pathnode->path.motionHazard = subpath->motionHazard;
+				pathnode->path.rescannable = subpath->rescannable;
+				return (Path *) pathnode;
+			}
+			/* entry --> singleQE, Don't move */
+			else
+				return subpath;
+		}
+
+		/* singleQE-->entry or singleQE--> single?  Don't move.  Slice's QE will run on entry db. */
 		if (CdbPathLocus_IsSingleQE(subpath->locus))
 		{
-			/*
-			 * Create CdbMotionPath node to indicate that the slice must be
-			 * dispatched to a singleton gang running on the entry db.  We
-			 * merely use this node to note that the path has 'Entry' locus;
-			 * no corresponding Motion node will be created in the Plan tree.
-			 */
-			Assert(CdbPathLocus_IsEntry(locus));
+			/* singleQE --> entry */
+			if (CdbPathLocus_IsEntry(locus))
+			{
+				/*
+				 * Create CdbMotionPath node to indicate that the slice must be
+				 * dispatched to a singleton gang running on the entry db.  We
+				 * merely use this node to note that the path has 'Entry' locus;
+				 * no corresponding Motion node will be created in the Plan tree.
+				 */
+				Assert(CdbPathLocus_IsEntry(locus));
 
-			pathnode = makeNode(CdbMotionPath);
-			pathnode->path.pathtype = T_Motion;
-			pathnode->path.parent = subpath->parent;
-			pathnode->path.locus = locus;
-			pathnode->path.pathkeys = pathkeys;
-			pathnode->subpath = subpath;
+				pathnode = makeNode(CdbMotionPath);
+				pathnode->path.pathtype = T_Motion;
+				pathnode->path.parent = subpath->parent;
+				pathnode->path.locus = locus;
+				pathnode->path.pathkeys = pathkeys;
+				pathnode->subpath = subpath;
 
-			/* Costs, etc, are same as subpath. */
-			pathnode->path.startup_cost = subpath->total_cost;
-			pathnode->path.total_cost = subpath->total_cost;
-			pathnode->path.memory = subpath->memory;
-			pathnode->path.motionHazard = subpath->motionHazard;
-			pathnode->path.rescannable = subpath->rescannable;
-			return (Path *) pathnode;
+				/* Costs, etc, are same as subpath. */
+				pathnode->path.startup_cost = subpath->total_cost;
+				pathnode->path.total_cost = subpath->total_cost;
+				pathnode->path.memory = subpath->memory;
+				pathnode->path.motionHazard = subpath->motionHazard;
+				pathnode->path.rescannable = subpath->rescannable;
+				return (Path *) pathnode;
+			}
+			/* singleQE --> single*/
+			else
+			{
+				CdbPathLocus_MakeSingle(&subpath->locus);	
+				return subpath;
+			}
+		}
+
+		if (CdbPathLocus_IsSingle(subpath->locus))
+		{
+			/* single --> singleQE */
+			if (CdbPathLocus_IsSingleQE(locus))
+			{
+				return subpath;
+			}
+			/* single --> entry */
+			else if (CdbPathLocus_IsEntry(locus))
+			{
+				/*
+				 * Create CdbMotionPath node to indicate that the slice must be
+				 * dispatched to a singleton gang running on the entry db.  We
+				 * merely use this node to note that the path has 'Entry' locus;
+				 * no corresponding Motion node will be created in the Plan tree.
+				 */
+				pathnode = makeNode(CdbMotionPath);
+				pathnode->path.pathtype = T_Motion;
+				pathnode->path.parent = subpath->parent;
+				pathnode->path.locus = locus;
+				pathnode->path.pathkeys = pathkeys;
+				pathnode->subpath = subpath;
+
+				/* Costs, etc, are same as subpath. */
+				pathnode->path.startup_cost = subpath->total_cost;
+				pathnode->path.total_cost = subpath->total_cost;
+				pathnode->path.memory = subpath->memory;
+				pathnode->path.motionHazard = subpath->motionHazard;
+				pathnode->path.rescannable = subpath->rescannable;
+				return (Path *) pathnode;
+			}
+		}
+
+		if (CdbPathLocus_IsSegmentGeneral(subpath->locus))
+		{
+			/* segmentGeneral --> single/singleQE */
+			if (CdbPathLocus_IsSingle(locus) ||
+				CdbPathLocus_IsSingleQE(locus))
+			{
+				CdbPathLocus_MakeSingle(&subpath->locus);	
+				return subpath;
+			}
+			/* segmentGeneral --> entry */
+			else
+			{
+				pathnode = makeNode(CdbMotionPath);
+				pathnode->path.pathtype = T_Motion;
+				pathnode->path.parent = subpath->parent;
+				pathnode->path.locus = locus;
+				pathnode->path.pathkeys = pathkeys;
+				pathnode->subpath = subpath;
+
+				/* Costs, etc, are same as subpath. */
+				pathnode->path.startup_cost = subpath->total_cost;
+				pathnode->path.total_cost = subpath->total_cost;
+				pathnode->path.memory = subpath->memory;
+				pathnode->path.motionHazard = subpath->motionHazard;
+				pathnode->path.rescannable = subpath->rescannable;
+				return (Path *) pathnode;
+			}
 		}
 
 		/* No motion needed if subpath can run anywhere giving same output. */
@@ -779,6 +873,10 @@ typedef struct
 	bool		has_wts;		/* Does the rel have WorkTableScan? */
 } CdbpathMfjRel;
 
+
+static void cdbpath_xxxx(PlannerInfo *root, CdbpathMfjRel *single, CdbpathMfjRel* other,
+		List* mergeclause_list, List *single_pathkeys, List *other_pathkeys);
+
 CdbPathLocus
 cdbpath_motion_for_join(PlannerInfo *root,
 						JoinType jointype,	/* JOIN_INNER/FULL/LEFT/RIGHT/IN */
@@ -856,6 +954,12 @@ cdbpath_motion_for_join(PlannerInfo *root,
 			Assert(0);
 	}
 
+	/* Don't allow segment_general to be replicated */
+	if (CdbPathLocus_IsSegmentGeneral(outer.locus))
+		outer.ok_to_replicate = false;	
+	if (CdbPathLocus_IsSegmentGeneral(inner.locus))
+		inner.ok_to_replicate = false;	
+
 	/* Get rel sizes. */
 	outer.bytes = cdbpath_rows(root, outer.path) * outer.path->parent->width;
 	inner.bytes = cdbpath_rows(root, inner.path) * inner.path->parent->width;
@@ -885,91 +989,81 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		else
 			return outer.locus;
 	}
-
-	/*
-	 * Is either source confined to a single process? NB: Motion to a single
-	 * process (qDisp or qExec) is the only motion in which we may use Merge
-	 * Receive to preserve an existing ordering.
-	 */
-	else if (CdbPathLocus_IsBottleneck(outer.locus) ||
-			 CdbPathLocus_IsBottleneck(inner.locus))
-	{							/* singleQE or entry db */
-		CdbpathMfjRel *single = &outer;
-		CdbpathMfjRel *other = &inner;
-		bool		single_immovable = (outer.require_existing_order &&
-										!outer_pathkeys) || outer.has_wts;
-		bool		other_immovable = inner.require_existing_order &&
-		!inner_pathkeys;
-
-		/*
-		 * If each of the sources has a single-process locus, then assign both
-		 * sources and the join to run in the same process, without motion.
-		 * The slice will be run on the entry db if either source requires it.
-		 */
-		if (CdbPathLocus_IsEntry(single->locus))
+	/* For SegmentGeneral */
+	else if (CdbPathLocus_IsSegmentGeneral(outer.locus))
+	{
+		if (CdbPathLocus_IsSegmentGeneral(inner.locus))
+			return inner.locus;
+		else if (CdbPathLocus_IsBottleneck(inner.locus))
 		{
-			if (CdbPathLocus_IsBottleneck(other->locus))
+			CdbPathLocus_MakeSingle(&inner.move_to);
+			CdbPathLocus_MakeSingle(&outer.move_to);
+		}
+		else
+			return inner.locus;
+	}
+	else if (CdbPathLocus_IsSegmentGeneral(inner.locus))
+	{
+		if (CdbPathLocus_IsSegmentGeneral(outer.locus))
+			return outer.locus;
+		else if (CdbPathLocus_IsBottleneck(outer.locus))
+		{
+			CdbPathLocus_MakeSingle(&inner.move_to);
+			CdbPathLocus_MakeSingle(&outer.move_to);
+		}
+		else
+			return outer.locus;
+	}
+	else if (CdbPathLocus_IsBottleneck(inner.locus) ||
+			 	CdbPathLocus_IsBottleneck(outer.locus))
+	{
+		CdbpathMfjRel *single;
+		CdbpathMfjRel *other;
+		List *single_pathkeys;
+		List *other_pathkeys;
+		
+		if (CdbPathLocus_IsBottleneck(inner.locus))
+		{
+			single = &inner;
+			other = &outer;
+			single_pathkeys = inner_pathkeys;
+			other_pathkeys = outer_pathkeys;
+		}
+		else
+		{
+			single = &outer;
+			other = &inner;
+			single_pathkeys = outer_pathkeys;
+			other_pathkeys = inner_pathkeys;
+		}
+
+		if (!CdbPathLocus_IsBottleneck(other->locus))
+				cdbpath_xxxx(root, single, other,
+						mergeclause_list, single_pathkeys, other_pathkeys);
+		/* other is bottleleck */
+		else if (CdbPathLocus_IsSingle(single->locus))
+		{
+				CdbPathLocus_MakeSingle(&other->move_to);
+		}
+		else if (CdbPathLocus_IsEntry(single->locus))
+		{
+			if (CdbPathLocus_IsSingle(other->locus))
+			{
+				CdbPathLocus_MakeSingle(&single->move_to);
+				CdbPathLocus_MakeSingle(&other->move_to);
+			}
+			else
 				return single->locus;
 		}
 		else if (CdbPathLocus_IsSingleQE(single->locus))
 		{
-			if (CdbPathLocus_IsBottleneck(other->locus))
+			if (CdbPathLocus_IsSingle(other->locus))
+				CdbPathLocus_MakeSingle(&single->move_to);
+
+			else
 				return other->locus;
-		}
-
-		/* Let 'single' be the source whose locus is singleQE or entry. */
-		else
-		{
-			CdbSwap(CdbpathMfjRel *, single, other);
-			CdbSwap(bool, single_immovable, other_immovable);
-		}
-		Assert(CdbPathLocus_IsBottleneck(single->locus));
-		Assert(CdbPathLocus_IsPartitioned(other->locus));
-
-		/* If the bottlenecked rel can't be moved, bring the other rel to it. */
-		if (single_immovable)
-			other->move_to = single->locus;
-
-		/* Redistribute single rel if joining on other rel's partitioning key */
-		else if (cdbpath_match_preds_to_partkey(root,
-												mergeclause_list,
-												other->locus,
-												&single->move_to))	/* OUT */
-		{
-		}
-
-		/* Replicate single rel if cheaper than redistributing both rels. */
-		else if (single->ok_to_replicate &&
-				 single->bytes * root->config->cdbpath_segments < single->bytes + other->bytes)
-			CdbPathLocus_MakeReplicated(&single->move_to);
-
-		/* Redistribute both rels on equijoin cols. */
-		else if (!other->require_existing_order &&
-				 cdbpath_partkeys_from_preds(root,
-											 mergeclause_list,
-											 single->path,
-											 &single->move_to,	/* OUT */
-											 &other->move_to))	/* OUT */
-		{
-		}
-
-		/*
-		 * No usable equijoin preds, or caller imposed restrictions on motion.
-		 * Replicate single rel if cheaper than bottlenecking other rel.
-		 */
-		else if (single->ok_to_replicate &&
-				 single->bytes < other->bytes)
-			CdbPathLocus_MakeReplicated(&single->move_to);
-
-		/* Broadcast single rel if other rel has WorkTableScan */
-		else if (single->ok_to_replicate && other->has_wts)
-			CdbPathLocus_MakeReplicated(&single->move_to);
-
-		/* Last resort: Move all partitions of other rel to single QE. */
-		else
-			other->move_to = single->locus;
-	}							/* singleQE or entry */
-
+		}	
+	}
 	/*
 	 * Replicated paths shouldn't occur loose, for now.
 	 */
@@ -1628,4 +1722,55 @@ cdbpath_contains_wts(Path *path)
 	}
 
 	return path->pathtype == T_WorkTableScan;
+}
+
+static void
+cdbpath_xxxx(PlannerInfo *root, CdbpathMfjRel *single, CdbpathMfjRel* other,
+		List* mergeclause_list, List *single_pathkeys, List *other_pathkeys)
+{
+	bool		single_immovable = (single->require_existing_order &&
+						!single_pathkeys) || single->has_wts;
+
+	/* If the bottlenecked rel can't be moved, bring the other rel to it. */
+	if (single_immovable)
+		other->move_to = single->locus;
+
+	/* Redistribute single rel if joining on other rel's partitioning key */
+	else if (cdbpath_match_preds_to_partkey(root,
+				mergeclause_list,
+				other->locus,
+				&single->move_to))	/* OUT */
+	{
+	}
+
+	/* Replicate single rel if cheaper than redistributing both rels. */
+	else if (single->ok_to_replicate &&
+			single->bytes * root->config->cdbpath_segments < single->bytes + other->bytes)
+		CdbPathLocus_MakeReplicated(&single->move_to);
+
+	/* Redistribute both rels on equijoin cols. */
+	else if (!other->require_existing_order &&
+			cdbpath_partkeys_from_preds(root,
+				mergeclause_list,
+				single->path,
+				&single->move_to,	/* OUT */
+				&other->move_to))	/* OUT */
+	{
+	}
+
+	/*
+	 * No usable equijoin preds, or caller imposed restrictions on motion.
+	 * Replicate single rel if cheaper than bottlenecking other rel.
+	 */
+	else if (single->ok_to_replicate &&
+			single->bytes < other->bytes)
+		CdbPathLocus_MakeReplicated(&single->move_to);
+
+	/* Broadcast single rel if other rel has WorkTableScan */
+	else if (single->ok_to_replicate && other->has_wts)
+		CdbPathLocus_MakeReplicated(&single->move_to);
+
+	/* Last resort: Move all partitions of other rel to single QE. */
+	else
+		other->move_to = single->locus;
 }

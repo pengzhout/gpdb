@@ -1606,7 +1606,9 @@ typedef struct SliceReq
 	Gang	  **vec1gangs_primary_reader;
 	Gang	  **vec1gangs_entrydb_reader;
 	bool		writer;
-
+	bool		foundCandidate; /* fould a 1-gang reader, and
+					 * promote it to N-gang 
+					 */
 }	SliceReq;
 
 /* Forward declarations */
@@ -1614,7 +1616,7 @@ static void InitSliceReq(SliceReq * req);
 static void AccumSliceReq(SliceReq * inv, SliceReq * req);
 static void InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req);
-
+static void FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 
 /*
  * Function AssignGangs runs on the QD and finishes construction of the
@@ -1672,6 +1674,8 @@ AssignGangs(QueryDesc *queryDesc)
 		InventorySliceTree(sliceMap, i, &req);
 		AccumSliceReq(&inv, &req);
 	}
+
+	FinalizeSliceTree(sliceMap, 0, &inv);
 
 	/*
 	 * Get the gangs we'll use.
@@ -1757,6 +1761,7 @@ InitSliceReq(SliceReq * req)
 	req->vecNgangs = NULL;
 	req->vec1gangs_primary_reader = NULL;
 	req->vec1gangs_entrydb_reader = NULL;
+	req->foundCandidate = false;
 }
 
 void
@@ -1810,6 +1815,56 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 	{
 		childIndex = lfirst_int(cell);
 		InventorySliceTree(sliceMap, childIndex, req);
+	}
+}
+
+/*
+ * If no N-gang is generated, we need to covert
+ * a singleton reader to GANGTYPE_PRIMARY_WRITER.
+ * Note: We don't go through the init plans.
+ */
+static void
+FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
+{
+	ListCell *cell;
+	int childIndex;
+	Slice *slice = sliceMap[sliceIndex];
+
+	if (req->numNgangs != 0)
+		return;
+
+	/* already found a candidate, do nothing */
+	if (req->foundCandidate)
+		return;
+
+	Assert(req->num1gangs_primary_reader > 0);
+
+	switch (slice->gangType)
+	{
+		case GANGTYPE_UNALLOCATED:
+		case GANGTYPE_ENTRYDB_READER:
+		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_PRIMARY_READER:
+			break;
+
+		case GANGTYPE_SINGLETON_READER:
+			req->num1gangs_primary_reader--;
+			req->numNgangs++;
+			slice->gangType = GANGTYPE_PRIMARY_WRITER;
+			slice->gangSize = getgpsegmentCount();
+			slice->numGangMembersToBeActive = 1;
+			Assert(!slice->directDispatch.isDirectDispatch);
+			slice->directDispatch.isDirectDispatch = true;
+			slice->directDispatch.contentIds = list_make1_int(gp_session_id % getgpsegmentCount());;
+			req->foundCandidate = true;
+			req->writer= true;
+			break;
+	}
+
+	foreach(cell, slice->children)
+	{
+		childIndex = lfirst_int(cell);
+		FinalizeSliceTree(sliceMap, childIndex, req);
 	}
 }
 

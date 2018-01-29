@@ -105,6 +105,8 @@ typedef struct ContentIdAssignmentData
 	 * of Plan*
 	 */
 	List	   *allSlices;
+
+	bool	planIsPartitioned;
 } ContentIdAssignmentData;
 
 static bool AssignContentIdsToPlanData_Walker(Node *node, void *context);
@@ -688,6 +690,7 @@ AssignContentIdsToPlanData(Query *query, Plan *plan, PlannerInfo *root)
 	data.sliceStack = list_make1(ddcr);
 	data.rtable = root->glob->finalrtable;
 	data.allSlices = NULL;
+	data.planIsPartitioned = false;
 
 	/* Do it! */
 	AssignContentIdsToPlanData_Walker((Node *) plan, &data);
@@ -719,6 +722,11 @@ AssignContentIdsToPlanData(Query *query, Plan *plan, PlannerInfo *root)
 			plan->directDispatch.contentIds = NIL;
 		}
 	}
+
+#if 0
+	if (data.planIsPartitioned == false)
+		plan->lefttree->flow->flotype = FLOW_PARTITIONED;
+#endif
 
 	DeleteAndRestoreSwitchedMemoryContext(mem);
 }

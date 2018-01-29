@@ -485,6 +485,21 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 				else
 					Insist(focusPlan(plan, false, false));
 			}
+			else if (!query->intoClause &&
+				(plan->flow->flotype == FLOW_SINGLETON &&
+				 (plan->flow->locustype == CdbLocusType_SegmentGeneral ||
+				  plan->flow->locustype == CdbLocusType_Single)))
+			{
+				if (query->sortClause)
+				{
+					Insist(focusPlan(plan, true, false));
+				}
+
+				/* Use UNION RECEIVE.  Does not preserve ordering. */
+				else
+					Insist(focusPlan(plan, false, false));
+			}
+
 			needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch && !query->intoClause;
 			break;
 
@@ -719,6 +734,26 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 											errmsg("Cannot parallelize that INSERT yet")));
 						break;
 
+					case POLICYTYPE_REPLICATED:
+						Assert(plan->flow->flotype != FLOW_REPLICATED);
+
+						/*
+ 						 * CdbLocusType_SegmentGeneral is only used by replicated table right now,
+ 						 * so if both input and target are replicated table, no need to add a motion
+ 						 */
+						if (plan->flow->flotype == FLOW_SINGLETON &&
+							plan->flow->locustype == CdbLocusType_SegmentGeneral)
+							break;
+
+						if (plan->flow->flotype == FLOW_SINGLETON &&
+						    plan->flow->locustype == CdbLocusType_General)
+							break;
+
+						if (!broadcastPlan(plan, false, false))
+								ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
+											errmsg("Cannot parallelize that INSERT yet")));
+						break;
+	
 					default:
 						Insist(0);
 				}
@@ -759,7 +794,39 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 					needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch;
 				}
+				else if (targetPolicyType == POLICYTYPE_REPLICATED)
+				{
+					if (plan->flow->flotype == FLOW_SINGLETON &&
+						(plan->flow->locustype == CdbLocusType_General ||
+						 plan->flow->locustype == CdbLocusType_SegmentGeneral))
+					{
+						/* do nothing */
+					}
+					else if (plan->flow->flotype == FLOW_REPLICATED)
+					{
+						/* do nothing */
+					}
+					else
+					{
+						/*
+						 * add a broadcast on top
+						 */
 
+						/* create a shallow copy of the plan flow */
+						Flow	   *flow = plan->flow;
+
+						plan->flow = (Flow *) palloc(sizeof(Flow));
+						*(plan->flow) = *flow;
+
+						/* save original flow information */
+						plan->flow->flow_before_req_move = flow;
+
+						/* request a GatherMotion node */
+						plan->flow->req_move = MOVEMENT_BROADCAST;
+						plan->flow->hashExpr = NIL;
+						plan->flow->segindex = 0;
+					}
+				}
 				/* Target table is not distributed.  Must be in entry db. */
 				else
 				{

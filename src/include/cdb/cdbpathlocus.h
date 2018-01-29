@@ -49,9 +49,14 @@ typedef enum CdbLocusType
                                  * qDisp itself, or a qExec started by a
                                  * segment postmaster or the entry postmaster.
                                  */
+    CdbLocusType_Single,        /* a single backend process on any qExec db:
+				 * a qExec started by a segment postmaster.
+                                 */
     CdbLocusType_General,       /* compatible with any locus (data is
                                  * self-contained in the query plan or
                                  * generally available in any qExec or qDisp) */
+    CdbLocusType_SegmentGeneral,/* generally available in any qExec, but not
+				 * available in qDisp */
     CdbLocusType_Replicated,    /* replicated over all qExecs of an N-gang */
     CdbLocusType_Hashed,        /* hash partitioned over all qExecs of N-gang */
     CdbLocusType_HashedOJ,      /* result of hash partitioned outer join */
@@ -153,6 +158,7 @@ typedef struct CdbPathLocus
  */
 #define CdbPathLocus_IsBottleneck(locus)        \
             (CdbPathLocus_IsEntry(locus) ||     \
+             CdbPathLocus_IsSingle(locus) ||     \
              CdbPathLocus_IsSingleQE(locus))
 
 /*
@@ -172,6 +178,8 @@ typedef struct CdbPathLocus
             ((locus).locustype == CdbLocusType_Entry)
 #define CdbPathLocus_IsSingleQE(locus)      \
             ((locus).locustype == CdbLocusType_SingleQE)
+#define CdbPathLocus_IsSingle(locus)      \
+            ((locus).locustype == CdbLocusType_Single)
 #define CdbPathLocus_IsGeneral(locus)       \
             ((locus).locustype == CdbLocusType_General)
 #define CdbPathLocus_IsReplicated(locus)    \
@@ -182,6 +190,8 @@ typedef struct CdbPathLocus
             ((locus).locustype == CdbLocusType_HashedOJ)
 #define CdbPathLocus_IsStrewn(locus)        \
             ((locus).locustype == CdbLocusType_Strewn)
+#define CdbPathLocus_IsSegmentGeneral(locus)        \
+            ((locus).locustype == CdbLocusType_SegmentGeneral)
 
 #define CdbPathLocus_MakeSimple(plocus, _locustype) \
     do {                                                \
@@ -197,8 +207,12 @@ typedef struct CdbPathLocus
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_Entry)
 #define CdbPathLocus_MakeSingleQE(plocus)               \
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_SingleQE)
+#define CdbPathLocus_MakeSingle(plocus)               \
+            CdbPathLocus_MakeSimple((plocus), CdbLocusType_Single)
 #define CdbPathLocus_MakeGeneral(plocus)                \
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_General)
+#define CdbPathLocus_MakeSegmentGeneral(plocus)                \
+            CdbPathLocus_MakeSimple((plocus), CdbLocusType_SegmentGeneral)
 #define CdbPathLocus_MakeReplicated(plocus)             \
             CdbPathLocus_MakeSimple((plocus), CdbLocusType_Replicated)
 #define CdbPathLocus_MakeHashed(plocus, partkey_)       \
