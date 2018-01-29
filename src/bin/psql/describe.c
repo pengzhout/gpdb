@@ -2716,7 +2716,11 @@ add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBuffe
 			char *col;
 			char *dist_columns = PQgetvalue(result1, 0, 0);
 			char *dist_colname;
-			if(dist_columns && strlen(dist_columns) > 0)
+			if (dist_columns && !strcmp(dist_columns, "{-128}"))
+			{
+				printfPQExpBuffer(buf, "Distributed fully");
+			}
+			else if(dist_columns && strlen(dist_columns) > 0)
 			{
 				PQExpBufferData tempbuf;
 

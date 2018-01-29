@@ -1523,7 +1523,9 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 		{
 			Path *subpath = (Path *) lfirst(l);
 
+			/* If one of subplan is segment general, gather others to single QE */
 			if (CdbPathLocus_IsBottleneck(subpath->locus) ||
+				CdbPathLocus_IsSegmentGeneral(subpath->locus) ||
 				CdbPathLocus_IsReplicated(subpath->locus))
 			{
 				fIsNotPartitioned = true;
@@ -2531,6 +2533,8 @@ create_worktablescan_path(PlannerInfo *root, RelOptInfo *rel, CdbLocusType ctelo
 		CdbPathLocus_MakeSingleQE(&result);
 	else if (ctelocus == CdbLocusType_General)
 		CdbPathLocus_MakeGeneral(&result);
+	else if (ctelocus == CdbLocusType_SegmentGeneral)
+		CdbPathLocus_MakeSegmentGeneral(&result);
 	else
 		CdbPathLocus_MakeStrewn(&result);
 

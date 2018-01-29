@@ -1045,6 +1045,8 @@ inheritance_planner(PlannerInfo *root)
 					case CdbLocusType_Strewn:
 						/* MPP-2023: Among subplans, these loci are okay. */
 						break;
+					case CdbLocusType_SegmentGeneral:
+						break;
 					case CdbLocusType_Null:
 					case CdbLocusType_SingleQE:
 					case CdbLocusType_General:
@@ -1160,6 +1162,10 @@ inheritance_planner(PlannerInfo *root)
 					 * enough.
 					 */
 					mark_plan_strewn(plan);
+					break;
+
+				case CdbLocusType_SegmentGeneral:
+					mark_plan_segment_general(plan);
 					break;
 
 				default:
@@ -2603,11 +2609,16 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 	 */
 	if (parse->limitCount || parse->limitOffset)
 	{
-		if (Gp_role == GP_ROLE_DISPATCH && result_plan->flow->flotype == FLOW_PARTITIONED)
+		if (Gp_role == GP_ROLE_DISPATCH &&
+			(result_plan->flow->flotype == FLOW_PARTITIONED ||
+			 result_plan->flow->locustype == CdbLocusType_SegmentGeneral))
 		{
-			/* pushdown the first phase of multi-phase limit (which takes offset into account) */
-			result_plan = pushdown_preliminary_limit(result_plan, parse->limitCount, count_est, parse->limitOffset, offset_est);
-			
+			if (result_plan->flow->flotype == FLOW_PARTITIONED)
+			{
+				/* pushdown the first phase of multi-phase limit (which takes offset into account) */
+				result_plan = pushdown_preliminary_limit(result_plan, parse->limitCount, count_est, parse->limitOffset, offset_est);
+			}
+
 			/*
 			 * Focus on QE [merge to preserve order], prior to final LIMIT.
 			 *

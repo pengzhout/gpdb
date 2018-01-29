@@ -362,6 +362,11 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString, bool createPartit
 	transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy,
 						   likeDistributedBy, bQuiet);
 
+	if ((stmt->partitionBy != NULL || stmt->inhRelations != NULL) &&
+		GpPolicyIsReplicated(stmt->policy))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("INHERITS or PARTITION BY clause cannot be used with DISTRIBUTED FULLY clause")));
 	/*
 	 * Process table partitioning clause
 	 */
@@ -1313,6 +1318,10 @@ transformCreateExternalStmt(CreateExternalStmt *stmt, const char *queryString)
 			/* regular DISTRIBUTED BY transformation */
 			transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy,
 								   likeDistributedBy, bQuiet);
+			if (GpPolicyIsReplicated(stmt->policy))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("External tables can't have DISTRIBUTED FULLY clause.")));
 		}
 	}
 	else if (stmt->distributedBy != NIL)
@@ -1492,7 +1501,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			 * in the segments.
 			 */
 			if ((oldTablePolicy == NULL ||
-					oldTablePolicy->ptype != POLICYTYPE_PARTITIONED) &&
+					oldTablePolicy->ptype == POLICYTYPE_ENTRY) &&
 					!IsBinaryUpgrade)
 			{
 				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
@@ -1503,6 +1512,20 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 								  "mixture of distributed and "
 								  "non-distributed tables.")));
 			}
+
+			if ((oldTablePolicy == NULL ||
+					oldTablePolicy->ptype == POLICYTYPE_REPLICATED) &&
+					!IsBinaryUpgrade)
+			{
+				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+						errmsg("cannot inherit from replicated table \"%s\" "
+							   "to create table \"%s\".",
+							   parent->relname, cxt->relation->relname),
+						errdetail("An inheritance hierarchy cannot contain a "
+								  "mixture of distributed and "
+								  "non-distributed tables.")));
+			}
+
 			/*
 			 * If we still don't know what distribution to use, and this
 			 * is an inherited table, set the distribution based on the
@@ -1685,7 +1708,19 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		 * set the distribution policy.
 		 */
 		policy->nattrs = 0;
-		if (!(distributedBy->length == 1 && linitial(distributedBy) == NULL))
+
+		if (distributedBy->length == 1 && linitial(distributedBy) == NULL)
+		{
+			/* do nothing */
+		}
+		else if (distributedBy->length == 2 &&
+			linitial(distributedBy) == NULL &&
+			lsecond(distributedBy) == NULL)
+		{
+			policy->ptype = POLICYTYPE_REPLICATED;
+			policy->nattrs = 0;
+		}
+		else
 		{
 			foreach(keys, distributedBy)
 			{
@@ -1796,7 +1831,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	*policyp = policy;
 
 
-	if (cxt && cxt->pkey)		/* Primary key	specified.	Make sure
+	if (cxt && cxt->pkey &&
+		policy->ptype != POLICYTYPE_REPLICATED)	/* Primary key	specified.	Make sure
 								 * distribution columns match */
 	{
 		int			i = 0;
@@ -1894,7 +1930,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	}
 
-	if (uniqueindex)			/* UNIQUE specified.  Make sure distribution
+	if (uniqueindex && policy->ptype != POLICYTYPE_REPLICATED) /* UNIQUE specified.  Make sure distribution
 								 * columns match */
 	{
 		int			i = 0;
@@ -3549,11 +3585,16 @@ getLikeDistributionPolicy(InhRelation* e)
 	oldTablePolicy = GpPolicyFetch(CurrentMemoryContext, relId);
 
 	if (oldTablePolicy != NULL &&
-		oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+		(oldTablePolicy->ptype == POLICYTYPE_PARTITIONED ||
+		 oldTablePolicy->ptype == POLICYTYPE_REPLICATED))
 	{
 		int ia;
 
-		if (oldTablePolicy->nattrs > 0)
+		if (oldTablePolicy->ptype == POLICYTYPE_REPLICATED)
+		{
+			likeDistributedBy = list_make2((Node *) NULL, (Node *) NULL);
+		}
+		else if (oldTablePolicy->nattrs > 0)
 		{
 			for (ia = 0 ; ia < oldTablePolicy->nattrs ; ia++)
 			{
@@ -3566,7 +3607,8 @@ getLikeDistributionPolicy(InhRelation* e)
 			}
 		}
 		else
-		{	/* old table is distributed randomly. */
+		{
+			/* old table is distributed fully. */
 			likeDistributedBy = list_make1((Node *) NULL);
 		}
 	}

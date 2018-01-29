@@ -134,6 +134,33 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			return (Path *) pathnode;
 		}
 
+		if (CdbPathLocus_IsSegmentGeneral(subpath->locus))
+		{
+			/*
+			 * Data is only available on segments, to distingush it with
+			 * CdbLocusType_General, adding a motion to indicated this
+			 * slice must be executed on a singleton gang.
+			 *
+			 * This motion may be redundant for segmentGeneral --> singleQE
+			 * if the singleQE is not promoted to executed on qDisp in the
+			 * end, so in apply_motion_mutator(), we will omit it.
+			 */
+			pathnode = makeNode(CdbMotionPath);
+			pathnode->path.pathtype = T_Motion;
+			pathnode->path.parent = subpath->parent;
+			pathnode->path.locus = locus;
+			pathnode->path.pathkeys = pathkeys;
+			pathnode->subpath = subpath;
+
+			/* Costs, etc, are same as subpath. */
+			pathnode->path.startup_cost = subpath->total_cost;
+			pathnode->path.total_cost = subpath->total_cost;
+			pathnode->path.memory = subpath->memory;
+			pathnode->path.motionHazard = subpath->motionHazard;
+			pathnode->path.rescannable = subpath->rescannable;
+			return (Path *) pathnode;
+		}
+
 		/* No motion needed if subpath can run anywhere giving same output. */
 		if (CdbPathLocus_IsGeneral(subpath->locus))
 			return subpath;
@@ -874,6 +901,9 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		if (!outer.ok_to_replicate &&
 			CdbPathLocus_IsPartitioned(inner.locus))
 			CdbPathLocus_MakeSingleQE(&inner.move_to);
+		else if (!outer.ok_to_replicate &&
+			CdbPathLocus_IsSegmentGeneral(inner.locus))
+			CdbPathLocus_MakeSingleQE(&inner.move_to);
 		else
 			return inner.locus;
 	}
@@ -882,10 +912,50 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		if (!inner.ok_to_replicate &&
 			CdbPathLocus_IsPartitioned(outer.locus))
 			CdbPathLocus_MakeSingleQE(&outer.move_to);
+		else if (!inner.ok_to_replicate &&
+			CdbPathLocus_IsSegmentGeneral(outer.locus))
+			CdbPathLocus_MakeSingleQE(&outer.move_to);
 		else
 			return outer.locus;
 	}
+	else if (CdbPathLocus_IsSegmentGeneral(outer.locus) ||
+			 CdbPathLocus_IsSegmentGeneral(inner.locus))
+	{
+		CdbpathMfjRel *segGeneral;
+		CdbpathMfjRel *other;
 
+		if (CdbPathLocus_IsEqual(outer.locus, inner.locus))
+			return inner.locus;
+
+		if (CdbPathLocus_IsSegmentGeneral(outer.locus))
+		{
+			segGeneral = &outer;
+			other = &inner;
+		}
+		else
+		{
+			segGeneral = &inner;
+			other = &outer;
+		}
+
+		Assert(CdbPathLocus_IsBottleneck(other->locus) ||
+			   CdbPathLocus_IsPartitioned(other->locus));
+
+		/*
+		 * other is bottleneck, move inner to other
+		 */
+		if (CdbPathLocus_IsBottleneck(other->locus))
+			segGeneral->move_to = other->locus;
+		/* other is partition and segGeneral is not support to be replicated */
+		else if (!segGeneral->ok_to_replicate)
+		{
+			/* put both inner and outer to single QE */
+			CdbPathLocus_MakeSingleQE(&segGeneral->move_to);
+			CdbPathLocus_MakeSingleQE(&other->move_to);
+		}
+		else
+			return other->locus;
+	}
 	/*
 	 * Is either source confined to a single process? NB: Motion to a single
 	 * process (qDisp or qExec) is the only motion in which we may use Merge
@@ -923,6 +993,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 			CdbSwap(CdbpathMfjRel *, single, other);
 			CdbSwap(bool, single_immovable, other_immovable);
 		}
+
 		Assert(CdbPathLocus_IsBottleneck(single->locus));
 		Assert(CdbPathLocus_IsPartitioned(other->locus));
 

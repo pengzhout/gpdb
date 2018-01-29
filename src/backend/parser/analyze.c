@@ -3296,6 +3296,13 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 			/* distributed randomly */
 			qry->intoPolicy = policy;
 		}
+		else if (stmt->distributedBy->length == 2 &&
+			 linitial(stmt->distributedBy) == NULL &&
+			 lsecond(stmt->distributedBy) == NULL)
+		{
+			/* distributed fully */
+			qry->intoPolicy = makeGpPolicy(NULL, POLICYTYPE_REPLICATED, 0);
+		}
 		else
 		{
 			foreach(keys, stmt->distributedBy)

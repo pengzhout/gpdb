@@ -619,7 +619,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 
 	ERRORS EVERY EXCHANGE EXCLUDE
 
-	FIELDS FILESPACE FILL FILTER FORMAT
+	FIELDS FILESPACE FILL FILTER FORMAT FULLY
 
 	GROUP_ID GROUPING
 
@@ -3941,6 +3941,7 @@ OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 
 DistributedBy:   DISTRIBUTED BY  '(' columnListUnique ')'		{ $$ = $4; }
 			| DISTRIBUTED RANDOMLY			{ $$ = list_make1(NULL); }
+			| DISTRIBUTED FULLY			{ $$ = list_make2(NULL, NULL); }
 		;
 
 OptDistributedBy:   DistributedBy			{ $$ = $1; }
@@ -13597,6 +13598,7 @@ unreserved_keyword:
 			| FORCE
 			| FORMAT
 			| FORWARD
+			| FULLY
 			| FUNCTION
 			| GLOBAL
 			| GRANTED

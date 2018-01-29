@@ -1717,10 +1717,13 @@ analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *rel
 		bool		isNull;
 		Datum	   *values = NULL;
 		int			valuesLength;
+		GpPolicy	*policy = NULL;
 
 		initStringInfo(&sqlstmt);
 
-		if (GpPolicyFetch(CurrentMemoryContext, singleOid)->ptype == POLICYTYPE_ENTRY)
+		policy = GpPolicyFetch(CurrentMemoryContext, singleOid);
+
+		if (policy->ptype == POLICYTYPE_ENTRY)
 		{
 			appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
 					"from pg_class c where c.oid=%d", singleOid);
@@ -1755,8 +1758,16 @@ analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *rel
 						  &values, NULL, &valuesLength);
 		Assert(valuesLength == 2);
 
-		*relTuples += DatumGetFloat4(values[0]);
-		*relPages += DatumGetFloat4(values[1]);
+		if (GpPolicyIsReplicated(policy))
+		{
+			*relTuples += DatumGetFloat4(values[0]) / getgpsegmentCount();
+			*relPages += DatumGetFloat4(values[1]) / getgpsegmentCount();
+		}
+		else
+		{
+			*relTuples += DatumGetFloat4(values[0]);
+			*relPages += DatumGetFloat4(values[1]);
+		}
 
 		SPI_finish();
 	}
@@ -1781,10 +1792,13 @@ analyzeEstimateIndexpages(Relation onerel, Relation indrel, BlockNumber *indexPa
 	bool		isNull;
 	Datum	   *values = NULL;
 	int			valuesLength;
+	GpPolicy	*policy = NULL;
 
 	initStringInfo(&sqlstmt);
 
-	if (GpPolicyFetch(CurrentMemoryContext, RelationGetRelid(onerel))->ptype == POLICYTYPE_ENTRY)
+	policy = GpPolicyFetch(CurrentMemoryContext, RelationGetRelid(onerel));
+
+	if (policy->ptype == POLICYTYPE_ENTRY)
 	{
 		appendStringInfo(&sqlstmt, "select sum(gp_statistics_estimate_reltuples_relpages_oid(c.oid))::float4[] "
 						 "from pg_class c where c.oid=%d", RelationGetRelid(indrel));
@@ -1820,7 +1834,10 @@ analyzeEstimateIndexpages(Relation onerel, Relation indrel, BlockNumber *indexPa
             &values, NULL, &valuesLength);
     Assert(valuesLength == 2);
 
-	*indexPages = DatumGetFloat4(values[1]);
+	if (GpPolicyIsReplicated(policy))
+		*indexPages = DatumGetFloat4(values[1]) / getgpsegmentCount();
+	else
+		*indexPages = DatumGetFloat4(values[1]);
 
 	SPI_finish();
 

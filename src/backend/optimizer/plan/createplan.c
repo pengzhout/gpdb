@@ -258,6 +258,7 @@ create_subplan(PlannerInfo *root, Path *best_path)
 	}
 
 	if (CdbPathLocus_IsPartitioned(best_path->locus) ||
+		CdbPathLocus_IsSegmentGeneral(best_path->locus) ||
 		CdbPathLocus_IsReplicated(best_path->locus))
 		plan->dispatch = DISPATCH_PARALLEL;
 

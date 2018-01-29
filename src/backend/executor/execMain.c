@@ -158,6 +158,31 @@ void ExecCheckRTEPerms(RangeTblEntry *rte);
 
 static PartitionNode *BuildPartitionNodeFromRoot(Oid relid);
 static void InitializeQueryPartsMetadata(PlannedStmt *plannedstmt, EState *estate);
+static void AdjustReplicatedTableCounts(EState *estate);
+
+/*
+ * Support for SELECT INTO (a/k/a CREATE TABLE AS)
+ *
+ * We implement SELECT INTO by diverting SELECT's normal output with
+ * a specialized DestReceiver type.
+ */
+
+typedef struct
+{
+	DestReceiver pub;			/* publicly-known function pointers */
+	EState	   *estate;			/* EState we are working with */
+	Relation	rel;			/* Relation to write to */
+	int			hi_options;		/* heap_insert performance options */
+	BulkInsertState bistate;	/* bulk insert state */
+
+	struct AppendOnlyInsertDescData *ao_insertDesc; /* descriptor to AO tables */
+	struct AOCSInsertDescData *aocs_ins;           /* descriptor for aocs */
+
+	ItemPointerData last_heap_tid;
+
+	struct MirroredBufferPoolBulkLoadInfo *bulkloadinfo;
+
+} DR_intorel;
 
 /*
  * For a partitioned insert target only:  
@@ -291,8 +316,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 	START_MEMORY_ACCOUNT(plannedStmt->memoryAccountId);
 
-	Assert(queryDesc->plannedstmt->intoPolicy == NULL
-		   || queryDesc->plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+	Assert(plannedStmt->intoPolicy == NULL ||
+		plannedStmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
+		plannedStmt->intoPolicy->ptype == POLICYTYPE_REPLICATED);
 
 	/**
 	 * Perfmon related stuff.
@@ -1153,10 +1179,19 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	RemoveMotionLayer(estate->motionlayer_context, true);
 
 	/*
+	 * Adjust SELECT INTO count
 	 * Close the SELECT INTO relation if any
 	 */
 	if (estate->es_select_into)
+	{
+		/* Adjust select into count if needed */
+		DR_intorel *into = (DR_intorel *) queryDesc->dest;
+		if (into && into->pub.mydest == DestIntoRel && into->rel &&
+			GpPolicyIsReplicated(into->rel->rd_cdbpolicy))
+			estate->es_processed = estate->es_processed / getgpsegmentCount();
+
 		CloseIntoRel(queryDesc);
+	}
 
 	/* do away with our snapshots */
 	UnregisterSnapshot(estate->es_snapshot);
@@ -1523,8 +1558,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	ListCell   *l;
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && plannedstmt->planTree->dispatch == DISPATCH_PARALLEL;
 
-	Assert(plannedstmt->intoPolicy == NULL
-		   || plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+	Assert(plannedstmt->intoPolicy == NULL ||
+		plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
+		plannedstmt->intoPolicy->ptype == POLICYTYPE_REPLICATED);
 
 	if (DEBUG1 >= log_min_messages)
 	{
@@ -2690,6 +2726,9 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	/* Report how many tuples we may have inserted into AO tables */
 	SendAOTupCounts(estate);
 
+	/* Adjust INSERT/UPDATE/DELETE count for replicated table ON QD */
+	AdjustReplicatedTableCounts(estate);
+
 	/*
 	 * close the result relation(s) if any, but hold locks until xact commit.
 	 */
@@ -2908,7 +2947,7 @@ lnext:	;
 					/* CDB: CTIDs were not fetched for distributed relation. */
 					Relation relation = erm->relation;
 					if (relation->rd_cdbpolicy &&
-						relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+						relation->rd_cdbpolicy->ptype != POLICYTYPE_ENTRY)
 						continue;
 
 					/* if child rel, must check whether it produced this row */
@@ -4864,30 +4903,6 @@ ExecGetActivePlanTree(QueryDesc *queryDesc)
 
 
 /*
- * Support for SELECT INTO (a/k/a CREATE TABLE AS)
- *
- * We implement SELECT INTO by diverting SELECT's normal output with
- * a specialized DestReceiver type.
- */
-
-typedef struct
-{
-	DestReceiver pub;			/* publicly-known function pointers */
-	EState	   *estate;			/* EState we are working with */
-	Relation	rel;			/* Relation to write to */
-	int			hi_options;		/* heap_insert performance options */
-	BulkInsertState bistate;	/* bulk insert state */
-
-	struct AppendOnlyInsertDescData *ao_insertDesc; /* descriptor to AO tables */
-	struct AOCSInsertDescData *aocs_ins;           /* descriptor for aocs */
-
-	ItemPointerData last_heap_tid;
-
-	struct MirroredBufferPoolBulkLoadInfo *bulkloadinfo;
-
-} DR_intorel;
-
-/*
  * OpenIntoRel --- actually create the SELECT INTO target relation
  *
  * This also replaces QueryDesc->dest with the special DestReceiver for
@@ -6144,4 +6159,43 @@ InitializePartsMetadata(Oid rootOid)
 
 	metadata->accessMethods = createPartitionAccessMethods(num_partition_levels(metadata->partsAndRules));
 	return list_make1(metadata);
+}
+
+/*
+ * Adjust INSERT/UPDATE/DELETE count for replicated table ON QD
+ */
+static void
+AdjustReplicatedTableCounts(EState *estate)
+{
+	int i;
+	ResultRelInfo *resultRelInfo;
+	bool containReplicatedTable = false;
+
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	/* check if result_relations contain replicated table*/
+	for (i = 0; i < estate->es_num_result_relations; i++)
+	{
+		GpPolicy *policy = NULL;
+		resultRelInfo = estate->es_result_relations + i;
+
+		policy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
+		if (!policy)
+			continue;
+
+		if (policy->ptype == POLICYTYPE_REPLICATED)
+			containReplicatedTable = true;
+		else if (containReplicatedTable)
+		{
+			/*
+			 * If one is replicated table, assert that other
+			 * tables are also replicated table.
+ 			 */
+			Insist(0);
+		}
+	}
+
+	if (containReplicatedTable)
+		estate->es_processed = estate->es_processed / getgpsegmentCount();
 }

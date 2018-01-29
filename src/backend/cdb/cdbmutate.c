@@ -281,7 +281,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 				{
 					targetPolicy = query->intoPolicy;
 
-					Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
+					Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
+						query->intoPolicy->ptype == POLICYTYPE_REPLICATED);
 					Assert(query->intoPolicy->nattrs >= 0);
 					Assert(query->intoPolicy->nattrs <= MaxPolicyAttributeNumber);
 				}
@@ -436,24 +437,54 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 				query->intoPolicy = targetPolicy;
 
-				/*
-				 * Make sure the top level flow is partitioned on the
-				 * partitioning key of the target relation.	Since this is a
-				 * SELECT INTO (basically same as an INSERT) command, the
-				 * target list will correspond to the attributes of the target
-				 * relation in order.
-				 */
-				hashExpr = getExprListFromTargetList(plan->targetlist,
-													 targetPolicy->nattrs,
-													 targetPolicy->attrs,
-													 true);
-				if (!repartitionPlan(plan, false, false, hashExpr))
-					ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
+				Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
+					query->intoPolicy->ptype == POLICYTYPE_REPLICATED); 
+
+				if (query->intoPolicy->ptype == POLICYTYPE_REPLICATED)
+				{
+					/*
+					 * CdbLocusType_SegmentGeneral is only used by replicated table right now,
+					 * so if both input and target are replicated table, no need to add a motion
+					 */
+					if (plan->flow->flotype == FLOW_SINGLETON &&
+							plan->flow->locustype == CdbLocusType_SegmentGeneral)
+					{
+						/* do nothing */
+					}
+
+					/* plan's data are available on all segment, no motion needed */
+					if (plan->flow->flotype == FLOW_SINGLETON &&
+							plan->flow->locustype == CdbLocusType_General)
+					{
+						/* do nothing */
+					}
+
+					if (!broadcastPlan(plan, false, false))
+						ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
+									errmsg("Cannot parallelize that SELECT INTO yet")));
+
+				}
+				else
+				{
+					/*
+					 * Make sure the top level flow is partitioned on the
+					 * partitioning key of the target relation.	Since this is a
+					 * SELECT INTO (basically same as an INSERT) command, the
+					 * target list will correspond to the attributes of the target
+					 * relation in order.
+					 */
+					hashExpr = getExprListFromTargetList(plan->targetlist,
+							targetPolicy->nattrs,
+							targetPolicy->attrs,
+							true);
+					if (!repartitionPlan(plan, false, false, hashExpr))
+						ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
 									errmsg("Cannot parallelize that SELECT INTO yet")
-									));
+							       ));
+				}
 
-				Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
-
+				Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
+					query->intoPolicy->ptype == POLICYTYPE_REPLICATED); 
 			}
 
 			if (plan->flow->flotype == FLOW_PARTITIONED && !query->intoClause)
@@ -485,6 +516,20 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 				else
 					Insist(focusPlan(plan, false, false));
 			}
+			else if (!query->intoClause &&
+					 	plan->flow->flotype == FLOW_SINGLETON &&
+				 		plan->flow->locustype == CdbLocusType_SegmentGeneral)
+			{
+				if (query->sortClause)
+				{
+					Insist(focusPlan(plan, true, false));
+				}
+
+				/* Use UNION RECEIVE.  Does not preserve ordering. */
+				else
+					Insist(focusPlan(plan, false, false));
+			}
+
 			needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch && !query->intoClause;
 			break;
 
@@ -719,6 +764,27 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 											errmsg("Cannot parallelize that INSERT yet")));
 						break;
 
+					case POLICYTYPE_REPLICATED:
+						Assert(plan->flow->flotype != FLOW_REPLICATED);
+
+						/*
+						 * CdbLocusType_SegmentGeneral is only used by replicated table right now,
+						 * so if both input and target are replicated table, no need to add a motion
+						 */
+						if (plan->flow->flotype == FLOW_SINGLETON &&
+							plan->flow->locustype == CdbLocusType_SegmentGeneral)
+							break;
+
+						/* plan's data are available on all segment, no motion needed */
+						if (plan->flow->flotype == FLOW_SINGLETON &&
+						    plan->flow->locustype == CdbLocusType_General)
+							break;
+
+						if (!broadcastPlan(plan, false, false))
+								ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
+											errmsg("Cannot parallelize that INSERT yet")));
+						break;
+
 					default:
 						Insist(0);
 				}
@@ -759,7 +825,39 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 					needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch;
 				}
+				else if (targetPolicyType == POLICYTYPE_REPLICATED)
+				{
+					if (plan->flow->flotype == FLOW_SINGLETON &&
+						(plan->flow->locustype == CdbLocusType_General ||
+						 plan->flow->locustype == CdbLocusType_SegmentGeneral))
+					{
+						/* do nothing */
+					}
+					else if (plan->flow->flotype == FLOW_REPLICATED)
+					{
+						/* do nothing */
+					}
+					else
+					{
+						/*
+						 * add a broadcast on top
+						 */
 
+						/* create a shallow copy of the plan flow */
+						Flow	   *flow = plan->flow;
+
+						plan->flow = (Flow *) palloc(sizeof(Flow));
+						*(plan->flow) = *flow;
+
+						/* save original flow information */
+						plan->flow->flow_before_req_move = flow;
+
+						/* request a GatherMotion node */
+						plan->flow->req_move = MOVEMENT_BROADCAST;
+						plan->flow->hashExpr = NIL;
+						plan->flow->segindex = 0;
+					}
+				}
 				/* Target table is not distributed.  Must be in entry db. */
 				else
 				{
@@ -941,9 +1039,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		Assert(flow && motion->plan.lefttree->flow);
 		Assert(flow->req_move == MOVEMENT_NONE && !flow->flow_before_req_move);
 
-		/* Assign unique node number to the new node. */
-		assignMotionID(newnode, context, node);
-
 		/* If top slice marked as singleton, make it a dispatcher singleton. */
 		if (motion->motionType == MOTIONTYPE_FIXED
 			&& motion->numOutputSegs == 1
@@ -955,6 +1050,26 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			flow->segindex = -1;
 			motion->outputSegIdx[0] = -1;
 		}
+
+		/*
+		 * For non-top slice, if this motion is QE singleton and subplan's locus
+		 * is CdbLocusType_SegmentGeneral, omit this motion.
+		 */
+		if (context->sliceDepth > 0 &&
+			flow->flotype == FLOW_SINGLETON &&
+			flow->segindex == 0 &&
+			motion->plan.lefttree->flow->locustype == CdbLocusType_SegmentGeneral)
+		{
+			/* omit this motion */
+			newnode = (Node *)motion->plan.lefttree;
+
+			/* Don't need assign a motion node Id */
+			goto done;
+		}
+
+		/* Assign unique node number to the new node. */
+		assignMotionID(newnode, context, node);
+
 		goto done;
 	}
 

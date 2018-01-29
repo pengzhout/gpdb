@@ -1806,6 +1806,13 @@ vac_update_relstats_from_list(Relation rel,
 				break;
 			}
 		}
+
+		GpPolicy *policy = GpPolicyFetch(CurrentMemoryContext, RelationGetRelid(rel));
+		if (GpPolicyIsReplicated(policy))
+		{
+			num_pages = num_pages / getgpsegmentCount();
+			num_tuples = num_tuples / getgpsegmentCount();
+		}
 	}
 
 	vac_update_relstats(rel, num_pages, num_tuples,

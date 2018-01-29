@@ -216,6 +216,13 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		{
 			policy->attrs[i] = attrnums[i];
 		}
+
+		if (nattrs == 1 &&
+			policy->attrs[0] == GpReplicatedTableAttributerNumberIdentifier)
+		{
+			policy->ptype = POLICYTYPE_REPLICATED;
+			policy->nattrs = 0;
+		}
 	}
 
 	/*
@@ -273,7 +280,8 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 	bool		nulls[2];
 	Datum		values[2];
 
-	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
+	Insist(policy->ptype == POLICYTYPE_PARTITIONED ||
+		policy->ptype == POLICYTYPE_REPLICATED);
 
 	/*
 	 * Open and lock the gp_distribution_policy catalog.
@@ -288,6 +296,7 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 		int			i;
 		Datum	   *akey;
 
+		Assert(policy->ptype == POLICYTYPE_PARTITIONED);
 		akey = (Datum *) palloc(policy->nattrs * sizeof(Datum));
 		for (i = 0; i < policy->nattrs; i++)
 			akey[i] = Int16GetDatum(policy->attrs[i]);
@@ -296,7 +305,16 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 	}
 	else
 	{
-		attrnums = NULL;
+		if (policy->ptype == POLICYTYPE_REPLICATED)
+		{
+			Datum *akey = (Datum*)palloc(sizeof(Datum));
+			*akey = Int16GetDatum(GpReplicatedTableAttributerNumberIdentifier);	
+			attrnums = construct_array(akey, 1,
+					INT2OID, 2, true, 's');
+		}
+		/* distributed randomly */
+		else
+			attrnums = NULL;
 	}
 
 	nulls[0] = false;
@@ -472,6 +490,20 @@ GpPolicyIsRandomly(GpPolicy *policy)
 }
 
 /*
+ * Returns true only if the policy is a fully distributed.  In other cases,
+ * including non-distributed table case, returns false.
+ */
+bool
+GpPolicyIsReplicated(GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return policy->ptype == POLICYTYPE_REPLICATED && policy->nattrs == 0;
+}
+
+
+/*
  * Does the supplied GpPolicy support unique indexing on the specified
  * attributes?
  *
@@ -505,6 +537,10 @@ checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr, int nidxatts,
 				 errmsg("%s and DISTRIBUTED RANDOMLY are incompatible",
 						isprimary ? "PRIMARY KEY" : "UNIQUE")));
 	}
+
+	/* replicated table support unique/primary key indexes */
+	if (GpPolicyIsReplicated(pol))
+		return;
 
 	/*
 	 * We use bitmaps to make intersection tests easier. As noted, order is
