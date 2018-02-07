@@ -1606,13 +1606,16 @@ typedef struct SliceReq
 	Gang	  **vec1gangs_primary_reader;
 	Gang	  **vec1gangs_entrydb_reader;
 	bool		writer;
-	bool		foundCandidate; /* fould a 1-gang reader, and
-					 * promote it to N-gang 
-					 */
+	/* 
+	 * fould a 1-gang reader, and
+	 * promote it to N-gang 
+	 */
+	bool		foundCandidate;
+	bool		init_plan;
 }	SliceReq;
 
 /* Forward declarations */
-static void InitSliceReq(SliceReq * req);
+static void InitSliceReq(SliceReq * req, bool init_plan);
 static void AccumSliceReq(SliceReq * inv, SliceReq * req);
 static void InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req);
@@ -1662,20 +1665,19 @@ AssignGangs(QueryDesc *queryDesc)
 	}
 
 	/* Initialize gang requirement inventory */
-	InitSliceReq(&inv);
+	InitSliceReq(&inv, false);
 
 	/* Capture main slice tree requirement. */
 	InventorySliceTree(sliceMap, 0, &inv);
+	FinalizeSliceTree(sliceMap, 0, &inv);
 
 	/* Capture initPlan slice tree requirements. */
 	for (i = sliceTable->nMotions + 1; i < nslices; i++)
 	{
-		InitSliceReq(&req);
+		InitSliceReq(&req, true);
 		InventorySliceTree(sliceMap, i, &req);
 		AccumSliceReq(&inv, &req);
 	}
-
-	FinalizeSliceTree(sliceMap, 0, &inv);
 
 	/*
 	 * Get the gangs we'll use.
@@ -1752,7 +1754,7 @@ ReleaseGangs(QueryDesc *queryDesc)
 
 
 void
-InitSliceReq(SliceReq * req)
+InitSliceReq(SliceReq * req, bool init_plan)
 {
 	req->numNgangs = 0;
     req->num1gangs_primary_reader = 0;
@@ -1762,6 +1764,7 @@ InitSliceReq(SliceReq * req)
 	req->vec1gangs_primary_reader = NULL;
 	req->vec1gangs_entrydb_reader = NULL;
 	req->foundCandidate = false;
+	req->init_plan = init_plan;
 }
 
 void
@@ -1798,7 +1801,20 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			break;
 
 		case GANGTYPE_SINGLETON_READER:
-			req->num1gangs_primary_reader++;
+			if (req->init_plan)
+			{
+				slice->gangType = GANGTYPE_PRIMARY_READER;
+				slice->gangSize = getgpsegmentCount();
+				slice->numGangMembersToBeActive = 1;
+				Assert(!slice->directDispatch.isDirectDispatch);
+				slice->directDispatch.isDirectDispatch = true;
+				slice->directDispatch.contentIds = list_make1_int(gp_session_id % getgpsegmentCount());;
+				//req->writer= true;
+				req->numNgangs++;
+			}
+			else
+				req->num1gangs_primary_reader++;
+
 			break;
 
 		case GANGTYPE_PRIMARY_WRITER:
@@ -1837,8 +1853,6 @@ FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 	if (req->foundCandidate)
 		return;
 
-	Assert(req->num1gangs_primary_reader > 0);
-
 	switch (slice->gangType)
 	{
 		case GANGTYPE_UNALLOCATED:
@@ -1850,14 +1864,14 @@ FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 		case GANGTYPE_SINGLETON_READER:
 			req->num1gangs_primary_reader--;
 			req->numNgangs++;
-			slice->gangType = GANGTYPE_PRIMARY_WRITER;
+			slice->gangType = GANGTYPE_PRIMARY_READER;
 			slice->gangSize = getgpsegmentCount();
 			slice->numGangMembersToBeActive = 1;
 			Assert(!slice->directDispatch.isDirectDispatch);
 			slice->directDispatch.isDirectDispatch = true;
 			slice->directDispatch.contentIds = list_make1_int(gp_session_id % getgpsegmentCount());;
 			req->foundCandidate = true;
-			req->writer= true;
+			//req->writer= true;
 			break;
 	}
 

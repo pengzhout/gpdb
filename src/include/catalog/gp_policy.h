@@ -48,7 +48,7 @@ typedef enum GpPolicyType
 {
 	POLICYTYPE_PARTITIONED,		/* Tuples partitioned onto segment database. */
 	POLICYTYPE_ENTRY,			/* Tuples stored on entry database. */
-	POLICYTYPE_REPLICATED		/* Tuples stored on entry database. */
+	POLICYTYPE_REPLICATED		/* Tuples stored on all segment database. */
 } GpPolicyType;
 
 /*
@@ -108,6 +108,7 @@ void GpPolicyReplace(Oid tbloid, const GpPolicy *policy);
 void GpPolicyRemove(Oid tbloid);
 
 bool GpPolicyIsRandomly(GpPolicy *policy);
+bool GpPolicyIsReplicated(GpPolicy *policy);
 
 extern GpPolicy *createRandomDistribution(void);
 

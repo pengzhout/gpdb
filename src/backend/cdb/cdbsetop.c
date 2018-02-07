@@ -420,11 +420,13 @@ makeHashExprsFromNonjunkTargets(List *targetlist)
 }
 
 static bool
-appendContainSegmentGeneral(Plan *plan)
+appendContainExplictBottleneck(Plan *plan, bool *allAreSegmentGeneral)
 {
 	ListCell   *cell;
 	Plan	   *subplan = NULL;
 	List	*planlist = ((Append *)plan)->appendplans;
+	bool	all_segmentGeneral = true;
+	bool    containExplictBottleneck = false;
 
 	foreach(cell, planlist)
 	{
@@ -434,10 +436,22 @@ appendContainSegmentGeneral(Plan *plan)
 		subplanflow = subplan->flow;
 
 		if (subplanflow->locustype == CdbLocusType_SegmentGeneral)
-			return true;
+		{
+			containExplictBottleneck = true;
+		}
+		else if (subplanflow->locustype == CdbLocusType_Single)
+		{
+			all_segmentGeneral = false;
+			containExplictBottleneck = true;
+		}
+		else
+		{
+			all_segmentGeneral = false;
+		}
 	}	
 
-	return false;
+	*allAreSegmentGeneral = all_segmentGeneral;
+	return containExplictBottleneck;
 }
 
 /*
@@ -447,6 +461,8 @@ appendContainSegmentGeneral(Plan *plan)
 void
 mark_append_locus(Plan *plan, GpSetOpType optype)
 {
+	bool allAreSegmentGeneral = false;
+
 	switch (optype)
 	{
 		case PSETOP_GENERAL:
@@ -463,6 +479,13 @@ mark_append_locus(Plan *plan, GpSetOpType optype)
 			break;
 		case PSETOP_SEQUENTIAL_QE:
 			mark_plan_singleQE(plan);
+			if (appendContainExplictBottleneck(plan, &allAreSegmentGeneral))
+			{
+				if (allAreSegmentGeneral)
+					plan->flow->locustype = CdbLocusType_SegmentGeneral;
+				else
+					plan->flow->locustype = CdbLocusType_Single;
+			}
 
 		case PSETOP_NONE:
 			break;

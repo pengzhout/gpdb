@@ -479,6 +479,20 @@ GpPolicyIsRandomly(GpPolicy *policy)
 }
 
 /*
+ * Returns true only if the policy is a fully distributed.  In other cases,
+ * including non-distributed table case, returns false.
+ */
+bool
+GpPolicyIsReplicated(GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return policy->ptype == POLICYTYPE_REPLICATED;
+}
+
+
+/*
  * Does the supplied GpPolicy support unique indexing on the specified
  * attributes?
  *
@@ -512,6 +526,10 @@ checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr, int nidxatts,
 				 errmsg("%s and DISTRIBUTED RANDOMLY are incompatible",
 						isprimary ? "PRIMARY KEY" : "UNIQUE")));
 	}
+
+	/* replicated table support unique/primary key indexes */
+	if (GpPolicyIsReplicated(pol))
+		return;
 
 	/*
 	 * We use bitmaps to make intersection tests easier. As noted, order is

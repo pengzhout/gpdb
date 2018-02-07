@@ -1492,7 +1492,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			 * in the segments.
 			 */
 			if ((oldTablePolicy == NULL ||
-					oldTablePolicy->ptype != POLICYTYPE_PARTITIONED) &&
+					oldTablePolicy->ptype == POLICYTYPE_ENTRY) &&
 					!IsBinaryUpgrade)
 			{
 				ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
@@ -1685,7 +1685,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		 * set the distribution policy.
 		 */
 		policy->nattrs = 0;
-		if (distributedBy->length == 1 && linitial(distributedBy) == NULL)
+		if (1)
+		{
+			policy->ptype = POLICYTYPE_REPLICATED;
+			policy->nattrs = 1;
+			policy->attrs[0] = GpReplicatedTableAttributerNumberIdentifier;
+		}
+		else if (distributedBy->length == 1 && linitial(distributedBy) == NULL)
 		{
 			/* do nothing */
 		}
@@ -1808,7 +1814,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	*policyp = policy;
 
 
-	if (cxt && cxt->pkey)		/* Primary key	specified.	Make sure
+	if (cxt && cxt->pkey &&
+		policy->ptype != POLICYTYPE_REPLICATED)	/* Primary key	specified.	Make sure
 								 * distribution columns match */
 	{
 		int			i = 0;
@@ -1906,7 +1913,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	}
 
-	if (uniqueindex)			/* UNIQUE specified.  Make sure distribution
+	if (uniqueindex && policy->ptype != POLICYTYPE_REPLICATED) /* UNIQUE specified.  Make sure distribution
 								 * columns match */
 	{
 		int			i = 0;

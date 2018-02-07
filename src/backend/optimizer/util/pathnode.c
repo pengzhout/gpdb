@@ -1513,6 +1513,8 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 	{
 		bool fIsNotPartitioned = false;
 		bool fIsPartitionInEntry = false;
+		bool fIsPartitionInExplicQE = false;
+		bool fIsSegmentGeneral = false;
 
 		/*
 		 * Do a first pass over the children to determine if
@@ -1524,6 +1526,7 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 			Path *subpath = (Path *) lfirst(l);
 
 			if (CdbPathLocus_IsBottleneck(subpath->locus) ||
+			    CdbPathLocus_IsSegmentGeneral(subpath->locus) ||
 				CdbPathLocus_IsReplicated(subpath->locus))
 			{
 				fIsNotPartitioned = true;
@@ -1532,6 +1535,16 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 				if (CdbPathLocus_IsEntry(subpath->locus))
 				{
 					fIsPartitionInEntry = true;
+					break;
+				}
+				if (CdbPathLocus_IsSegmentGeneral(subpath->locus))
+				{
+					fIsSegmentGeneral = true;
+					break;
+				}
+				if (CdbPathLocus_IsSingle(subpath->locus))
+				{
+					fIsPartitionInExplicQE = true;
 					break;
 				}
 			}
@@ -1561,6 +1574,13 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 
 						subpath = cdbpath_create_motion_path(root, subpath, NIL, false, singleEntry);
 					}
+				}
+				else if (fIsPartitionInExplicQE || fIsSegmentGeneral)
+				{
+						CdbPathLocus    single;
+						CdbPathLocus_MakeSingle(&single);
+
+						subpath = cdbpath_create_motion_path(root, subpath, NIL, false, single);
 				}
 				else /* fIsNotPartitioned true, fIsPartitionInEntry false */
 				{

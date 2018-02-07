@@ -2912,7 +2912,7 @@ lnext:	;
 					/* CDB: CTIDs were not fetched for distributed relation. */
 					Relation relation = erm->relation;
 					if (relation->rd_cdbpolicy &&
-						relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+						relation->rd_cdbpolicy->ptype != POLICYTYPE_ENTRY)
 						continue;
 
 					/* if child rel, must check whether it produced this row */

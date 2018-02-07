@@ -1554,6 +1554,13 @@ DoCopyInternal(const CopyStmt *stmt, const char *queryString, CopyState cstate)
 					 errmsg("table \"%s\" does not have OIDs",
 							RelationGetRelationName(cstate->rel))));
 
+		/* FIXME: Don't allow COPY to from a replicated table */
+		if (GpPolicyIsReplicated(cstate->rel->rd_cdbpolicy))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY to/from a replicated table is not support")));
+		}
 		/* Update error log info */
 		if (cstate->cdbsreh)
 			cstate->cdbsreh->relid = RelationGetRelid(cstate->rel);
