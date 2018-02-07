@@ -1808,7 +1808,7 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 				slice->numGangMembersToBeActive = 1;
 				Assert(!slice->directDispatch.isDirectDispatch);
 				slice->directDispatch.isDirectDispatch = true;
-				slice->directDispatch.contentIds = list_make1_int(gp_session_id % getgpsegmentCount());;
+				slice->directDispatch.contentIds = list_make1_int(0);;
 				//req->writer= true;
 				req->numNgangs++;
 			}
@@ -1869,7 +1869,8 @@ FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			slice->numGangMembersToBeActive = 1;
 			Assert(!slice->directDispatch.isDirectDispatch);
 			slice->directDispatch.isDirectDispatch = true;
-			slice->directDispatch.contentIds = list_make1_int(gp_session_id % getgpsegmentCount());;
+			/* WARN: do not make a random contentIds here */
+			slice->directDispatch.contentIds = list_make1_int(0);;
 			req->foundCandidate = true;
 			//req->writer= true;
 			break;

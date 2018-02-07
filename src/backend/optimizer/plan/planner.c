@@ -1045,11 +1045,12 @@ inheritance_planner(PlannerInfo *root)
 					case CdbLocusType_Strewn:
 						/* MPP-2023: Among subplans, these loci are okay. */
 						break;
+					case CdbLocusType_SegmentGeneral:
+						break;
 					case CdbLocusType_Null:
 					case CdbLocusType_SingleQE:
 					case CdbLocusType_Single:
 					case CdbLocusType_General:
-					case CdbLocusType_SegmentGeneral:
 					case CdbLocusType_Replicated:
 						/* These loci are not valid on base relations */
 						locus_ok = FALSE;
@@ -1162,6 +1163,10 @@ inheritance_planner(PlannerInfo *root)
 					 * enough.
 					 */
 					mark_plan_strewn(plan);
+					break;
+
+				case CdbLocusType_SegmentGeneral:
+					mark_plan_segment_general(plan);
 					break;
 
 				default:

@@ -590,3 +590,12 @@ mark_plan_singleQE(Plan *plan)
 	plan->flow->segindex = 0;
 	plan->flow->locustype = CdbLocusType_SingleQE;
 }
+
+void
+mark_plan_segment_general(Plan *plan)
+{
+	Assert(is_plan_node((Node *) plan) && plan->flow == NULL);
+	plan->flow = makeFlow(FLOW_SINGLETON);
+	plan->flow->segindex = 0;
+	plan->flow->locustype = CdbLocusType_SegmentGeneral;
+}

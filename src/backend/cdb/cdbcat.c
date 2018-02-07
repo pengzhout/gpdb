@@ -221,6 +221,7 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 			policy->attrs[0] == GpReplicatedTableAttributerNumberIdentifier)
 		{
 			policy->ptype = POLICYTYPE_REPLICATED;
+			policy->nattrs = 0;
 		}
 	}
 
@@ -488,7 +489,7 @@ GpPolicyIsReplicated(GpPolicy *policy)
 	if (policy == NULL)
 		return false;
 
-	return policy->ptype == POLICYTYPE_REPLICATED;
+	return policy->ptype == POLICYTYPE_REPLICATED && policy->nattrs == 0;
 }
 
 
