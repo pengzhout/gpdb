@@ -56,6 +56,7 @@ makeCdbCopy(bool is_copy_in)
 	c->outseglist = NIL;
 	c->partitions = NULL;
 	c->ao_segnos = NIL;
+	c->hasReplicatedTable = false;
 	initStringInfo(&(c->err_msg));
 	initStringInfo(&(c->err_context));
 	initStringInfo(&(c->copy_out_buf));
@@ -337,6 +338,13 @@ cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 			 */
 			if (nbytes > 0 && buffer)
 			{
+				/* FIXME: only accept data from seg0 for replicated table */
+				if (c->hasReplicatedTable && source_seg != 0)
+				{
+					PQfreemem(buffer);
+					continue;
+				}
+
 				/* append the data row to the data chunk */
 				appendBinaryStringInfo(&(c->copy_out_buf), buffer, nbytes);
 

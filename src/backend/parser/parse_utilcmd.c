@@ -1371,8 +1371,10 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 
 	policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs *
 								 sizeof(policy->attrs[0]));
-	policy->ptype = POLICYTYPE_PARTITIONED;
+	policy->ptype = POLICYTYPE_REPLICATED;
 	policy->nattrs = 0;
+	*policyp = policy;
+	return;
 	policy->attrs[0] = 1;
 
 	/*

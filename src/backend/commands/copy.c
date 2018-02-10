@@ -1554,6 +1554,7 @@ DoCopyInternal(const CopyStmt *stmt, const char *queryString, CopyState cstate)
 					 errmsg("table \"%s\" does not have OIDs",
 							RelationGetRelationName(cstate->rel))));
 
+#if 0
 		/* FIXME: Don't allow COPY to from a replicated table */
 		if (GpPolicyIsReplicated(cstate->rel->rd_cdbpolicy))
 		{
@@ -1561,6 +1562,7 @@ DoCopyInternal(const CopyStmt *stmt, const char *queryString, CopyState cstate)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY to/from a replicated table is not support")));
 		}
+#endif
 
 		/* Update error log info */
 		if (cstate->cdbsreh)
@@ -2297,6 +2299,7 @@ CopyToDispatch(CopyState cstate)
 
 	cdbCopy->partitions = RelationBuildPartitionDesc(cstate->rel, false);
 	cdbCopy->skip_ext_partition = cstate->skip_ext_partition;
+	cdbCopy->hasReplicatedTable = GpPolicyIsReplicated(cstate->rel->rd_cdbpolicy);
 
 	/* XXX: lock all partitions */
 
@@ -4038,17 +4041,6 @@ CopyFromDispatch(CopyState cstate)
 				}
 
 				/*
-				 * At this point in the code, values[x] is final for this
-				 * data row -- either the input data, a null or a default
-				 * value is in there, and constraints applied.
-				 *
-				 * Perform a cdbhash on this data row. Perform a hash operation
-				 * on each attribute that is included in CDB policy (partitioning
-				 * key columns). Send COPY data line to the target segment
-				 * database executors. Data row will not be inserted locally.
-				 */
-				target_seg  = GetTargetSeg(part_distData, values, nulls);
-				/*
 				 * Send data row to all databases for this segment.
 				 * Also send the original row number with the data.
 				 */
@@ -4080,9 +4072,30 @@ CopyFromDispatch(CopyState cstate)
 										   cstate->line_buf.len);
 				}
 				
-				/* send modified data */
-				if (!cstate->on_segment) {
-					cdbCopySendData(cdbCopy,
+				/*
+				 * At this point in the code, values[x] is final for this
+				 * data row -- either the input data, a null or a default
+				 * value is in there, and constraints applied.
+				 *
+				 * Perform a cdbhash on this data row. Perform a hash operation
+				 * on each attribute that is included in CDB policy (partitioning
+				 * key columns). Send COPY data line to the target segment
+				 * database executors. Data row will not be inserted locally.
+				 */
+				if (part_distData &&
+					GpPolicyIsReplicated(part_distData->policy))
+				{
+					cdbCopySendDataToAll(cdbCopy,
+							line_buf_with_lineno.data,
+							line_buf_with_lineno.len);
+					RESET_LINEBUF_WITH_LINENO;
+				}
+				else
+				{
+					target_seg  = GetTargetSeg(part_distData, values, nulls);
+
+					if (!cstate->on_segment)
+						cdbCopySendData(cdbCopy,
 									target_seg,
 									line_buf_with_lineno.data,
 									line_buf_with_lineno.len);
