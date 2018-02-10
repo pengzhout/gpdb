@@ -12659,7 +12659,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 									 RelationGetRelationName(rel))));
 			}
 
-			policy = createRandomDistribution();
+			policy = createRandomDistributionPolicy(NULL);
 			rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
 			GpPolicyReplace(RelationGetRelid(rel), policy);
 
@@ -12699,8 +12699,8 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	{
 		if (change_policy)
 		{
-			policy = palloc(sizeof(GpPolicy) + sizeof(policy->attrs[0]) * list_length(ldistro));
-			policy->ptype = POLICYTYPE_PARTITIONED;
+			/* reserve on slot */
+			policy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, list_length(ldistro));
 			policy->nattrs = 0;
 
 			/* Step (a) */
@@ -12828,7 +12828,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			 * is same as the original one, the query optimizer will generate
 			 * redistribute plan.
 			 */
-			GpPolicy *random_policy = createRandomDistribution();
+			GpPolicy *random_policy = createRandomDistributionPolicy(NULL);
 
 			original_policy = rel->rd_cdbpolicy;
 			rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel),

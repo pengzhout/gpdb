@@ -1075,7 +1075,7 @@ _readCreateStmt(void)
 	READ_NODE_FIELD(distributedBy);
 	READ_CHAR_FIELD(relKind);
 	READ_CHAR_FIELD(relStorage);
-	/* policy omitted */
+	READ_NODE_FIELD(policy);
 	/* postCreate - for analysis, QD only */
 	/* deferredStmts - for analysis, QD only */
 	READ_BOOL_FIELD(is_part_child);
@@ -1084,8 +1084,6 @@ _readCreateStmt(void)
 	READ_OID_FIELD(ownerid);
 	READ_BOOL_FIELD(buildAoBlkdir);
 	READ_NODE_FIELD(attr_encodings);
-
-	local_node->policy = NULL;
 
 	/*
 	 * Some extra checks to make sure we didn't get lost
@@ -2843,6 +2841,23 @@ _readValue(NodeTag nt)
 
 }
 
+/*
+ * _readGpPolicy
+ */
+static GpPolicy *
+_readGpPolicy(void)
+{
+	READ_LOCALS(GpPolicy);
+
+	READ_ENUM_FIELD(ptype, GpPolicyType);
+
+	READ_INT_FIELD(nattrs);
+	READ_INT_ARRAY(attrs, local_node->nattrs, AttrNumber);
+
+	READ_DONE();
+}
+
+
 static void *
 readNodeBinary(void)
 {
@@ -3687,6 +3702,9 @@ readNodeBinary(void)
 				break;
 			case T_CreateFdwStmt:
 				return_value = _readCreateFdwStmt();
+				break;
+			case T_GpPolicy:
+				return_value = _readGpPolicy();
 				break;
 
 

@@ -3286,15 +3286,11 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 					 errmsg("number of distributed by columns exceeds limit (%d)",
 							MaxPolicyAttributeNumber)));
 
-		policy = (GpPolicy *) palloc0(sizeof(GpPolicy) - sizeof(policy->attrs)
-								+ list_length(stmt->distributedBy) * sizeof(policy->attrs[0]));
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = 0;
 
 		if (stmt->distributedBy->length == 1 && (list_head(stmt->distributedBy) == NULL || linitial(stmt->distributedBy) == NULL))
 		{
 			/* distributed randomly */
-			qry->intoPolicy = policy;
+			qry->intoPolicy = createRandomDistributionPolicy(NULL);
 		}
 		else if (stmt->distributedBy->length == 2 &&
 			 linitial(stmt->distributedBy) == NULL &&
@@ -3305,6 +3301,9 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		}
 		else
 		{
+			policy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, list_length(stmt->distributedBy));
+			policy->nattrs = 0;
+
 			foreach(keys, stmt->distributedBy)
 			{
 				char	   *key = strVal(lfirst(keys));

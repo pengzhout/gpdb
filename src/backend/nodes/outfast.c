@@ -682,7 +682,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_NODE_FIELD(distributedBy);
 	WRITE_CHAR_FIELD(relKind);
 	WRITE_CHAR_FIELD(relStorage);
-	/* policy omitted */
+	WRITE_NODE_FIELD(policy);
 	/* postCreate - for analysis, QD only */
 	/* deferredStmts - for analysis, QD only */
 	WRITE_BOOL_FIELD(is_part_child);
@@ -1225,6 +1225,16 @@ _outAccessPriv(StringInfo str, AccessPriv *node)
 
 	WRITE_STRING_FIELD(priv_name);
 	WRITE_NODE_FIELD(cols);
+}
+
+static void
+_outGpPolicy(StringInfo str, GpPolicy *node)
+{
+	WRITE_NODE_TYPE("GPPOLICY");
+
+	WRITE_ENUM_FIELD(ptype, GpPolicyType);
+	WRITE_INT_FIELD(nattrs);
+	WRITE_INT_ARRAY(attrs, node->nattrs, AttrNumber);
 }
 
 /*
@@ -2141,6 +2151,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CreateFdwStmt:
 				_outCreateFdwStmt(str, obj);
+				break;
+			case T_GpPolicy:
+				_outGpPolicy(str, obj);
 				break;
 
 			default:

@@ -61,14 +61,15 @@ typedef enum GpPolicyType
  */
 typedef struct GpPolicy
 {
+	NodeTag         type;
 	GpPolicyType ptype;
 
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
 	int			nattrs;
-	AttrNumber	attrs[1];		/* the first of nattrs attribute numbers.  */
+	AttrNumber	*attrs;		/* pointer to the first of nattrs attribute numbers.  */
 } GpPolicy;
 
-#define SizeOfGpPolicy(nattrs)	(offsetof(GpPolicy, attrs) + sizeof(AttrNumber) * (nattrs))
+#define SizeOfGpPolicy(nattrs)	(sizeof(GpPolicy) + sizeof(AttrNumber) * (nattrs))
 
 /*
  * GpPolicyCopy -- Return a copy of a GpPolicy object.
@@ -110,6 +111,8 @@ void GpPolicyRemove(Oid tbloid);
 bool GpPolicyIsRandomly(GpPolicy *policy);
 bool GpPolicyIsReplicated(GpPolicy *policy);
 
-extern GpPolicy *createRandomDistribution(void);
+extern bool IsReplicatedTable(Oid relid);
+extern GpPolicy *createRandomDistributionPolicy(MemoryContext mcxt);
+extern GpPolicy *makeGpPolicy(MemoryContext mcxt, GpPolicyType ptype, int nattrs);
 
 #endif /*_GP_POLICY_H_*/

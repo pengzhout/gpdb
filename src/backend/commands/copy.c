@@ -1903,13 +1903,11 @@ DoCopyInternal(const CopyStmt *stmt, const char *queryString, CopyState cstate)
 			/* data needs to get inserted locally */
 			if (cstate->on_segment)
 			{
-				MemoryContext oldcxt;
-				oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-				cstate->rel->rd_cdbpolicy = palloc(sizeof(GpPolicy) + sizeof(AttrNumber) * stmt->nattrs);
-				cstate->rel->rd_cdbpolicy->nattrs = stmt->nattrs;
-				cstate->rel->rd_cdbpolicy->ptype = stmt->ptype;
-				memcpy(cstate->rel->rd_cdbpolicy->attrs, stmt->distribution_attrs, sizeof(AttrNumber) * stmt->nattrs);
-				MemoryContextSwitchTo(oldcxt);
+				int i;
+				cstate->rel->rd_cdbpolicy = makeGpPolicy(CacheMemoryContext,
+										stmt->ptype, stmt->nattrs);
+				for (i = 0; i < stmt->nattrs; i++)
+					cstate->rel->rd_cdbpolicy->attrs[i] = stmt->distribution_attrs[i];
 			}
 			CopyFrom(cstate);
 		}
@@ -7809,7 +7807,7 @@ InitDistributionData(CopyState cstate, Form_pg_attribute *attr,
 		                      &hash_ctl,
 		                      HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 		p_nattrs = list_length(cols);
-		policy = palloc(sizeof(GpPolicy) + sizeof(AttrNumber) * p_nattrs);
+		policy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, p_nattrs);
 		i = 0;
 		foreach (lc, cols)
 			policy->attrs[i++] = lfirst_int(lc);

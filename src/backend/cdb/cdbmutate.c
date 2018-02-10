@@ -288,7 +288,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 				}
 				else if (gp_create_table_random_default_distribution)
 				{
-					targetPolicy = createRandomDistribution();
+					targetPolicy = createRandomDistributionPolicy(NULL);
 					ereport(NOTICE,
 							(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
 							 errmsg("Using default RANDOM distribution since no distribution was specified."),
@@ -301,11 +301,10 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 					/* User did not specify a DISTRIBUTED BY clause */
 					if (hashExpr)
-						targetPolicy = palloc0(sizeof(GpPolicy) - sizeof(targetPolicy->attrs) + list_length(hashExpr) * sizeof(targetPolicy->attrs[0]));
+						targetPolicy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, list_length(hashExpr));
 					else
-						targetPolicy = palloc0(sizeof(GpPolicy));
+						targetPolicy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, 1);
 
-					targetPolicy->ptype = POLICYTYPE_PARTITIONED;
 					targetPolicy->nattrs = 0;
 
 					if (hashExpr)

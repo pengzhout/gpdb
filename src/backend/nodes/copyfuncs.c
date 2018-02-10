@@ -127,7 +127,7 @@ _copyPlannedStmt(PlannedStmt *from)
 
 	if (from->intoPolicy)
 	{
-		COPY_POINTER_FIELD(intoPolicy,sizeof(GpPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));
+		COPY_NODE_FIELD(intoPolicy);
 	}
 	else
 		newnode->intoPolicy = NULL;
@@ -2876,7 +2876,7 @@ _copyQuery(Query *from)
 	COPY_NODE_FIELD(setOperations);
 	if (from->intoPolicy)
 	{
-		COPY_POINTER_FIELD(intoPolicy, sizeof(GpPolicy) + from->intoPolicy->nattrs * sizeof(from->intoPolicy->attrs[0]));
+		COPY_NODE_FIELD(intoPolicy);
 	}
 	else
 		newnode->intoPolicy = NULL;
@@ -3209,7 +3209,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(relStorage);
 	if (from->policy)
 	{
-		COPY_POINTER_FIELD(policy,sizeof(GpPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
+		COPY_NODE_FIELD(policy);
 	}
 	else
 		newnode->policy = NULL;
@@ -3411,7 +3411,7 @@ _copyCreateExternalStmt(CreateExternalStmt *from)
 	COPY_NODE_FIELD(distributedBy);
 	if (from->policy)
 	{
-		COPY_POINTER_FIELD(policy,sizeof(GpPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
+		COPY_NODE_FIELD(policy);
 	}
 	else
 		newnode->policy = NULL;
@@ -4639,6 +4639,18 @@ _copyCookedConstraint(CookedConstraint *from)
 	return newnode;
 }
 
+static GpPolicy *
+_copyGpPolicy(GpPolicy *from)
+{
+	GpPolicy *newnode = makeNode(GpPolicy);
+
+	COPY_SCALAR_FIELD(ptype);
+	COPY_SCALAR_FIELD(nattrs);
+	COPY_POINTER_FIELD(attrs, from->nattrs * sizeof(AttrNumber));
+
+	return newnode;
+}
+
 /* ****************************************************************
  *					pg_list.h copy functions
  * ****************************************************************
@@ -5614,6 +5626,9 @@ copyObject(void *from)
 
 		case T_CookedConstraint:
 			retval = _copyCookedConstraint(from);
+			break;
+		case T_GpPolicy:
+			retval = _copyGpPolicy(from);
 			break;
 
 		default:

@@ -30,19 +30,35 @@
 
 static void extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp);
 
+GpPolicy*
+makeGpPolicy(MemoryContext mcxt, GpPolicyType ptype, int nattrs)
+{
+	GpPolicy *policy;
+	size_t	size;
+
+	if (mcxt == NULL)
+		mcxt = CurrentMemoryContext;
+
+	size = sizeof(GpPolicy) + nattrs * sizeof(AttrNumber);
+	policy = MemoryContextAlloc(mcxt, size);
+	policy->type = T_GpPolicy;
+	policy->ptype = ptype; 
+	policy->nattrs = nattrs; 
+	if (nattrs > 0)
+		policy->attrs = (AttrNumber *) ((char*)policy + sizeof(GpPolicy));
+	else
+		policy->attrs = NULL;
+
+	return policy;
+}
+
 /*
  * createRandomDistribution -- Create a policy with random distribution
  */
 GpPolicy *
-createRandomDistribution(void)
+createRandomDistributionPolicy(MemoryContext mcxt)
 {
-	GpPolicy   *p = NULL;
-
-	p = (GpPolicy *) palloc0(sizeof(GpPolicy));
-	p->ptype = POLICYTYPE_PARTITIONED;
-	p->nattrs = 0;
-
-	return p;
+	return makeGpPolicy(mcxt, POLICYTYPE_PARTITIONED, 0);
 }
 
 /*
@@ -54,12 +70,14 @@ GpPolicy *
 GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src)
 {
 	GpPolicy   *tgt;
-	size_t		nb;
+	size_t	nb;
 
 	if (!src)
 		return NULL;
-	nb = sizeof(*src) - sizeof(src->attrs) + src->nattrs * sizeof(src->attrs[0]);
-	tgt = (GpPolicy *) MemoryContextAlloc(mcxt, nb);
+
+	tgt = makeGpPolicy(mcxt, src->ptype, src->nattrs);
+	nb = sizeof(GpPolicy) + src->nattrs * sizeof(AttrNumber);
+
 	memcpy(tgt, src, nb);
 	return tgt;
 }								/* GpPolicyCopy */
@@ -91,6 +109,11 @@ GpPolicyEqual(const GpPolicy *lft, const GpPolicy *rgt)
 	return true;
 }								/* GpPolicyEqual */
 
+bool
+IsReplicatedTable(Oid relid)
+{
+	return GpPolicyIsReplicated(GpPolicyFetch(CurrentMemoryContext, relid));
+}
 /*
  * GpPolicyFetch
  *
@@ -111,18 +134,6 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 	ScanKeyData scankey;
 	SysScanDesc scan;
 	HeapTuple	gp_policy_tuple = NULL;
-
-	/*
-	 * Skip if qExec or utility mode.
-	 */
-	if (Gp_role != GP_ROLE_DISPATCH)
-	{
-		policy = (GpPolicy *) MemoryContextAlloc(mcxt, SizeOfGpPolicy(0));
-		policy->ptype = POLICYTYPE_ENTRY;
-		policy->nattrs = 0;
-
-		return policy;
-	}
 
 	/*
 	 * EXECUTE-type external tables have an "ON ..." specification, stored in
@@ -151,15 +162,10 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 
 			if (strcmp(on_clause, "MASTER_ONLY") == 0)
 			{
-				policy = (GpPolicy *) MemoryContextAlloc(mcxt, SizeOfGpPolicy(0));
-				policy->ptype = POLICYTYPE_ENTRY;
-				policy->nattrs = 0;
-				return policy;
+				return makeGpPolicy(mcxt, POLICYTYPE_ENTRY, 0);
 			}
-			policy = (GpPolicy *) MemoryContextAlloc(mcxt, SizeOfGpPolicy(0));
-			policy->ptype = POLICYTYPE_PARTITIONED;
-			policy->nattrs = 0;
-			return policy;
+
+			return createRandomDistributionPolicy(mcxt);
 		}
 	}
 
@@ -209,9 +215,8 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		}
 
 		/* Create a GpPolicy object. */
-		policy = (GpPolicy *) MemoryContextAlloc(mcxt, SizeOfGpPolicy(nattrs));
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = nattrs;
+		policy = makeGpPolicy(mcxt, POLICYTYPE_PARTITIONED, nattrs);
+
 		for (i = 0; i < nattrs; i++)
 		{
 			policy->attrs[i] = attrnums[i];
@@ -219,6 +224,7 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 
 		if (nattrs == 1 &&
 			policy->attrs[0] == GpReplicatedTableAttributerNumberIdentifier)
+		/* covert policy type to replicated if needed */
 		{
 			policy->ptype = POLICYTYPE_REPLICATED;
 			policy->nattrs = 0;
@@ -234,9 +240,7 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 	/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
 	if (policy == NULL)
 	{
-		policy = (GpPolicy *) MemoryContextAlloc(mcxt, SizeOfGpPolicy(0));
-		policy->ptype = POLICYTYPE_ENTRY;
-		policy->nattrs = 0;
+		return makeGpPolicy(mcxt, POLICYTYPE_ENTRY, 0);
 	}
 
 	return policy;
@@ -587,13 +591,10 @@ checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr, int nidxatts,
 		else
 		{
 			/* update policy since table is not populated yet. See MPP-101 */
-			GpPolicy   *policy = palloc(sizeof(GpPolicy) +
-										(sizeof(AttrNumber) * nidxatts));
+			GpPolicy *policy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, nidxatts);
 
-			policy->ptype = POLICYTYPE_PARTITIONED;
-			policy->nattrs = 0;
 			for (i = 0; i < nidxatts; i++)
-				policy->attrs[policy->nattrs++] = indattr[i];
+				policy->attrs[i] = indattr[i];
 
 			GpPolicyReplace(rel->rd_id, policy);
 
