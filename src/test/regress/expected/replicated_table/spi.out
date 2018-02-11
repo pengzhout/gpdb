@@ -1,0 +1,30 @@
+set search_path to rpt_test;
+drop table if exists test cascade;
+NOTICE:  table "test" does not exist, skipping
+drop table if exists test1 cascade;
+NOTICE:  table "test1" does not exist, skipping
+create table test (d integer, a integer, b integer) distributed fully;
+insert into test select a, a, a%25 from generate_series(1,100) a;
+create table test1 (d integer, a integer, b integer);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'd' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+insert into test1 select a, a, a%25 from generate_series(1,100) a;
+-- function only access replicated table
+create or replace function f1() returns bigint as $$
+	select count(*) from test as results;
+$$ LANGUAGE SQL;
+-- function access replicated table and partition table
+create or replace function f2() returns bigint as $$
+	select count(*) from test, test1 as results;
+$$ LANGUAGE SQL;
+select f1() from gp_dist_random('gp_id');
+ f1  
+-----
+ 100
+ 100
+ 100
+(3 rows)
+
+select f2() from gp_dist_random('gp_id');
+ERROR:  function cannot execute on a QE slice because it accesses relation "rpt_test.test1"  (seg0 slice1 127.0.0.1:25432 pid=1317)
+DETAIL:  SQL function "f2" during startup

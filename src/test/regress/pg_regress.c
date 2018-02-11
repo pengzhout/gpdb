@@ -104,6 +104,7 @@ static _stringlist *extraroles = NULL;
 static char *initfile = NULL;
 static char *aodir = NULL;
 static char *resgroupdir = NULL;
+static char *rptdir = NULL;
 
 /* internal variables */
 static const char *progname;
@@ -726,6 +727,15 @@ convert_sourcefiles_in(char *source_subdir, char *dest_dir, char *dest_subdir, c
 		}
 
 		if (resgroupdir && strncmp(*name, resgroupdir, strlen(resgroupdir)) == 0 &&
+			(strlen(*name) < 8 || strcmp(*name + strlen(*name) - 7, ".source") != 0))
+		{
+			snprintf(srcfile, MAXPGPATH, "%s/%s", source_subdir, *name);
+			snprintf(destfile, MAXPGPATH, "%s/%s", dest_subdir, *name);
+			count += convert_sourcefiles_in(srcfile, dest_dir, destfile, suffix);
+			continue;
+		}
+
+		if (rptdir && strncmp(*name, rptdir, strlen(rptdir)) == 0 &&
 			(strlen(*name) < 8 || strcmp(*name + strlen(*name) - 7, ".source") != 0))
 		{
 			snprintf(srcfile, MAXPGPATH, "%s/%s", source_subdir, *name);
@@ -2374,6 +2384,8 @@ help(void)
 	printf(_("                            UAO row and column tests\n"));
 	printf(_("  --resgroup-dir=DIR        directory name prefix containing resgroup tests\n"));
 	printf(_("\n"));
+	printf(_("  --rpt-dir=DIR        directory name prefix containing replicated table tests\n"));
+	printf(_("\n"));
 	printf(_("Options for \"temp-install\" mode:\n"));
 	printf(_("  --no-locale               use C locale\n"));
 	printf(_("  --top-builddir=DIR        (relative) path to top level build directory\n"));
@@ -2426,7 +2438,8 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
         {"init-file", required_argument, NULL, 20},
         {"ao-dir", required_argument, NULL, 21},
         {"resgroup-dir", required_argument, NULL, 22},
-        {"exclude-tests", required_argument, NULL, 23},
+        {"rpt-dir", required_argument, NULL, 23},
+        {"exclude-tests", required_argument, NULL, 24},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -2527,6 +2540,9 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
                 resgroupdir = strdup(optarg);
                 break;
             case 23:
+                rptdir = strdup(optarg);
+                break;
+            case 24:
                 split_to_stringlist(strdup(optarg), ", ", &exclude_tests);
                 break;
 			default:

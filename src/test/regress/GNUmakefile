@@ -192,10 +192,10 @@ installcheck: all
 
 installcheck-good: all twophase_pqexecparams hooktest
 	if [ -z "$(INSTALLCHECK_GOOD_KERBEROS)" ]; then \
-	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --schedule=$(srcdir)/greenplum_schedule --ao-dir=uao; \
+	$(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --schedule=$(srcdir)/greenplum_schedule --ao-dir=uao --rpt-dir=replicated_table; \
 	else \
 	bash kerberos/setup_test.sh; \
-	PGUSER="gpadmin/kerberos-test" $(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --schedule=$(srcdir)/greenplum_schedule --ao-dir=uao --host=`hostname`; \
+	PGUSER="gpadmin/kerberos-test" $(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --schedule=$(srcdir)/greenplum_schedule --ao-dir=uao --rpt-dir=replicated_table --host=`hostname`; \
 	fi
 
 testbouncer: all

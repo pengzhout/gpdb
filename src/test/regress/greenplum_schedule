@@ -15,6 +15,29 @@
 #   hitting max_connections limit on segments.
 #
 
+#######################
+# replicated table tests
+#######################
+test: replicated_table/schema
+test: replicated_table/char replicated_table/int4 replicated_table/float8 replicated_table/varchar replicated_table/text replicated_table/int8
+test: replicated_table/polygon replicated_table/circle
+test: replicated_table/insert
+test: replicated_table/create_function_1
+test: replicated_table/create_type
+test: replicated_table/create_table
+test: replicated_table/create_function_2
+test: replicated_table/create_operator replicated_table/create_aggregate
+test: replicated_table/copy replicated_table/copyselect
+test: replicated_table/create_misc replicated_table/vacuum
+test: replicated_table/create_index replicated_table/create_view
+test: replicated_table/select
+test: replicated_table/select_into replicated_table/aggregates replicated_table/join replicated_table/subselect replicated_table/union  replicated_table/portals replicated_table/arrays replicated_table/update replicated_table/delete replicated_table/update_gp
+test: replicated_table/window replicated_table/portals_p2
+test: replicated_table/limit replicated_table/with replicated_table/truncate
+test: replicated_table/prepare replicated_table/spi
+test: replicated_table/alter_table
+
+#########
 test: gp_aggregates gp_metadata variadic_parameters default_parameters function_extensions spi spi_processed64bit gp_xml pgoptions shared_scan null
 
 test: leastsquares opr_sanity_gp decode_expr bitmapscan bitmapscan_ao case_gp limit_gp notin percentile join_gp union_gp gpcopy gp_create_table gp_create_view window_views
