@@ -390,9 +390,7 @@ _outCopyStmt(StringInfo str, CopyStmt *node)
 	WRITE_NODE_FIELD(sreh);
 	WRITE_NODE_FIELD(partitions);
 	WRITE_NODE_FIELD(ao_segnos);
-	WRITE_INT_FIELD(nattrs);
-	WRITE_ENUM_FIELD(ptype, GpPolicyType);
-	WRITE_INT_ARRAY(distribution_attrs, node->nattrs, AttrNumber);
+	WRITE_NODE_FIELD(policy);
 }
 
 static void
@@ -2154,6 +2152,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_GpPolicy:
 				_outGpPolicy(str, obj);
+				break;
+			case T_DistributedBy:
+				_outDistributedBy(str, obj);
 				break;
 
 			default:

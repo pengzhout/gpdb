@@ -1346,9 +1346,7 @@ _readCopyStmt(void)
 	READ_NODE_FIELD(sreh);
 	READ_NODE_FIELD(partitions);
 	READ_NODE_FIELD(ao_segnos);
-	READ_INT_FIELD(nattrs);
-	READ_ENUM_FIELD(ptype, GpPolicyType);
-	READ_INT_ARRAY(distribution_attrs, local_node->nattrs, AttrNumber);
+	READ_NODE_FIELD(policy);
 	READ_DONE();
 
 }
@@ -2677,6 +2675,17 @@ _readCreateFdwStmt(void)
 	READ_DONE();
 }
 
+static DistributedBy*
+_readDistributedBy(void)
+{
+	READ_LOCALS(DistributedBy);
+
+	READ_ENUM_FIELD(ptype, GpPolicyType);
+	READ_NODE_FIELD(keys);
+
+	READ_DONE();
+}
+
 static AlterFdwStmt *
 _readAlterFdwStmt(void)
 {
@@ -3705,6 +3714,9 @@ readNodeBinary(void)
 				break;
 			case T_GpPolicy:
 				return_value = _readGpPolicy();
+				break;
+			case T_DistributedBy:
+				return_value = _readDistributedBy();
 				break;
 
 

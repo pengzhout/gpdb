@@ -23,6 +23,8 @@
 #include "variables.h"
 
 
+#define SYM_POLICYTYPE_REPLICATED 'r'
+
 static bool describeOneTableDetails(const char *schemaname,
 						const char *relationname,
 						const char *oid,
@@ -2698,7 +2700,7 @@ add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBuffe
 			   *result2 = NULL;
 
 	printfPQExpBuffer(buf,
-			 "SELECT attrnums\n"
+			 "SELECT attrnums, policytype \n"
 					  "FROM pg_catalog.gp_distribution_policy t\n"
 					  "WHERE localoid = '%s' ",
 					  oid);
@@ -2715,8 +2717,9 @@ add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBuffe
 		{
 			char *col;
 			char *dist_columns = PQgetvalue(result1, 0, 0);
+			char policytype = *(char *)PQgetvalue(result1, 0, 1);
 			char *dist_colname;
-			if (dist_columns && !strcmp(dist_columns, "{-128}"))
+			if (policytype == SYM_POLICYTYPE_REPLICATED)
 			{
 				printfPQExpBuffer(buf, "Distributed fully");
 			}

@@ -30,7 +30,7 @@
 
 static void extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp);
 
-GpPolicy*
+GpPolicy *
 makeGpPolicy(MemoryContext mcxt, GpPolicyType ptype, int nattrs)
 {
 	GpPolicy *policy;
@@ -53,12 +53,46 @@ makeGpPolicy(MemoryContext mcxt, GpPolicyType ptype, int nattrs)
 }
 
 /*
- * createRandomDistribution -- Create a policy with random distribution
+ * createReplicatedGpPolicy-- Create a policy with replicated distribution
  */
 GpPolicy *
-createRandomDistributionPolicy(MemoryContext mcxt)
+createReplicatedGpPolicy(MemoryContext mcxt)
+{
+	return makeGpPolicy(mcxt, POLICYTYPE_REPLICATED, 0);
+}
+
+/*
+ * createRandomPartitionedPolicy -- Create a policy with randomly
+ * partitioned distribution
+ */
+GpPolicy *
+createRandomPartitionedPolicy(MemoryContext mcxt)
 {
 	return makeGpPolicy(mcxt, POLICYTYPE_PARTITIONED, 0);
+}
+
+/*
+ * createHashPartitionedPolicy-- Create a policy with data
+ * partitioned by keys 
+ */
+GpPolicy *
+createHashPartitionedPolicy(MemoryContext mcxt, List *keys)
+{
+	GpPolicy	*policy;
+	ListCell 	*lc;
+	int 		idx = 0;
+	int 		len = list_length(keys);
+
+	if (len == 0)
+		return createRandomPartitionedPolicy(mcxt);
+
+	policy = makeGpPolicy(mcxt, POLICYTYPE_PARTITIONED, len);
+	foreach(lc, keys)
+	{
+		policy->attrs[idx++] = (AttrNumber)lfirst_int(lc);
+	}
+
+	return policy;	
 }
 
 /*
@@ -114,6 +148,51 @@ IsReplicatedTable(Oid relid)
 {
 	return GpPolicyIsReplicated(GpPolicyFetch(CurrentMemoryContext, relid));
 }
+
+/*
+ * Returns true only if the policy is a replicated.
+ */
+bool
+GpPolicyIsReplicated(const GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return policy->ptype == POLICYTYPE_REPLICATED;
+}
+
+/*
+ * Randomly-partitioned or keys-partitioned
+ */
+bool
+GpPolicyIsPartitioned(const GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return GpPolicyIsHashPartitioned(policy) ||
+		GpPolicyIsRandomPartitioned(policy);
+}
+
+bool
+GpPolicyIsRandomPartitioned(const GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return policy->ptype == POLICYTYPE_PARTITIONED &&
+			policy->nattrs == 0;
+}
+
+bool
+GpPolicyIsHashPartitioned(const GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return policy->ptype == POLICYTYPE_PARTITIONED &&
+			policy->nattrs > 0; }
+
 /*
  * GpPolicyFetch
  *
@@ -165,7 +244,7 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 				return makeGpPolicy(mcxt, POLICYTYPE_ENTRY, 0);
 			}
 
-			return createRandomDistributionPolicy(mcxt);
+			return createRandomPartitionedPolicy(mcxt);
 		}
 	}
 
@@ -199,35 +278,42 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 					nattrs = 0;
 		int16	   *attrnums = NULL;
 
-		/*
-		 * Get the attributes on which to partition.
-		 */
-		attr = heap_getattr(gp_policy_tuple, Anum_gp_policy_attrnums,
-							RelationGetDescr(gp_policy_rel), &isNull);
+		attr = heap_getattr(gp_policy_tuple, Anum_gp_policy_type,
+				RelationGetDescr(gp_policy_rel), &isNull);
 
-		/*
-		 * Get distribution keys only if this table has a policy.
-		 */
-		if (!isNull)
+		char ptype = DatumGetChar(attr);
+
+		switch (ptype)
 		{
-			extract_INT2OID_array(attr, &nattrs, &attrnums);
-			Assert(nattrs >= 0);
-		}
+			case SYM_POLICYTYPE_REPLICATED:
+				policy = createReplicatedGpPolicy(mcxt);
+				break;
+			case SYM_POLICYTYPE_PARTITIONED:
+				/*
+				 * Get the attributes on which to partition.
+				 */
+				attr = heap_getattr(gp_policy_tuple, Anum_gp_policy_attrnums,
+						RelationGetDescr(gp_policy_rel), &isNull);
 
-		/* Create a GpPolicy object. */
-		policy = makeGpPolicy(mcxt, POLICYTYPE_PARTITIONED, nattrs);
+				/*
+				 * Get distribution keys only if this table has a policy.
+				 */
+				if (!isNull)
+				{
+					extract_INT2OID_array(attr, &nattrs, &attrnums);
+					Assert(nattrs >= 0);
+				}
 
-		for (i = 0; i < nattrs; i++)
-		{
-			policy->attrs[i] = attrnums[i];
-		}
+				/* Create a GpPolicy object. */
+				policy = makeGpPolicy(mcxt, POLICYTYPE_PARTITIONED, nattrs);
 
-		if (nattrs == 1 &&
-			policy->attrs[0] == GpReplicatedTableAttributerNumberIdentifier)
-		/* covert policy type to replicated if needed */
-		{
-			policy->ptype = POLICYTYPE_REPLICATED;
-			policy->nattrs = 0;
+				for (i = 0; i < nattrs; i++)
+				{
+					policy->attrs[i] = attrnums[i];
+				}
+				break;
+			default:
+				elog(ERROR, "unrecognized distribution policy type");	
 		}
 	}
 
@@ -281,54 +367,53 @@ GpPolicyStore(Oid tbloid, const GpPolicy *policy)
 
 	ArrayType  *attrnums;
 
-	bool		nulls[2];
-	Datum		values[2];
+	bool		nulls[3];
+	Datum		values[3];
 
-	Insist(policy->ptype == POLICYTYPE_PARTITIONED ||
-		policy->ptype == POLICYTYPE_REPLICATED);
+	Insist(policy->ptype != POLICYTYPE_ENTRY);
+
+	nulls[0] = false;
+	nulls[1] = false;
+	nulls[2] = false;
+	values[0] = ObjectIdGetDatum(tbloid);
 
 	/*
 	 * Open and lock the gp_distribution_policy catalog.
 	 */
 	gp_policy_rel = heap_open(GpPolicyRelationId, RowExclusiveLock);
 
-	/*
-	 * Convert C arrays into Postgres arrays.
-	 */
-	if (policy->nattrs > 0)
+	if (GpPolicyIsReplicated(policy))
 	{
+		nulls[1] = true;
+		values[2] = CharGetDatum(SYM_POLICYTYPE_REPLICATED);
+	}
+	else
+	{
+		/*
+		 * Convert C arrays into Postgres arrays.
+		 */
 		int			i;
 		Datum	   *akey;
 
-		Assert(policy->ptype == POLICYTYPE_PARTITIONED);
-		akey = (Datum *) palloc(policy->nattrs * sizeof(Datum));
-		for (i = 0; i < policy->nattrs; i++)
-			akey[i] = Int16GetDatum(policy->attrs[i]);
-		attrnums = construct_array(akey, policy->nattrs,
-								   INT2OID, 2, true, 's');
-	}
-	else
-	{
-		if (policy->ptype == POLICYTYPE_REPLICATED)
+		Assert(GpPolicyIsPartitioned(policy));
+
+		if (policy->nattrs > 0)
 		{
-			Datum *akey = (Datum*)palloc(sizeof(Datum));
-			*akey = Int16GetDatum(GpReplicatedTableAttributerNumberIdentifier);	
-			attrnums = construct_array(akey, 1,
+			akey = (Datum *) palloc(policy->nattrs * sizeof(Datum));
+			for (i = 0; i < policy->nattrs; i++)
+				akey[i] = Int16GetDatum(policy->attrs[i]);
+			attrnums = construct_array(akey, policy->nattrs,
 					INT2OID, 2, true, 's');
+
+			values[1] = PointerGetDatum(attrnums); 
+			values[2] = CharGetDatum(SYM_POLICYTYPE_PARTITIONED);
 		}
-		/* distributed randomly */
 		else
-			attrnums = NULL;
+		{
+			nulls[1] = true;
+			values[2] = CharGetDatum(SYM_POLICYTYPE_PARTITIONED);
+		}
 	}
-
-	nulls[0] = false;
-	nulls[1] = false;
-	values[0] = ObjectIdGetDatum(tbloid);
-
-	if (attrnums)
-		values[1] = PointerGetDatum(attrnums);
-	else
-		nulls[1] = true;
 
 	gp_policy_tuple = heap_form_tuple(RelationGetDescr(gp_policy_rel), values, nulls);
 
@@ -356,47 +441,59 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 	SysScanDesc scan;
 	ScanKeyData skey;
 	ArrayType  *attrnums;
-	bool		nulls[2];
-	Datum		values[2];
-	bool		repl[2];
+	bool		nulls[3];
+	Datum		values[3];
+	bool		repl[3];
 
-	Insist(policy->ptype == POLICYTYPE_PARTITIONED);
+	Insist(GpPolicyIsPartitioned(policy));
+
+	nulls[0] = false;
+	nulls[1] = false;
+	nulls[2] = false;
+	values[0] = ObjectIdGetDatum(tbloid);
 
 	/*
 	 * Open and lock the gp_distribution_policy catalog.
 	 */
 	gp_policy_rel = heap_open(GpPolicyRelationId, RowExclusiveLock);
 
-	/*
-	 * Convert C arrays into Postgres arrays.
-	 */
-	if (policy->nattrs > 0)
+	if (GpPolicyIsReplicated(policy))
 	{
+		nulls[1] = true;
+		values[2] = CharGetDatum(SYM_POLICYTYPE_REPLICATED);
+	}
+	else
+	{
+		/*
+		 * Convert C arrays into Postgres arrays.
+		 */
 		int			i;
 		Datum	   *akey;
 
-		akey = (Datum *) palloc(policy->nattrs * sizeof(Datum));
-		for (i = 0; i < policy->nattrs; i++)
-			akey[i] = Int16GetDatum(policy->attrs[i]);
-		attrnums = construct_array(akey, policy->nattrs,
-								   INT2OID, 2, true, 's');
-	}
-	else
-	{
-		attrnums = NULL;
-	}
+		Assert(GpPolicyIsPartitioned(policy));
 
-	nulls[0] = false;
-	nulls[1] = false;
-	values[0] = ObjectIdGetDatum(tbloid);
+		if (policy->nattrs > 0)
+		{
+			akey = (Datum *) palloc(policy->nattrs * sizeof(Datum));
+			for (i = 0; i < policy->nattrs; i++)
+				akey[i] = Int16GetDatum(policy->attrs[i]);
+			attrnums = construct_array(akey, policy->nattrs,
+					INT2OID, 2, true, 's');
 
-	if (attrnums)
-		values[1] = PointerGetDatum(attrnums);
-	else
-		nulls[1] = true;
+			values[1] = PointerGetDatum(attrnums); 
+			values[2] = CharGetDatum(SYM_POLICYTYPE_PARTITIONED);
+		}
+		else
+		{
+
+			nulls[1] = true;
+			values[2] = CharGetDatum(SYM_POLICYTYPE_PARTITIONED);
+		}
+	}
 
 	repl[0] = false;
 	repl[1] = true;
+	repl[2] = true;
 
 
 	/*
@@ -480,32 +577,6 @@ GpPolicyRemove(Oid tbloid)
 	heap_close(gp_policy_rel, NoLock);
 }								/* GpPolicyRemove */
 
-/*
- * Returns true only if the policy is a randomly distributed.  In other cases,
- * including non-distributed table case, returns false.
- */
-bool
-GpPolicyIsRandomly(GpPolicy *policy)
-{
-	if (policy == NULL)
-		return false;
-
-	return policy->ptype == POLICYTYPE_PARTITIONED && policy->nattrs == 0;
-}
-
-/*
- * Returns true only if the policy is a fully distributed.  In other cases,
- * including non-distributed table case, returns false.
- */
-bool
-GpPolicyIsReplicated(GpPolicy *policy)
-{
-	if (policy == NULL)
-		return false;
-
-	return policy->ptype == POLICYTYPE_REPLICATED && policy->nattrs == 0;
-}
-
 
 /*
  * Does the supplied GpPolicy support unique indexing on the specified
@@ -534,7 +605,7 @@ checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr, int nidxatts,
 	 * Firstly, unique/primary key indexes aren't supported if we're
 	 * distributing randomly.
 	 */
-	if (GpPolicyIsRandomly(pol))
+	if (GpPolicyIsRandomPartitioned(pol))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -605,3 +676,4 @@ checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr, int nidxatts,
 		}
 	}
 }
+

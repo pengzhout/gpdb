@@ -3183,9 +3183,7 @@ _copyCopyStmt(CopyStmt *from)
 	COPY_STRING_FIELD(filename);
 	COPY_NODE_FIELD(options);
 	COPY_NODE_FIELD(sreh);
-	COPY_SCALAR_FIELD(nattrs);
-	COPY_SCALAR_FIELD(ptype);
-	COPY_POINTER_FIELD(distribution_attrs,from->nattrs * sizeof(AttrNumber));
+	COPY_NODE_FIELD(policy);
 	return newnode;
 }
 
@@ -4651,6 +4649,17 @@ _copyGpPolicy(GpPolicy *from)
 	return newnode;
 }
 
+static DistributedBy *
+_copyDistributedBy(DistributedBy *from)
+{
+	DistributedBy *newnode = makeNode(DistributedBy);
+
+	COPY_SCALAR_FIELD(ptype);
+	COPY_NODE_FIELD(keys);
+
+	return newnode;
+}
+
 /* ****************************************************************
  *					pg_list.h copy functions
  * ****************************************************************
@@ -5629,6 +5638,10 @@ copyObject(void *from)
 			break;
 		case T_GpPolicy:
 			retval = _copyGpPolicy(from);
+			break;
+
+		case T_DistributedBy:
+			retval = _copyDistributedBy(from);
 			break;
 
 		default:

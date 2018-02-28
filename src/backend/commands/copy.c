@@ -1903,11 +1903,7 @@ DoCopyInternal(const CopyStmt *stmt, const char *queryString, CopyState cstate)
 			/* data needs to get inserted locally */
 			if (cstate->on_segment)
 			{
-				int i;
-				cstate->rel->rd_cdbpolicy = makeGpPolicy(CacheMemoryContext,
-										stmt->ptype, stmt->nattrs);
-				for (i = 0; i < stmt->nattrs; i++)
-					cstate->rel->rd_cdbpolicy->attrs[i] = stmt->distribution_attrs[i];
+				cstate->rel->rd_cdbpolicy = GpPolicyCopy(CacheMemoryContext, stmt->policy);
 			}
 			CopyFrom(cstate);
 		}
@@ -7791,7 +7787,6 @@ InitDistributionData(CopyState cstate, Form_pg_attribute *attr,
 		 * have all column types handy.
 		 */
 		List *cols = NIL;
-		ListCell *lc;
 		HASHCTL hash_ctl;
 
 		partition_get_policies_attrs(estate->es_result_partitions,
@@ -7807,10 +7802,7 @@ InitDistributionData(CopyState cstate, Form_pg_attribute *attr,
 		                      &hash_ctl,
 		                      HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 		p_nattrs = list_length(cols);
-		policy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, p_nattrs);
-		i = 0;
-		foreach (lc, cols)
-			policy->attrs[i++] = lfirst_int(lc);
+		policy = createHashPartitionedPolicy(NULL, cols);
 	}
 
 	/*

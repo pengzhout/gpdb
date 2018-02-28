@@ -1889,7 +1889,7 @@ heap_create_with_catalog(const char *relname,
 	 */
 	if (policy &&
 			(Gp_role == GP_ROLE_DISPATCH ||
-			 (Gp_role == GP_ROLE_EXECUTE && policy->ptype == POLICYTYPE_REPLICATED) ||
+			 (Gp_role == GP_ROLE_EXECUTE && GpPolicyIsReplicated(policy)) ||
 			 IsBinaryUpgrade))
 	{
 		Assert(relkind == RELKIND_RELATION);

@@ -2392,6 +2392,16 @@ _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 }
 
 static void
+_outDistributedBy(StringInfo str, DistributedBy *node)
+{
+	WRITE_NODE_TYPE("DISTRIBUTEDBY");
+
+	WRITE_ENUM_FIELD(ptype, GpPolicyType);
+	WRITE_NODE_FIELD(keys);
+}
+
+
+static void
 _outIndexStmt(StringInfo str, IndexStmt *node)
 {
 	WRITE_NODE_TYPE("INDEXSTMT");
@@ -3109,14 +3119,7 @@ _outCopyStmt(StringInfo str, CopyStmt *node)
 	WRITE_NODE_FIELD(sreh);
 	WRITE_NODE_FIELD(partitions);
 	WRITE_NODE_FIELD(ao_segnos);
-	WRITE_INT_FIELD(nattrs);
-	WRITE_ENUM_FIELD(ptype, GpPolicyType);
-	appendStringInfoLiteral(str, " :distribution_attrs");
-	for (int i = 0; i < node->nattrs; i++)
-	{
-		appendStringInfo(str, " %d", node->distribution_attrs[i]);
-	}
-
+	WRITE_NODE_FIELD(policy);
 }
 #endif/* COMPILING_BINARY_FUNCS */
 
@@ -4843,6 +4846,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_PartitionBy:
 				_outPartitionBy(str, obj);
+				break;
+			case T_DistributedBy:
+				_outDistributedBy(str, obj);
 				break;
 			case T_IndexStmt:
 				_outIndexStmt(str, obj);

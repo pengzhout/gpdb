@@ -217,8 +217,8 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 
 	if (rte->forceDistRandom ||
 		policy == NULL ||
-		policy->nattrs == 0 ||
-		policy->ptype != POLICYTYPE_PARTITIONED)
+		GpPolicyIsRandomPartitioned(policy) ||
+		GpPolicyIsReplicated(policy))
 	{
 		result.dd.isDirectDispatch = false;
 	}

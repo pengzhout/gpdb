@@ -184,8 +184,7 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
             /* CDB: Don't try to fetch CTIDs for distributed relation. */
             rte = rt_fetch(rc->rti, parse->rtable);
             relation = heap_open(rte->relid, NoLock);
-            if (relation->rd_cdbpolicy &&
-                relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+            if (GpPolicyIsPartitioned(relation->rd_cdbpolicy))
                 isdistributed = true;
             heap_close(relation, NoLock);
             if (isdistributed)

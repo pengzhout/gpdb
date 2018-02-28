@@ -217,8 +217,7 @@ cdbparallelize(PlannerInfo *root,
 
 				/* Tell caller if target rel is distributed. */
 				if (policy &&
-					(policy->ptype == POLICYTYPE_PARTITIONED ||
-					policy->ptype == POLICYTYPE_REPLICATED))
+					(GpPolicyIsPartitioned(policy) || GpPolicyIsReplicated(policy)))
 					context->resultSegments = true;
 
 				if (policy)

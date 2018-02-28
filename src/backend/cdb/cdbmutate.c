@@ -281,14 +281,13 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 				{
 					targetPolicy = query->intoPolicy;
 
-					Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
-						query->intoPolicy->ptype == POLICYTYPE_REPLICATED);
+					Assert(query->intoPolicy->ptype != POLICYTYPE_ENTRY);
 					Assert(query->intoPolicy->nattrs >= 0);
 					Assert(query->intoPolicy->nattrs <= MaxPolicyAttributeNumber);
 				}
 				else if (gp_create_table_random_default_distribution)
 				{
-					targetPolicy = createRandomDistributionPolicy(NULL);
+					targetPolicy = createRandomPartitionedPolicy(NULL);
 					ereport(NOTICE,
 							(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
 							 errmsg("Using default RANDOM distribution since no distribution was specified."),
@@ -297,15 +296,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 				else
 				{
 					/* Find out what the flow is partitioned on */
+					List	*policykeys = NIL;
 					hashExpr = plan->flow->hashExpr;
-
-					/* User did not specify a DISTRIBUTED BY clause */
-					if (hashExpr)
-						targetPolicy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, list_length(hashExpr));
-					else
-						targetPolicy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, 1);
-
-					targetPolicy->nattrs = 0;
 
 					if (hashExpr)
 						foreach(exp1, hashExpr)
@@ -352,10 +344,10 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 								 */
 								else
 									new_var = makeVar(OUTER,
-													  n,
-													  exprType((Node *) target->expr),
-													  exprTypmod((Node *) target->expr),
-													  0);
+											n,
+											exprType((Node *) target->expr),
+											exprTypmod((Node *) target->expr),
+											0);
 
 								if (equal(var1, new_var))
 								{
@@ -364,8 +356,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 									 * result table, to avoid unnecessary
 									 * redistibution of data
 									 */
-									Assert(targetPolicy->nattrs < MaxPolicyAttributeNumber);
-									targetPolicy->attrs[targetPolicy->nattrs++] = n;
+									Assert(list_length(policykeys) < MaxPolicyAttributeNumber);
+									policykeys = lappend_int(policykeys, n);
 									found_expr = true;
 									break;
 
@@ -379,7 +371,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 					}
 
 					/* do we know how to partition? */
-					if (targetPolicy->nattrs == 0)
+					if (policykeys == NIL)
 					{
 						/*
 						 * hash on the first hashable column we can find.
@@ -397,12 +389,14 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 								if (isGreenplumDbHashable(typeOid))
 								{
-									targetPolicy->attrs[targetPolicy->nattrs++] = i + 1;
+									policykeys = lappend_int(policykeys, i + 1);
 									break;
 								}
 							}
 						}
 					}
+
+					targetPolicy = createHashPartitionedPolicy(NULL, policykeys);
 
 					if (query->intoPolicy == NULL)
 					{
@@ -436,10 +430,9 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 				query->intoPolicy = targetPolicy;
 
-				Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
-					query->intoPolicy->ptype == POLICYTYPE_REPLICATED); 
+				Assert(query->intoPolicy->ptype != POLICYTYPE_ENTRY);
 
-				if (query->intoPolicy->ptype == POLICYTYPE_REPLICATED)
+				if (GpPolicyIsReplicated(query->intoPolicy))
 				{
 					/*
 					 * CdbLocusType_SegmentGeneral is only used by replicated table right now,
@@ -482,8 +475,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 							       ));
 				}
 
-				Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
-					query->intoPolicy->ptype == POLICYTYPE_REPLICATED); 
+				Assert(query->intoPolicy->ptype != POLICYTYPE_ENTRY);
 			}
 
 			if (plan->flow->flotype == FLOW_PARTITIONED && !query->intoClause)
@@ -659,9 +651,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 										 */
 										targetPolicy = RelationGetPartitioningKey(rri->ri_RelationDesc);
 
-										if (targetPolicy->ptype != POLICYTYPE_PARTITIONED)
-											elog(ERROR, "policy must be partitioned");
-
+										if (!GpPolicyIsPartitioned(targetPolicy))
+		elog(ERROR, "policy must be partitioned");
 										ExecCloseIndices(rri);
 										heap_close(rri->ri_RelationDesc, NoLock);
 										FreeExecutorState(estate);
@@ -1732,7 +1723,7 @@ cdbmutate_warn_ctid_without_segid(struct PlannerInfo *root, struct RelOptInfo *r
 
 	/* Rel not distributed?  Then segment id doesn't matter. */
 	if (!rel->cdbpolicy ||
-		rel->cdbpolicy->ptype != POLICYTYPE_PARTITIONED)
+		rel->cdbpolicy->ptype == POLICYTYPE_ENTRY)
 		return;
 
 	/* Ignore references occurring in the Query's final output targetlist. */

@@ -402,7 +402,7 @@ static bool TypeTupleExists(Oid typeId);
 static void ATExecPartAddInternal(Relation rel, Node *def);
 
 static RangeVar *make_temp_table_name(Relation rel, BackendId id);
-static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro,
+static bool prebuild_temp_table(Relation rel, RangeVar *tmpname, DistributedBy *distro,
 								List *opts, bool isTmpTableAo,
 								bool useExistingColumnAttributes);
 static void ATPartitionCheck(AlterTableType subtype, Relation rel, bool rejectroot, bool recursing);
@@ -3813,19 +3813,19 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				if ( ps == PART_STATUS_LEAF )
 				{
 					Oid ptrelid = rel_partition_get_master(relid);
-					List *dist_cnames = lsecond((List*)cmd->def);
+					DistributedBy *dist = lsecond((List*)cmd->def);
 
 					/*	might be null if no policy set, e.g. just
 					 *  a change of storage options...
 					 */
-					if (dist_cnames)
+					if (dist)
 					{
 						Relation ptrel = heap_open(ptrelid,
 												   AccessShareLock);
-						Assert(IsA(dist_cnames, List));
+						Assert(IsA(dist, DistributedBy));
 
 						if (! can_implement_dist_on_part(ptrel,
-														 dist_cnames) )
+														 dist) )
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 									 errmsg("cannot SET DISTRIBUTED BY for %s",
@@ -7219,7 +7219,7 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	ReleaseSysCache(tuple);
 
 	policy = rel->rd_cdbpolicy;
-	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
+	if (GpPolicyIsPartitioned(policy))
 	{
 		int			ia = 0;
 
@@ -7227,6 +7227,7 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 		{
 			if (attnum == policy->attrs[ia])
 			{
+				/* force a random distribution */
 				policy->nattrs = 0;
 				rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
 				GpPolicyReplace(RelationGetRelid(rel), policy);
@@ -8996,8 +8997,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 		defaultexpr = NULL;
 
 	if (Gp_role == GP_ROLE_DISPATCH &&
-		policy != NULL &&
-		policy->ptype == POLICYTYPE_PARTITIONED &&
+		GpPolicyIsPartitioned(policy) &&
 		!hashCompatible)
 	{
 		relContainsTuples = cdbRelMaxSegSize(rel) > 0;
@@ -9070,8 +9070,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 								relContainsTuples)
 							{
 								Assert(Gp_role == GP_ROLE_DISPATCH &&
-									   policy != NULL &&
-									   policy->ptype == POLICYTYPE_PARTITIONED &&
+									   GpPolicyIsPartitioned(policy) &&
 									   !hashCompatible);
 
 								for (int ia = 0; ia < policy->nattrs; ia++)
@@ -9118,7 +9117,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 						Assert(Gp_role == GP_ROLE_DISPATCH &&
 							   !hashCompatible &&
 							   policy != NULL &&
-							   policy->ptype == POLICYTYPE_PARTITIONED);
+							   policy->ptype != POLICYTYPE_ENTRY);
 
 						for (int ia = 0; ia < policy->nattrs; ia++)
 						{
@@ -9253,8 +9252,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	heap_close(depRel, RowExclusiveLock);
 
 	if (Gp_role == GP_ROLE_DISPATCH &&
-		policy != NULL &&
-		policy->ptype == POLICYTYPE_PARTITIONED &&
+		GpPolicyIsPartitioned(policy) &&
 		!hashCompatible)
 	{
 		ListCell *lc;
@@ -12006,7 +12004,7 @@ change_dropped_col_datatypes(Relation rel)
  *   DISTRIBUTED BY dist_clause
  */
 static QueryDesc *
-build_ctas_with_dist(Relation rel, List *dist_clause,
+build_ctas_with_dist(Relation rel, DistributedBy *dist_clause,
 					 List *storage_opts, RangeVar **tmprv,
 					 bool useExistingColumnAttributes)
 {
@@ -12086,7 +12084,7 @@ build_ctas_with_dist(Relation rel, List *dist_clause,
 		s->intoClause->rel = tmprel;
 		s->intoClause->options = storage_opts;
 		s->intoClause->tableSpaceName = get_tablespace_name(tblspc);
-		s->distributedBy = dist_clause;
+		s->distributedBy = (Node *)dist_clause;
 		n = (Node *)s;
 	}
 	*tmprv = tmprel;
@@ -12205,7 +12203,7 @@ make_temp_table_name(Relation rel, BackendId id)
  * a value that matches 'opts'.
  */
 static bool
-prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
+prebuild_temp_table(Relation rel, RangeVar *tmpname, DistributedBy *distro, List *opts,
 					bool isTmpTableAo, bool useExistingColumnAttributes)
 {
 	bool need_rebuild = false;
@@ -12251,7 +12249,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 		List **col_encs = NULL;
 
 		cs->relKind = RELKIND_RELATION;
-		cs->distributedBy = distro;
+		cs->distributedBy = (Node *)distro;
 		cs->relation = tmpname;
 		cs->ownerid = rel->rd_rel->relowner;
 		cs->tablespacename = get_tablespace_name(rel->rd_rel->reltablespace);
@@ -12378,7 +12376,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, List *distro, List *opts,
 
 /* Build a human readable tag for what we're doing */
 static char *
-make_distro_str(List *lwith, List *ldistro)
+make_distro_str(List *lwith, DistributedBy *ldistro)
 {
     char       *distro_str = "SET WITH DISTRIBUTED BY";
 
@@ -12461,7 +12459,8 @@ static void
 ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 {
 	List 	   *lprime;
-	List 	   *lwith, *ldistro;
+	List 	   *lwith;
+	DistributedBy *ldistro;
 	List	   *cols = NIL;
 	ListCell   *lc;
 	GpPolicy   *policy = NULL;
@@ -12502,17 +12501,17 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	 * distribution clause.
 	 */
 	lwith   = (List *)linitial(lprime);
-	ldistro = (List *)lsecond(lprime);
+	ldistro = (DistributedBy *)lsecond(lprime);
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("SET DISTRIBUTED BY not supported in utility mode")));
 
-	/* we only support fully distributed tables */
+	/* we only support partitioned tables */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		if (rel->rd_cdbpolicy->ptype != POLICYTYPE_PARTITIONED)
+		if (!GpPolicyIsPartitioned(rel->rd_cdbpolicy))
 			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s not supported on non-distributed tables",
@@ -12642,15 +12641,24 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		if (ldistro)
 			change_policy = true;
 
-		if (ldistro && linitial(ldistro) == NULL)
-		{
-			Insist(list_length(ldistro) == 1);
+		if (GpPolicyIsReplicated(rel->rd_cdbpolicy))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("Cannot change the distribution policy of replicated table")));
+	
 
+		if (ldistro && ldistro->ptype == POLICYTYPE_REPLICATED)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("Cannot change the distribution policy of table to replicated")));
+		
+		if (ldistro && ldistro->ptype == POLICYTYPE_PARTITIONED && ldistro->keys == NIL)
+		{
 			rand_pol = true;
 
 			if (!force_reorg)
 			{
-				if (rel->rd_cdbpolicy->nattrs == 0)
+				if (GpPolicyIsRandomPartitioned(rel->rd_cdbpolicy))
 					ereport(WARNING,
 							(errcode(ERRCODE_DUPLICATE_OBJECT),
 							 errmsg("distribution policy of relation \"%s\" already set to DISTRIBUTED RANDOMLY",
@@ -12659,7 +12667,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 									 RelationGetRelationName(rel))));
 			}
 
-			policy = createRandomDistributionPolicy(NULL);
+			policy = createRandomPartitionedPolicy(NULL);
 			rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
 			GpPolicyReplace(RelationGetRelid(rel), policy);
 
@@ -12699,14 +12707,12 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	{
 		if (change_policy)
 		{
-			/* reserve on slot */
-			policy = makeGpPolicy(NULL, POLICYTYPE_PARTITIONED, list_length(ldistro));
-			policy->nattrs = 0;
+			List	*policykeys = NIL;
 
 			/* Step (a) */
 			if (!rand_pol)
 			{
-				foreach(lc, ldistro)
+				foreach(lc, ldistro->keys)
 				{
 					char	   *colName = strVal((Value *)lfirst(lc));
 					HeapTuple	tuple;
@@ -12730,13 +12736,14 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 								 errmsg("cannot distribute by system column \"%s\"",
 										colName)));
 
-					policy->attrs[policy->nattrs++] = attnum;
+					policykeys = lappend_int(policykeys, attnum);
 
 					ReleaseSysCache(tuple);
 					cols = lappend(cols, lfirst(lc));
 				} /* end foreach */
 
-				Assert(policy->nattrs > 0);
+				Assert(policykeys != NIL);
+				policy = createHashPartitionedPolicy(NULL, policykeys);
 
 				/*
 				 * See if the the old policy is the same as the new one but
@@ -12765,13 +12772,13 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 						 * at which point the string should be NULL terminated
 						 * instead.
 						 */
-						char *dist = palloc(list_length(ldistro) * (NAMEDATALEN + 1));
+						char *dist = palloc(list_length(ldistro->keys) * (NAMEDATALEN + 1));
 
 						dist[0] = '\0';
 
-						foreach(lc, ldistro)
+						foreach(lc, ldistro->keys)
 						{
-							if (lc != list_head(ldistro))
+							if (lc != list_head(ldistro->keys))
 								strcat(dist, ",");
 							strcat(dist, strVal(lfirst(lc)));
 						}
@@ -12828,7 +12835,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			 * is same as the original one, the query optimizer will generate
 			 * redistribute plan.
 			 */
-			GpPolicy *random_policy = createRandomDistributionPolicy(NULL);
+			GpPolicy *random_policy = createRandomPartitionedPolicy(NULL);
 
 			original_policy = rel->rd_cdbpolicy;
 			rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel),
@@ -13548,19 +13555,19 @@ ATPExecPartAlter(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			/* MPP-5524: check if can change distribution policy */
 			if (atc->subtype == AT_SetDistributedBy)
 			{
-				List *dist_cnames = NIL;
+				DistributedBy *dist = NULL;
 				Assert(IsA(atc->def, List));
 
-				dist_cnames = lsecond((List*)atc->def);
+				dist = lsecond((List*)atc->def);
 
 				/*	might be null if no policy set, e.g. just a change
 				 *	of storage options...
 				 */
-				if (dist_cnames)
+				if (dist)
 				{
-					Assert(IsA(dist_cnames, List));
+					Assert(IsA(dist, DistributedBy));
 
-					if (! can_implement_dist_on_part(rel, dist_cnames) )
+					if (! can_implement_dist_on_part(rel, dist) )
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("cannot ALTER PARTITION ... SET "
@@ -14837,31 +14844,45 @@ split_rows(Relation intoa, Relation intob, Relation temprel)
 /* ALTER TABLE ... SPLIT PARTITION */
 
 /* Given a Relation, make a distributed by () clause for parser consumption. */
-List *
+DistributedBy *
 make_dist_clause(Relation rel)
 {
-	int i;
-	List *distro = NIL;
+	int		i;
+	DistributedBy	*dist;
+	List 		*distro = NIL;
+	GpPolicy 	*policy;
 
-	for (i = 0; i < rel->rd_cdbpolicy->nattrs; i++)
-	{
-		AttrNumber attno = rel->rd_cdbpolicy->attrs[i];
-		TupleDesc tupdesc = RelationGetDescr(rel);
-		Value *attstr;
-		NameData attname;
+	dist = makeNode(DistributedBy);
+	policy = rel->rd_cdbpolicy;	
 
-		attname = tupdesc->attrs[attno - 1]->attname;
-		attstr = makeString(pstrdup(NameStr(attname)));
+	Assert(policy->ptype != POLICYTYPE_ENTRY);
 
-		distro = lappend(distro, attstr);
-	}
-
-	if (!distro)
+	if (GpPolicyIsReplicated(policy))
 	{
 		/* must be random distribution */
-		distro = list_make1(NULL);
+		dist->ptype = POLICYTYPE_REPLICATED;
+		dist->keys = NIL;
 	}
-	return distro;
+	else
+	{
+		for (i = 0; i < rel->rd_cdbpolicy->nattrs; i++)
+		{
+			AttrNumber attno = rel->rd_cdbpolicy->attrs[i];
+			TupleDesc tupdesc = RelationGetDescr(rel);
+			Value *attstr;
+			NameData attname;
+
+			attname = tupdesc->attrs[attno - 1]->attname;
+			attstr = makeString(pstrdup(NameStr(attname)));
+
+			distro = lappend(distro, attstr);
+		}
+
+		dist->ptype = POLICYTYPE_PARTITIONED;
+		dist->keys = distro;
+	}
+
+	return dist;
 }
 
 /*
@@ -14961,7 +14982,7 @@ ATPExecPartSplit(Relation *rel,
 		Relation existrel;
 		List *existstorage_opts;
 		char *defparname = NULL; /* name of default partition (if specified) */
-		List *distro = NIL;
+		DistributedBy *distro = NULL;
 		List *colencs = NIL;
 		List *orient = NIL;
 
@@ -15195,7 +15216,7 @@ ATPExecPartSplit(Relation *rel,
 									  CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS,
 									  CREATE_TABLE_LIKE_INCLUDING_INDEXES);
 		ct->tableElts = list_make1(inh);
-		ct->distributedBy = list_copy(distro); /* must preserve the list for later */
+		ct->distributedBy = copyObject(distro); /* must preserve the list for later */
 
 		/* should be unique enough */
 		snprintf(tmpname, NAMEDATALEN, "pg_temp_%u", relid);

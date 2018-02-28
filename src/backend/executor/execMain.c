@@ -317,8 +317,8 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	START_MEMORY_ACCOUNT(plannedStmt->memoryAccountId);
 
 	Assert(plannedStmt->intoPolicy == NULL ||
-		plannedStmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
-		plannedStmt->intoPolicy->ptype == POLICYTYPE_REPLICATED);
+		GpPolicyIsPartitioned(plannedStmt->intoPolicy) ||
+		GpPolicyIsReplicated(plannedStmt->intoPolicy));
 
 	/**
 	 * Perfmon related stuff.
@@ -1559,8 +1559,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	bool		shouldDispatch = Gp_role == GP_ROLE_DISPATCH && plannedstmt->planTree->dispatch == DISPATCH_PARALLEL;
 
 	Assert(plannedstmt->intoPolicy == NULL ||
-		plannedstmt->intoPolicy->ptype == POLICYTYPE_PARTITIONED ||
-		plannedstmt->intoPolicy->ptype == POLICYTYPE_REPLICATED);
+		GpPolicyIsPartitioned(plannedstmt->intoPolicy) ||
+		GpPolicyIsReplicated(plannedstmt->intoPolicy));
 
 	if (DEBUG1 >= log_min_messages)
 	{
@@ -2113,8 +2113,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 					/* CDB: CTIDs were not fetched for distributed relation. */
 					Relation relation = erm->relation;
-					if (relation->rd_cdbpolicy &&
-						relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+					if (GpPolicyIsPartitioned(relation->rd_cdbpolicy))
 						continue;
 
 					/* always need the ctid */
@@ -6184,7 +6183,7 @@ AdjustReplicatedTableCounts(EState *estate)
 		if (!policy)
 			continue;
 
-		if (policy->ptype == POLICYTYPE_REPLICATED)
+		if (GpPolicyIsReplicated(policy))
 			containReplicatedTable = true;
 		else if (containReplicatedTable)
 		{

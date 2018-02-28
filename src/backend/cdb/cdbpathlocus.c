@@ -315,16 +315,15 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 		return result;
 	}
 
-	if (policy &&
-		policy->ptype == POLICYTYPE_PARTITIONED)
+	if (GpPolicyIsPartitioned(policy))
 	{
 		/* Are the rows distributed by hashing on specified columns? */
 		if (policy->nattrs > 0)
 		{
 			List	   *partkey = cdb_build_distribution_pathkeys(root,
-																  rel,
-																  policy->nattrs,
-																  policy->attrs);
+					rel,
+					policy->nattrs,
+					policy->attrs);
 
 			CdbPathLocus_MakeHashed(&result, partkey);
 		}
@@ -333,8 +332,7 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 		else
 			CdbPathLocus_MakeStrewn(&result);
 	}
-	else if (policy &&
-		policy->ptype == POLICYTYPE_REPLICATED)
+	else if (GpPolicyIsReplicated(policy))
 	{
 		CdbPathLocus_MakeSegmentGeneral(&result);
 	}
