@@ -557,6 +557,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->append_rel_list = NIL;
 	root->rowMarks = NIL;
 	root->hasInheritedTarget = false;
+	root->upd_del_replicated_table = 0;
 
 	Assert(config);
 	root->config = config;

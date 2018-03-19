@@ -119,6 +119,14 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 				/* Scribble the tuple number of rel to reflect the real size */
 				rel->tuples = rel->tuples * planner_segment_count();
 			}
+
+			if ((root->parse->commandType == CMD_UPDATE ||
+				 root->parse->commandType == CMD_DELETE) &&
+				root->parse->resultRelation == relid &&
+				GpPolicyIsReplicated(rel->cdbpolicy))
+			{
+				root->upd_del_replicated_table = relid;
+			}
 			break;
 		case RTE_SUBQUERY:
 		case RTE_FUNCTION:

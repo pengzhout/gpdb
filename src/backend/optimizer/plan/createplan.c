@@ -5790,36 +5790,7 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node)
 			}
 			else if (targetPolicyType == POLICYTYPE_REPLICATED)
 			{
-				if (subplan->flow->flotype == FLOW_SINGLETON &&
-						(subplan->flow->locustype == CdbLocusType_General ||
-						 subplan->flow->locustype == CdbLocusType_SegmentGeneral))
-				{
-					/* do nothing */
-				}
-				else if (subplan->flow->flotype == FLOW_REPLICATED)
-				{
-					/* do nothing */
-				}
-				else
-				{
-					/*
-					 * add a broadcast on top
-					 */
-
-					/* create a shallow copy of the subplan flow */
-					Flow	   *flow = subplan->flow;
-
-					subplan->flow = (Flow *) palloc(sizeof(Flow));
-					*(subplan->flow) = *flow;
-
-					/* save original flow information */
-					subplan->flow->flow_before_req_move = flow;
-
-					/* request a GatherMotion node */
-					subplan->flow->req_move = MOVEMENT_BROADCAST;
-					subplan->flow->hashExpr = NIL;
-					subplan->flow->segindex = 0;
-				}
+				/* Do nothing here, see main work in cdbpath_motion_for_join() */
 			}
 			else
 				elog(ERROR, "unrecognized policy type %u", targetPolicyType);

@@ -942,14 +942,36 @@ cdbpath_motion_for_join(PlannerInfo *root,
 			other = &outer;
 		}
 
+		if (CdbPathLocus_IsReplicated(other->locus))
+		{
+			Assert(root->upd_del_replicated_table > 0);
+			return other->locus;
+		}
+
 		Assert(CdbPathLocus_IsBottleneck(other->locus) ||
 			CdbPathLocus_IsSegmentGeneral(other->locus) ||
 			   CdbPathLocus_IsPartitioned(other->locus));
 
 		/*
+		 * For UPDATE/DELETE, replicated table can't guarantee a logic row has
+		 * same ctid or item pointer on each copy. If we broadcast matched tuples
+		 * to all segments, the segments may update the wrong tuples or can't
+		 * find a valid tuple according to ctid or item pointer.
+		 *
+		 * So For UPDATE/DELETE on replicated table, we broadcast other path so
+		 * all target tuples can be selected on all copys and then be updated
+		 * locally.
+		 */
+		if (root->upd_del_replicated_table > 0 &&
+			bms_is_subset(bms_make_singleton(root->upd_del_replicated_table),
+						  segGeneral->path->parent->relids))
+		{
+			CdbPathLocus_MakeReplicated(&other->move_to);
+		}
+		/*
 		 * other is bottleneck, move inner to other
 		 */
-		if (CdbPathLocus_IsBottleneck(other->locus))
+		else if (CdbPathLocus_IsBottleneck(other->locus))
 		{
 			segGeneral->move_to = other->locus;
 		}
@@ -961,6 +983,29 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		}
 		else
 			return other->locus;
+	}
+	/*
+	 * Replicated paths shouldn't occur except UPDATE/DELETE on replicated table.
+	 */
+	else if (CdbPathLocus_IsReplicated(outer.locus))
+	{
+		if (root->upd_del_replicated_table > 0)
+			CdbPathLocus_MakeReplicated(&inner.move_to);
+		else
+		{
+			Assert(false);
+			goto fail;
+		}
+	}
+	else if (CdbPathLocus_IsReplicated(inner.locus))
+	{
+		if (root->upd_del_replicated_table > 0)
+			CdbPathLocus_MakeReplicated(&outer.move_to);
+		else
+		{
+			Assert(false);
+			goto fail;
+		}
 	}
 	/*
 	 * Is either source confined to a single process? NB: Motion to a single
@@ -1046,16 +1091,6 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		else
 			other->move_to = single->locus;
 	}							/* singleQE or entry */
-
-	/*
-	 * Replicated paths shouldn't occur loose, for now.
-	 */
-	else if (CdbPathLocus_IsReplicated(outer.locus) ||
-			 CdbPathLocus_IsReplicated(inner.locus))
-	{
-		Assert(false);
-		goto fail;
-	}
 
 	/*
 	 * No motion if partitioned alike and joining on the partitioning keys.
