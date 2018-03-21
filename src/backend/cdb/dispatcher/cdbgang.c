@@ -1219,6 +1219,13 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyAllGangs");
 
+	/* Destroy CurrentGangCreating before GangContext is reset */
+	if (CurrentGangCreating != NULL)
+	{
+		DisconnectAndDestroyGang(CurrentGangCreating);
+		CurrentGangCreating = NULL;
+	}
+
 	/* for now, destroy all readers, regardless of the portal that owns them */
 	disconnectAndDestroyAllReaderGangs(true);
 
