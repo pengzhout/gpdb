@@ -275,12 +275,10 @@ drop table if exists bar;
 -- Alter gp_distribution_policy
 create table foo(x int, y int) distributed replicated;
 create table bar(x int, y int) distributed by (x);
--- can not alter distribution policy of replicated table
+-- alter distribution policy of replicated table
 alter table foo set distributed by (x);
-ERROR:  SET DISTRIBUTED BY not supported on non-distributed tables
--- can not alter a partitioned table to replicated table
+-- alter a partitioned table to replicated table
 alter table bar set distributed replicated;
-ERROR:  Cannot change the distribution policy of table to replicated
 drop table if exists foo;
 drop table if exists bar;
 ---------

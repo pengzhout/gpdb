@@ -52,7 +52,7 @@
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
 
-
+extern bool RptInsertOpt;
 static Plan *create_subplan(PlannerInfo *root, Path *best_path);		/* CDB */
 static Plan *create_scan_plan(PlannerInfo *root, Path *best_path);
 static bool use_physical_tlist(PlannerInfo *root, RelOptInfo *rel);
@@ -5699,13 +5699,13 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node)
 				 * so if both input and target are replicated table, no need to add a motion
 				 *
 				 */
-				if (subplan->flow->flotype == FLOW_SINGLETON &&
+				if (subplan->flow->flotype == FLOW_SINGLETON && RptInsertOpt &&
 					subplan->flow->locustype == CdbLocusType_SegmentGeneral &&
 					!contain_volatile_functions((Node *)subplan->targetlist))
 					break;
 
 				/* plan's data are available on all segment, no motion needed */
-				if (subplan->flow->flotype == FLOW_SINGLETON &&
+				if (subplan->flow->flotype == FLOW_SINGLETON && RptInsertOpt &&
 					subplan->flow->locustype == CdbLocusType_General &&
 					!contain_volatile_functions((Node *)subplan->targetlist))
 				{

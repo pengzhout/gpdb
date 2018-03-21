@@ -12141,6 +12141,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	Oid			tarrelid = RelationGetRelid(rel);
 	List	   *oid_map = NIL;
 	bool        rand_pol = false;
+	bool        rep_pol = false;
 	bool        force_reorg = false;
 	Datum		newOptions = PointerGetDatum(NULL);
 	bool		change_policy = false;
@@ -12182,7 +12183,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	/* we only support partitioned tables */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		if (!GpPolicyIsPartitioned(rel->rd_cdbpolicy))
+		if (GpPolicyIsEntry(rel->rd_cdbpolicy))
 			ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("%s not supported on non-distributed tables",
@@ -12312,17 +12313,6 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		if (ldistro)
 			change_policy = true;
 
-		if (GpPolicyIsReplicated(rel->rd_cdbpolicy))
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Cannot change the distribution policy of replicated table")));
-	
-
-		if (ldistro && ldistro->ptype == POLICYTYPE_REPLICATED)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Cannot change the distribution policy of table to replicated")));
-		
 		if (ldistro && ldistro->ptype == POLICYTYPE_PARTITIONED && ldistro->keys == NIL)
 		{
 			rand_pol = true;
@@ -12341,6 +12331,37 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			policy = createRandomPartitionedPolicy(NULL);
 			rel->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(rel), policy);
 			GpPolicyReplace(RelationGetRelid(rel), policy);
+
+			/* only need to rebuild if have new storage options */
+			if (!(DatumGetPointer(newOptions) || force_reorg))
+			{
+				/*
+				 * caller expects ATExecSetDistributedBy() to close rel
+				 * (see the non-random distribution case below for why.
+				 */
+				heap_close(rel, NoLock);
+				lsecond(lprime) = makeNode(SetDistributionCmd);
+				lprime = lappend(lprime, policy);
+				goto l_distro_fini;
+			}
+		}
+
+		if (ldistro && ldistro->ptype == POLICYTYPE_REPLICATED)
+		{
+			rep_pol = true;
+
+			if (!force_reorg)
+			{
+				if (GpPolicyIsReplicated(rel->rd_cdbpolicy))
+					ereport(WARNING,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("distribution policy of relation \"%s\" already set to DISTRIBUTED REPLICATED",
+									RelationGetRelationName(rel)),
+							 errhint("Use ALTER TABLE \"%s\" SET WITH (REORGANIZE=TRUE) DISTRIBUTED REPLICATED to force a replicated redistribution.",
+									 RelationGetRelationName(rel))));
+			}
+
+			policy = createReplicatedGpPolicy(NULL);
 
 			/* only need to rebuild if have new storage options */
 			if (!(DatumGetPointer(newOptions) || force_reorg))
@@ -12382,7 +12403,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 			List	*policykeys = NIL;
 
 			/* Step (a) */
-			if (!rand_pol)
+			if (!(rand_pol || rep_pol))
 			{
 				foreach(lc, ldistro->keys)
 				{
@@ -12492,13 +12513,20 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		bool saveOptimizerGucValue = optimizer;
 		optimizer = false;
 
+		extern bool RptInsertOpt;
+		bool saveRptInsertOpt = RptInsertOpt; 
+
 		if (saveOptimizerGucValue)
 			ereport(LOG,
 					(errmsg("ALTER SET DISTRIBUTED BY: falling back to legacy query optimizer to ensure re-distribution of tuples.")));
 
 		GpPolicy *original_policy = NULL;
 
-		if (force_reorg && !rand_pol)
+		if (force_reorg && GpPolicyIsReplicated(rel->rd_cdbpolicy))
+		{
+			RptInsertOpt = false;		
+		}
+		else if (force_reorg && !rand_pol)
 		{
 			/*
 			 * since we force the reorg, we don't care about the original
@@ -12521,6 +12549,8 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 						untransformRelOptions(newOptions),
 						&tmprv,
 						useExistingColumnAttributes);
+
+		RptInsertOpt = saveRptInsertOpt;
 
 		/* 
 		 * We need to update our snapshot here to make sure we see all

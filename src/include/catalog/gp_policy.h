@@ -121,6 +121,7 @@ bool GpPolicyIsRandomPartitioned(const GpPolicy *policy);
 bool GpPolicyIsHashPartitioned(const GpPolicy *policy);
 bool GpPolicyIsPartitioned(const GpPolicy *policy);
 bool GpPolicyIsReplicated(const GpPolicy *policy);
+bool GpPolicyIsEntry(const GpPolicy *policy);
 
 extern GpPolicy *makeGpPolicy(MemoryContext mcxt, GpPolicyType ptype, int nattrs);
 extern GpPolicy *createReplicatedGpPolicy(MemoryContext mcxt);

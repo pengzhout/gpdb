@@ -195,7 +195,17 @@ GpPolicyIsHashPartitioned(const GpPolicy *policy)
 		return false;
 
 	return policy->ptype == POLICYTYPE_PARTITIONED &&
-			policy->nattrs > 0; }
+			policy->nattrs > 0;
+}
+
+bool
+GpPolicyIsEntry(const GpPolicy *policy)
+{
+	if (policy == NULL)
+		return false;
+
+	return policy->ptype == POLICYTYPE_ENTRY;
+}
 
 /*
  * GpPolicyFetch
@@ -449,7 +459,7 @@ GpPolicyReplace(Oid tbloid, const GpPolicy *policy)
 	Datum		values[3];
 	bool		repl[3];
 
-	Insist(GpPolicyIsPartitioned(policy));
+	Insist(!GpPolicyIsEntry(policy));
 
 	nulls[0] = false;
 	nulls[1] = false;

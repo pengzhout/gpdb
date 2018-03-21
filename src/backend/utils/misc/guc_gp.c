@@ -93,6 +93,7 @@ extern bool enable_partition_rules;
 
 extern int listenerBacklog;
 
+bool RptInsertOpt = true;
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
 List	   *gp_guc_list_for_explain;
 List	   *gp_guc_list_for_no_plan;

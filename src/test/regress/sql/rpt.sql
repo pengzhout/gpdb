@@ -187,9 +187,9 @@ drop table if exists bar;
 create table foo(x int, y int) distributed replicated;
 create table bar(x int, y int) distributed by (x);
 
--- can not alter distribution policy of replicated table
+-- alter distribution policy of replicated table
 alter table foo set distributed by (x);
--- can not alter a partitioned table to replicated table
+-- alter a partitioned table to replicated table
 alter table bar set distributed replicated;
 
 drop table if exists foo;
