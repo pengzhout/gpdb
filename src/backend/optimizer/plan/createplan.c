@@ -5706,9 +5706,12 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node)
 
 				/* plan's data are available on all segment, no motion needed */
 				if (subplan->flow->flotype == FLOW_SINGLETON &&
-					subplan->flow->locustype == CdbLocusType_SegmentGeneral &&
+					subplan->flow->locustype == CdbLocusType_General &&
 					!contain_volatile_functions((Node *)subplan->targetlist))
+				{
+					subplan->dispatch = DISPATCH_PARALLEL;
 					break;
+				}
 
 				if (!broadcastPlan(subplan, false, false))
 					ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),
