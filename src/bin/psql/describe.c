@@ -23,6 +23,8 @@
 #include "variables.h"
 
 
+#define SYM_POLICYTYPE_REPLICATED 'r'
+
 static bool describeOneTableDetails(const char *schemaname,
 						const char *relationname,
 						const char *oid,
@@ -265,13 +267,22 @@ describeTablespaces(const char *pattern, bool verbose)
 
 	initPQExpBuffer(&buf);
 
-	printfPQExpBuffer(&buf,
-					  "SELECT spcname AS \"%s\",\n"
-					  "  pg_catalog.pg_get_userbyid(spcowner) AS \"%s\",\n"
-					  "  spclocation AS \"%s\"",
-					  gettext_noop("Name"),
-					  gettext_noop("Owner"),
-					  gettext_noop("Location"));
+	if (pset.sversion >= 90200)
+		printfPQExpBuffer(&buf,
+						  "SELECT spcname AS \"%s\",\n"
+						  "  pg_catalog.pg_get_userbyid(spcowner) AS \"%s\",\n"
+						  "  pg_catalog.pg_tablespace_location(oid) AS \"%s\"",
+						  gettext_noop("Name"),
+						  gettext_noop("Owner"),
+						  gettext_noop("Location"));
+	else
+		printfPQExpBuffer(&buf,
+						  "SELECT spcname AS \"%s\",\n"
+						  "  pg_catalog.pg_get_userbyid(spcowner) AS \"%s\",\n"
+						  "  spclocation AS \"%s\"",
+						  gettext_noop("Name"),
+						  gettext_noop("Owner"),
+						  gettext_noop("Location"));
 
 	if (verbose)
 	{
@@ -2689,7 +2700,7 @@ add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBuffe
 			   *result2 = NULL;
 
 	printfPQExpBuffer(buf,
-			 "SELECT attrnums\n"
+			 "SELECT attrnums, policytype \n"
 					  "FROM pg_catalog.gp_distribution_policy t\n"
 					  "WHERE localoid = '%s' ",
 					  oid);
@@ -2706,8 +2717,13 @@ add_distributed_by_footer(const char* oid, PQExpBufferData *inoutbuf, PQExpBuffe
 		{
 			char *col;
 			char *dist_columns = PQgetvalue(result1, 0, 0);
+			char policytype = *(char *)PQgetvalue(result1, 0, 1);
 			char *dist_colname;
-			if(dist_columns && strlen(dist_columns) > 0)
+			if (policytype == SYM_POLICYTYPE_REPLICATED)
+			{
+				printfPQExpBuffer(buf, "Distributed Replicated");
+			}
+			else if(dist_columns && strlen(dist_columns) > 0)
 			{
 				PQExpBufferData tempbuf;
 

@@ -78,7 +78,7 @@ SELECT * FROM locktest_master where coalesce = 'ao_locks_table' or
     coalesce    |        mode         |         locktype         |  node  
 ----------------+---------------------+--------------------------+--------
  ao_locks_table | AccessExclusiveLock | append-only segment file | master
- ao_locks_table | ExclusiveLock       | relation                 | master
+ ao_locks_table | RowExclusiveLock    | relation                 | master
 (2 rows)
 
 SELECT * FROM locktest_segments where coalesce = 'ao_locks_table' or
@@ -98,7 +98,7 @@ SELECT * FROM locktest_master where coalesce = 'ao_locks_table' or
     coalesce    |        mode         |         locktype         |  node  
 ----------------+---------------------+--------------------------+--------
  ao_locks_table | AccessExclusiveLock | append-only segment file | master
- ao_locks_table | ExclusiveLock       | relation                 | master
+ ao_locks_table | RowExclusiveLock    | relation                 | master
 (2 rows)
 
 SELECT * FROM locktest_segments where coalesce = 'ao_locks_table' or

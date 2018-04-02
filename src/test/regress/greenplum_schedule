@@ -121,6 +121,8 @@ test: nested_case_null sort bb_mpph
 test: bb_memory_quota memconsumption
 
 test: tuple_serialization
+# Tests for replicated table
+test: rpt rpt_joins rpt_tpch
 
 # NOTE: The bfv_temp test assumes that there are no temporary tables in
 # other sessions. Therefore the other tests in this group mustn't create
@@ -205,5 +207,7 @@ test: psql_gp_commands pg_resetxlog
 
 # Check for shmem leak for instrumentation slots
 test: instr_in_shmem_verify
+
+test: autovacuum-template0
 
 # end of tests

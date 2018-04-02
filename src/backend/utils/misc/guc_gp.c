@@ -46,6 +46,7 @@
 #include "utils/resgroup.h"
 #include "utils/resource_manager.h"
 #include "utils/vmem_tracker.h"
+#include "utils/gdd.h"
 
 /*
  * These constants are copied from guc.c. They should not bitrot when we
@@ -450,6 +451,9 @@ bool		optimizer_enable_associativity;
 /* Analyze related GUCs for Optimizer */
 bool		optimizer_analyze_root_partition;
 bool		optimizer_analyze_midlevel_partition;
+
+/* GUCs for replicated table */
+bool		optimizer_replicated_table_insert;
 
 /* System Information */
 static int	gp_server_version_num;
@@ -2826,6 +2830,17 @@ struct config_bool ConfigureNamesBool_gp[] =
 		false, NULL, NULL
 	},
 
+	{
+		{"optimizer_replicated_table_insert", PGC_USERSET, STATS_ANALYZE,
+			gettext_noop("Omit broadcast motion when inserting into replicated table"),
+			gettext_noop("Only when source is SegmentGeneral or General locus"),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_replicated_table_insert,
+		true, NULL, NULL
+	},
+
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -3476,7 +3491,7 @@ struct config_int ConfigureNamesInt_gp[] =
 		{"gp_fts_probe_retries", PGC_SIGHUP, GP_ARRAY_TUNING,
 			gettext_noop("Number of retries for FTS to complete probing a segment."),
 			gettext_noop("Used by the fts-probe process."),
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			GUC_UNIT_S
 		},
 		&gp_fts_probe_retries,
 		5, 0, 100, NULL, NULL
@@ -3830,6 +3845,16 @@ struct config_int ConfigureNamesInt_gp[] =
 		},
 		&gp_resgroup_memory_policy_auto_fixed_mem,
 		100, 50, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_global_deadlock_detector_period", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Sets the executing period of global deadlock detector backend."),
+			NULL,
+			GUC_UNIT_S
+		},
+		&gp_global_deadlock_detector_period,
+		120, 5, INT_MAX, NULL, NULL
 	},
 
 	{

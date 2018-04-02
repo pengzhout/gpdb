@@ -1015,8 +1015,7 @@ CdbTryOpenRelation(Oid relid, LOCKMODE reqmode, bool noWait, bool *lockUpgraded)
 		if (!rel)
 			return NULL;
 		
-		if (rel->rd_cdbpolicy &&
-			rel->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+		if (RelationIsAoRows(rel) || RelationIsAoCols(rel))
 		{
 			lockmode = ExclusiveLock;
 			if (lockUpgraded != NULL)
@@ -1037,8 +1036,7 @@ CdbTryOpenRelation(Oid relid, LOCKMODE reqmode, bool noWait, bool *lockUpgraded)
 	 * okay.
 	 */
 	if (lockmode == RowExclusiveLock &&
-		rel->rd_cdbpolicy &&
-		rel->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+		(RelationIsAoRows(rel) || RelationIsAoCols(rel)))
 	{
 		elog(ERROR, "relation \"%s\" concurrently updated", 
 			 RelationGetRelationName(rel));
@@ -1231,6 +1229,16 @@ relation_close(Relation relation, LOCKMODE lockmode)
 
 	if (lockmode != NoLock)
 		UnlockRelationId(&relid, lockmode);
+	else
+	{
+		LOCKTAG		tag;
+		LOCKMODE	mode;
+
+		SET_LOCKTAG_RELATION(tag, relid.dbId, relid.relId);
+
+		for (mode = 1; mode <= 8; mode++)
+			LockSetPersistent(&tag, mode);
+	}
 }
 
 

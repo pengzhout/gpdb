@@ -58,5 +58,8 @@ installcheck: install
 installcheck-resgroup: install prepare_dblink_sql
 	./pg_isolation2_regress --init-file=$(top_builddir)/src/test/regress/init_file --init-file=./init_file_resgroup --psqldir='$(PSQLDIR)' --inputdir=$(srcdir) --resgroup-dir=resgroup --dbname=isolation2resgrouptest --schedule=$(srcdir)/isolation2_resgroup_schedule
 
+installcheck-gdd: install prepare_dblink_sql
+	./pg_isolation2_regress --init-file=$(top_builddir)/src/test/regress/init_file --init-file=./init_file_gdd --psqldir='$(PSQLDIR)' --inputdir=$(srcdir) --dbname=isolation2gddtest --schedule=$(srcdir)/isolation2_gdd_schedule
+
 prepare_dblink_sql:
 	cp $(GPHOME)/share/postgresql/contrib/dblink.sql ./sql/resgroup/dblink.sql

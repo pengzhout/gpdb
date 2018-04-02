@@ -481,6 +481,7 @@ extern Datum pg_terminate_backend_msg(PG_FUNCTION_ARGS);
 extern Datum gp_cancel_query(PG_FUNCTION_ARGS);
 extern Datum pg_reload_conf(PG_FUNCTION_ARGS);
 extern Datum pg_tablespace_databases(PG_FUNCTION_ARGS);
+extern Datum pg_tablespace_location(PG_FUNCTION_ARGS);
 extern Datum pg_rotate_logfile(PG_FUNCTION_ARGS);
 extern Datum pg_sleep(PG_FUNCTION_ARGS);
 extern Datum pg_get_keywords(PG_FUNCTION_ARGS);
@@ -1184,6 +1185,9 @@ extern Datum pg_resqueue_status_kv(PG_FUNCTION_ARGS);
 /* utils/resgroup/resgroup.c */
 extern Datum pg_resgroup_get_status(PG_FUNCTION_ARGS);
 extern Datum pg_resgroup_get_status_kv(PG_FUNCTION_ARGS);
+
+/* utils/dist_deadlock_detector/dist_deadlock_detector_helper.c */
+extern Datum pg_dist_wait_status(PG_FUNCTION_ARGS);
 
 /* utils/adt/matrix.c */
 extern Datum matrix_add(PG_FUNCTION_ARGS);
