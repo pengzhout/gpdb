@@ -3061,4 +3061,10 @@ typedef struct AlterTSConfigurationStmt
 	bool		missing_ok;		/* for DROP - skip error if missing? */
 } AlterTSConfigurationStmt;
 
+typedef struct CreateRegionStmt
+{
+	NodeTag		type;
+	char	   *regname;	/* region name */
+	List	   *def;		/* List of DefElem nodes */
+} CreateRegionStmt;
 #endif   /* PARSENODES_H */

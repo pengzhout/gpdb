@@ -40,6 +40,7 @@
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_resqueuecapability.h"
 #include "catalog/pg_resgroup.h"
+#include "catalog/gp_region.h"
 #include "catalog/pg_db_role_setting.h"
 #include "catalog/pg_shdepend.h"
 #include "catalog/pg_shdescription.h"
@@ -420,6 +421,7 @@ IsSharedRelation(Oid relationId)
 		relationId == ResourceTypeRelationId ||
 		relationId == ResQueueCapabilityRelationId ||
 		relationId == ResGroupRelationId ||
+		relationId == GpRegionRelationId ||
 		relationId == ResGroupCapabilityRelationId ||
 		relationId == GpConfigHistoryRelationId ||
 		relationId == GpSegmentConfigRelationId ||

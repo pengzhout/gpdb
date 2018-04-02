@@ -30,13 +30,12 @@
 
 #define GpRegionRelationId  5004
 
-CATALOG(gp_distribution_region,5004) BKI_WITHOUT_OIDS
+CATALOG(gp_distribution_region,5004) BKI_SHARED_RELATION 
 {
-	Oid			regid;
 	NameData	regname; /* region name */
 	int2		dbid;
 	int2		content;
-} FormData_gp_policy;
+} FormData_gp_region;
 
 /* GPDB added foreign key definitions for gpcheckcat. */
 FOREIGN_KEY(dbid REFERENCES gp_segment_configuration(dbid));
@@ -56,8 +55,7 @@ typedef enum GpRegionType
 
 typedef struct GpRegion
 {
-	NodeTag         type;
-	GpRegionType ptype;
+	//GpRegionType ptype;
 	List	*members;
 	Bitmapset	*index;
 } GpRegion;

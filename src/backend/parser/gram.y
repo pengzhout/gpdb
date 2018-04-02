@@ -200,6 +200,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 		ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
 		CreateDomainStmt CreateExtensionStmt CreateGroupStmt CreateOpClassStmt
 		CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
+		CreateRegionStmt
 		CreateSchemaStmt CreateSeqStmt CreateStmt CreateTableSpaceStmt
 		CreateFdwStmt CreateForeignServerStmt CreateAssertStmt CreateTrigStmt
 		CreateUserStmt CreateUserMappingStmt CreateRoleStmt
@@ -610,7 +611,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 
 	QUOTE
 
-	RANGE READ REAL REASSIGN RECHECK RECURSIVE REFERENCES REINDEX
+	RANGE READ REAL REASSIGN RECHECK RECURSIVE REFERENCES REINDEX REGION
 	RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA RESET RESTART
 	RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK ROW ROWS RULE
 
@@ -1145,6 +1146,7 @@ stmt :
 			| CreateGroupStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
+			| CreateRegionStmt
 			| AlterOpFamilyStmt
 			| CreatePLangStmt
 			| CreateQueueStmt
@@ -6527,6 +6529,16 @@ CreateOpFamilyStmt:
 					n->opfamilyname = $4;
 					n->amname = $6;
 					$$ = (Node *) n;
+				}
+		;
+
+CreateRegionStmt:
+			CREATE REGION any_name WITH definition 
+				{
+					CreateRegionStmt *n = makeNode(CreateRegionStmt);
+					n->regname = $3;
+					n->def = $5;
+					$$ = (Node *)n;
 				}
 		;
 
