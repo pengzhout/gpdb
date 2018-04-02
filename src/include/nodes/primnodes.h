@@ -1410,6 +1410,8 @@ typedef struct Flow
     /* The original Flow ptr is saved here upon setting req_move. */
     struct Flow    *flow_before_req_move;
 
+	List	*regions;
+
 } Flow;
 
 typedef enum GroupingType

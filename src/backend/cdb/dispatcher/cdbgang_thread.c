@@ -76,6 +76,8 @@ CreateGangFunc pCreateGangFuncThreaded = createGang_thread;
 static Gang *
 createGang_thread(GangType type, int gang_id, int size, int content)
 {
+	return NULL;
+#if 0
 	Gang	   *newGangDefinition = NULL;
 	SegmentDatabaseDescriptor *segdbDesc = NULL;
 	DoConnectParms *doConnectParmsAr = NULL;
@@ -275,6 +277,7 @@ exit:
 			 errmsg("failed to acquire resources on one or more segments"),
 			 errdetail("%s", create_gang_error.data)));
 	return NULL;
+#endif
 }
 
 /*
@@ -405,7 +408,7 @@ checkConnectionStatus(Gang *gp,
 	 */
 	for (i = 0; i < size; i++)
 	{
-		segdbDesc = &gp->db_descriptors[i];
+		segdbDesc = gp->db_descriptors[i];
 
 		/*
 		 * check connection established or not, if not, we may have to

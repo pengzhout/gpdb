@@ -5158,7 +5158,7 @@ PostgresMain(int argc, char *argv[],
 			 * This means giving the end user enough time to type in the next SQL statement
 			 *
 			 */
-			if (IdleSessionGangTimeout > 0 && GangsExist())
+			if (IdleSessionGangTimeout > 0 && true)
 				if (!enable_sig_alarm( IdleSessionGangTimeout /* ms */, false))
 					elog(FATAL, "could not set timer for client wait timeout");
 		}
@@ -5356,6 +5356,10 @@ PostgresMain(int argc, char *argv[],
 					if (resgroupInfoLen > 0)
 						resgroupInfoBuf = pq_getmsgbytes(&input_message, resgroupInfoLen);
 
+					int sliceId = pq_getmsgint(&input_message, 4);
+					//elog(WARNING, "localSlice is %d, received %d", localSlice, sliceId);
+					Assert(localSlice == sliceId);
+					localSlice = sliceId;
 					pq_getmsgend(&input_message);
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
@@ -5470,7 +5474,10 @@ PostgresMain(int argc, char *argv[],
 
 					DtxContextInfo_Deserialize(serializedDtxContextInfo, serializedDtxContextInfolen, &TempDtxContextInfo);
 
+#if 0
+					int sliceId = pq_getmsgint(&input_message, 4);
 					pq_getmsgend(&input_message);
+#endif 
 
 					exec_mpp_dtx_protocol_command(dtxProtocolCommand, flags, loggingStr, gid, gxid, &TempDtxContextInfo);
 

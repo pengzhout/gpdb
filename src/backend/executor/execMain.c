@@ -4470,9 +4470,11 @@ FillSliceTable_walker(Node *node, void *context)
 			ListCell   *lc = list_head(mt->resultRelations);
 			int			idx = lfirst_int(lc);
 			Oid			reloid = getrelid(idx, stmt->rtable);
+			GpPolicy	*policy;
 			GpPolicyType policyType;
 
-			policyType = GpPolicyFetch(CurrentMemoryContext, reloid)->ptype;
+			policy = GpPolicyFetch(CurrentMemoryContext, reloid);
+			policyType = policy->ptype;
 
 #ifdef USE_ASSERT_CHECKING
 			{
@@ -4495,6 +4497,11 @@ FillSliceTable_walker(Node *node, void *context)
 
 				currentSlice->gangType = GANGTYPE_PRIMARY_WRITER;
 				currentSlice->gangSize = getgpsegmentCount();
+				if (enable_partial_table)
+				{
+					//currentSlice->region = make_default_region(); 
+					//currentSlice->regions = list_make1(getRegionFromPolicy(policy));
+				}
 			}
 		}
 	}
@@ -4553,6 +4560,9 @@ FillSliceTable_walker(Node *node, void *context)
 		{
 			sendSlice->gangSize = getgpsegmentCount();
 			sendSlice->gangType = GANGTYPE_PRIMARY_READER;
+
+			if (enable_partial_table)
+				sendSlice->regions = sendFlow->regions;
 		}
 		else
 		{
@@ -4626,8 +4636,6 @@ FillSliceTable(EState *estate, PlannedStmt *stmt)
 	 */
 	FillSliceTable_walker((Node *) stmt->planTree, &cxt);
 }
-
-
 
 /*
  * BuildPartitionNodeFromRoot

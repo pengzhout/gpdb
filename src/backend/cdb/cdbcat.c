@@ -106,7 +106,6 @@ GpPolicy *
 GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src)
 {
 	GpPolicy   *tgt;
-	size_t	nb;
 	int i;
 
 	if (!src)
@@ -117,6 +116,7 @@ GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src)
 	for (i = 0; i < src->nattrs; i++)
 		tgt->attrs[i] = src->attrs[i];
 
+	tgt->regionid = src->regionid;
 	return tgt;
 }								/* GpPolicyCopy */
 
@@ -325,6 +325,11 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 				{
 					policy->attrs[i] = attrnums[i];
 				}
+
+				attr = heap_getattr(gp_policy_tuple, Anum_gp_policy_regionid,
+						RelationGetDescr(gp_policy_rel), &isNull);
+				policy->regionid = attr;
+
 				break;
 			default:
 				elog(ERROR, "unrecognized distribution policy type");	

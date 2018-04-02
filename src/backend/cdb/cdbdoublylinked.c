@@ -102,6 +102,39 @@ DoublyLinkedHead_Next(
 }
 
 void
+DoublyLinkedHead_AddLast(
+						  int offsetToDoubleLinks,
+						  DoublyLinkedHead *head,
+						  void *ele)
+{
+	DoubleLinks *doubleLinks;
+
+	doubleLinks = (DoubleLinks *) (((uint8 *) ele) + offsetToDoubleLinks);
+
+	Assert(doubleLinks->prev == NULL);
+	Assert(doubleLinks->next == NULL);
+
+	doubleLinks->next = NULL;
+
+	if (head->last == NULL)
+	{
+		Assert(head->first == NULL);
+		head->first = doubleLinks;
+		head->last = doubleLinks;
+	}
+	else
+	{
+		doubleLinks->prev = head->last;
+
+		head->last->next = doubleLinks;
+		head->last = doubleLinks;
+	}
+
+	head->count++;
+}
+
+
+void
 DoublyLinkedHead_AddFirst(
 						  int offsetToDoubleLinks,
 						  DoublyLinkedHead *head,
@@ -133,6 +166,42 @@ DoublyLinkedHead_AddFirst(
 	head->count++;
 
 }
+
+void *
+DoublyLinkedHead_RemoveFirst(
+							int offsetToDoubleLinks,
+							DoublyLinkedHead *head)
+{
+	DoubleLinks *doubleLinks;
+
+	if (head->first == NULL)
+	{
+		Assert(head->first == NULL);
+		return NULL;
+	}
+
+	doubleLinks = head->first;
+	if (head->last == doubleLinks)
+	{
+		Assert(head->count == 1);
+		head->first = NULL;
+		head->last = NULL;
+	}
+	else
+	{
+		head->first = doubleLinks->next;
+		head->first->prev = NULL;
+	}
+
+	doubleLinks->prev = NULL;
+	doubleLinks->next = NULL;
+
+	head->count--;
+	Assert(head->count >= 0);
+
+	return ((uint8 *) doubleLinks) - offsetToDoubleLinks;
+}
+
 
 void *
 DoublyLinkedHead_RemoveLast(

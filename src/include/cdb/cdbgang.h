@@ -23,6 +23,7 @@
 #endif
 #include "utils/faultinjector.h"
 #include "utils/portal.h"
+#include "cdb/cdbdoublylinked.h"
 
 struct Port;
 struct QueryDesc;
@@ -51,7 +52,7 @@ typedef struct Gang
 	/*
 	 * Array of QEs/segDBs that make up this gang. Sorted by segment index.
 	 */
-	struct SegmentDatabaseDescriptor *db_descriptors;	
+	struct SegmentDatabaseDescriptor **db_descriptors;	
 
 	/* For debugging purposes only. These do not add any actual functionality. */
 	bool allocated;
@@ -61,7 +62,23 @@ typedef struct Gang
 
 	/* memory context */
 	MemoryContext perGangContext;
+
 } Gang;
+
+typedef struct SegdbDescCache
+{
+	int32								segindex;
+	bool								hasWriter;
+	DoublyLinkedHead					idle_dbs;
+}SegdbDescCache;
+
+typedef struct SegdbDescsManager
+{
+	HTAB 					*cacheHash;
+	/* qucik access to idle segment dbs*/
+	DoublyLinkedHead		idle_dbs;
+}
+SegdbDescsManager;
 
 extern int qe_gang_id;
 
@@ -73,8 +90,9 @@ extern Gang *CurrentGangCreating;
 extern const char *gangTypeToString(GangType type);
 
 extern Gang *AllocateReaderGang(GangType type, char *portal_name);
+extern Gang *AllocateGang(GangType type, List *segments);
 
-extern Gang *AllocateWriterGang(void);
+extern Gang *AllocateWriterGang(List *segments);
 
 extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
 
@@ -101,7 +119,8 @@ extern struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang
 
 bool isPrimaryWriterGangAlive(void);
 
-Gang *buildGangDefinition(GangType type, int gang_id, int size, int content);
+Gang *buildGangDefinition(GangType type, List *segments);
+
 void build_gpqeid_param(char *buf, int bufsz, int segIndex, bool is_writer, int gangId, int hostSegs);
 char *makeOptions(void);
 extern bool segment_failure_due_to_recovery(const char *error_message);
@@ -125,7 +144,7 @@ extern bool segment_failure_due_to_recovery(const char *error_message);
  *
  * This routine is also called from the sigalarm signal handler (hopefully that is safe to do).
  */
-extern void disconnectAndDestroyIdleReaderGangs(void);
+extern void disconnectAndDestroyIdleGangs(void);
 
 extern void cleanupPortalGangs(Portal portal);
 
@@ -179,5 +198,21 @@ typedef struct CdbProcess
 typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int content);
 
 extern void cdbgang_setAsync(bool async);
+
+extern Gang * createGang_asyncV1(GangType type, List *segments);
+
+extern Gang *primaryWriterGang;
+
+extern void addToPrimaryGang(Gang *gang);
+extern void returnGangToRegionMembers(Gang *gp);
+extern Bitmapset *twophaseRegion;
+extern List *twophaseSegments;
+
+extern struct SegmentDatabaseDescriptor* getAvailableSegDesc(int content, GangType type);
+extern SegdbDescCache *getSegdbCache(int segindex);
+extern struct SegmentDatabaseDescriptor* getValidSegDesc(SegdbDescCache * entry);
+extern List *allocatedGangs;
+extern void releaseGang(Gang *gp, bool noReuse);
+extern List *makeIdleSegments(void);
 
 #endif   /* _CDBGANG_H_ */

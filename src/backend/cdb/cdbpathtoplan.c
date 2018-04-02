@@ -68,6 +68,9 @@ cdbpathtoplan_create_flow(PlannerInfo *root,
 														relids,
 														plan->targetlist);
 
+		if (enable_partial_table)
+			flow->regions = locus.regions;
+
 		/*
 		 * hashExpr can be NIL if the rel is partitioned on columns that
 		 * aren't projected (i.e. are not present in the result of this Path

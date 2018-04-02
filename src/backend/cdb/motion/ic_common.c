@@ -319,8 +319,13 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 		}
 		else
 		{
-			/* handle pt-to-pt message. Primary */
-			conn = pEntry->conns + targetRoute;
+			if (enable_partial_table)
+				conn = pEntry->conns + targetRoute % pEntry->numConns ;
+			else
+			{
+				/* handle pt-to-pt message. Primary */
+				conn = pEntry->conns + targetRoute;
+			}
 			/* only send to interested connections */
 			if (conn->stillActive)
 			{

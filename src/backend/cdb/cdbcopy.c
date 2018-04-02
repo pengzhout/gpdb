@@ -78,7 +78,7 @@ makeCdbCopy(bool is_copy_in)
 	}
 
 	/* init gangs */
-	c->primary_writer = AllocateWriterGang();
+	c->primary_writer = AllocateWriterGang(makeDefaultSegments());
 
 	/* init seg list for copy out */
 	if (!c->copy_in)
@@ -212,7 +212,7 @@ cdbCopySendDataToAll(CdbCopy *c, const char *buffer, int nbytes)
 
 	for (int i = 0; i < gp->size; ++i)
 	{
-		int			seg = gp->db_descriptors[i].segindex;
+		int			seg = gp->db_descriptors[i]->segindex;
 
 		cdbCopySendData(c, seg, buffer, nbytes);
 	}
@@ -715,7 +715,7 @@ cdbCopyEndAndFetchRejectNum(CdbCopy *c, int *total_rows_completed)
 											 * QEs */
 	bool		err_header = false;
 	bool		first_error = true;
-	struct SegmentDatabaseDescriptor *db_descriptors;
+	struct SegmentDatabaseDescriptor **db_descriptors;
 	int			size;
 
 	/* clean err message */
@@ -735,7 +735,7 @@ cdbCopyEndAndFetchRejectNum(CdbCopy *c, int *total_rows_completed)
 
 	for (seg = 0; seg < size; seg++)
 	{
-		q = &db_descriptors[seg];
+		q = db_descriptors[seg];
 		elog(DEBUG1, "PQputCopyEnd seg %d    ", q->segindex);
 		/* end this COPY command */
 		results[seg] = PQputCopyEnd(q->conn, NULL);

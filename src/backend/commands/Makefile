@@ -26,5 +26,6 @@ OBJS = aggregatecmds.o alter.o analyze.o async.o cluster.o comment.o  \
 
 OBJS += analyzefuncs.o extprotocolcmds.o exttablecmds.o queue.o
 OBJS += resgroupcmds.o
+#OBJS += regioncmds.o
 
 include $(top_srcdir)/src/backend/common.mk

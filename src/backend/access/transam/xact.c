@@ -2632,6 +2632,9 @@ CommitTransaction(void)
 
 	freeGangsForPortal(NULL);
 
+	twophaseRegion = NULL;
+	twophaseSegments = NIL;
+
 	/* Release resource group slot at the end of a transaction */
 	if (ShouldUnassignResGroup())
 		UnassignResGroup();
@@ -3088,11 +3091,14 @@ AbortTransaction(void)
 
 	freeGangsForPortal(NULL);
 
+	twophaseRegion = NULL;
+	twophaseSegments = NIL;
+
 	/* If a query was cancelled, then cleanup reader gangs. */
 	if (QueryCancelCleanup)
 	{
 		QueryCancelCleanup = false;
-		disconnectAndDestroyIdleReaderGangs();
+		disconnectAndDestroyIdleGangs();
 	}
 
 	/*

@@ -35,18 +35,36 @@
 #include "utils/resowner.h"
 
 static int	getPollTimeout(const struct timeval *startTS);
-static Gang *createGang_async(GangType type, int gang_id, int size, int content);
+CreateGangFunc pCreateGangFuncAsync = NULL;
 
-CreateGangFunc pCreateGangFuncAsync = createGang_async;
 
-/*
- * Creates a new gang by logging on a session to each segDB involved.
- *
- * call this function in GangContext memory context.
- * elog ERROR or return a non-NULL gang.
- */
-static Gang *
-createGang_async(GangType type, int gang_id, int size, int content)
+static int
+getPollTimeout(const struct timeval *startTS)
+{
+	struct timeval now;
+	int			timeout = 0;
+	int64		diff_us;
+
+	gettimeofday(&now, NULL);
+
+	if (gp_segment_connect_timeout > 0)
+	{
+		diff_us = (now.tv_sec - startTS->tv_sec) * 1000000;
+		diff_us += (int) now.tv_usec - (int) startTS->tv_usec;
+		if (diff_us >= (int64) gp_segment_connect_timeout * 1000000)
+			timeout = 0;
+		else
+			timeout = gp_segment_connect_timeout * 1000 - diff_us / 1000;
+	}
+	else
+		/* wait forever */
+		timeout = -1;
+
+	return timeout;
+}
+
+Gang *
+createGang_asyncV1(GangType type, List *segments)
 {
 	Gang	   *newGangDefinition;
 	SegmentDatabaseDescriptor *segdbDesc = NULL;
@@ -58,6 +76,7 @@ createGang_async(GangType type, int gang_id, int size, int content)
 	int			poll_timeout = 0;
 	struct timeval startTS;
 	PostgresPollingStatusType *pollingStatus = NULL;
+	int size = 0;
 
 	/*
 	 * true means connection status is confirmed, either established or in
@@ -65,34 +84,26 @@ createGang_async(GangType type, int gang_id, int size, int content)
 	 */
 	bool	   *connStatusDone = NULL;
 
-	ELOG_DISPATCHER_DEBUG("createGang type = %d, gang_id = %d, size = %d, content = %d",
-						  type, gang_id, size, content);
-
 	/* check arguments */
-	Assert(size == 1 || size == getgpsegmentCount());
 	Assert(CurrentResourceOwner != NULL);
 	Assert(CurrentMemoryContext == GangContext);
-	/* Writer gang is created before reader gangs. */
-	if (type == GANGTYPE_PRIMARY_WRITER)
-		Insist(!GangsExist());
-
 	Assert(CurrentGangCreating == NULL);
+
+	newGangDefinition = NULL;
+	newGangDefinition = buildGangDefinition(type, segments);
 
 create_gang_retry:
 	/* If we're in a retry, we may need to reset our initial state, a bit */
-	newGangDefinition = NULL;
 	successful_connections = 0;
 	in_recovery_mode_count = 0;
 	retry = false;
 
 	/* allocate and initialize a gang structure */
-	newGangDefinition = buildGangDefinition(type, gang_id, size, content);
 	CurrentGangCreating = newGangDefinition;
 
 	Assert(newGangDefinition != NULL);
-	Assert(newGangDefinition->size == size);
-	Assert(newGangDefinition->perGangContext != NULL);
-	MemoryContextSwitchTo(newGangDefinition->perGangContext);
+
+	size = newGangDefinition->size;
 
 	/*
 	 * allocate memory within perGangContext and will be freed automatically
@@ -115,7 +126,14 @@ create_gang_retry:
 			 * valid segdb we error out.  Also, if this segdb is invalid, we
 			 * must fail the connection.
 			 */
-			segdbDesc = &newGangDefinition->db_descriptors[i];
+			segdbDesc = newGangDefinition->db_descriptors[i];
+
+			if (segdbDesc->conn)
+			{
+				successful_connections++;
+				connStatusDone[i] = true;
+				continue;
+			}
 
 			/*
 			 * Build the connection string.  Writer-ness needs to be processed
@@ -124,8 +142,8 @@ create_gang_retry:
 			 */
 			build_gpqeid_param(gpqeid, sizeof(gpqeid),
 							   segdbDesc->segindex,
-							   type == GANGTYPE_PRIMARY_WRITER,
-							   gang_id,
+							   segdbDesc->isWriter,
+							   999,
 							   segdbDesc->segment_database_info->hostSegs);
 
 			options = makeOptions();
@@ -165,7 +183,7 @@ create_gang_retry:
 
 			for (i = 0; i < size; i++)
 			{
-				segdbDesc = &newGangDefinition->db_descriptors[i];
+				segdbDesc = newGangDefinition->db_descriptors[i];
 
 				/*
 				 * Skip established connections and in-recovery-mode
@@ -183,6 +201,10 @@ create_gang_retry:
 											errmsg("failed to acquire resources on one or more segments"),
 											errdetail("Internal error: No motion listener port (%s)", segdbDesc->whoami)));
 						successful_connections++;
+
+						if (segdbDesc->isWriter)
+							segdbDesc->cache->hasWriter = true;
+
 						connStatusDone[i] = true;
 						continue;
 
@@ -251,7 +273,7 @@ create_gang_retry:
 
 				for (i = 0; i < size; i++)
 				{
-					segdbDesc = &newGangDefinition->db_descriptors[i];
+					segdbDesc = newGangDefinition->db_descriptors[i];
 					if (connStatusDone[i])
 						continue;
 
@@ -271,7 +293,7 @@ create_gang_retry:
 		ELOG_DISPATCHER_DEBUG("createGang: %d processes requested; %d successful connections %d in recovery",
 							  size, successful_connections, in_recovery_mode_count);
 
-		MemoryContextSwitchTo(GangContext);
+		//MemoryContextSwitchTo(GangContext);
 
 		/* some segments are in recovery mode */
 		if (successful_connections != size)
@@ -295,7 +317,7 @@ create_gang_retry:
 	}
 	PG_CATCH();
 	{
-		MemoryContextSwitchTo(GangContext);
+		//MemoryContextSwitchTo(GangContext);
 
 		FtsNotifyProber();
 		/* FTS shows some segment DBs are down */
@@ -345,27 +367,75 @@ create_gang_retry:
 	return newGangDefinition;
 }
 
-static int
-getPollTimeout(const struct timeval *startTS)
+#if 0
+static void
+InitRegionMembersHash(void)
 {
-	struct timeval now;
-	int			timeout = 0;
-	int64		diff_us;
+	HASHCTL		info;
+	int			hash_flags;
+	long	 	max_table_size;
 
-	gettimeofday(&now, NULL);
+	/* max segment number */
+	max_table_size = 2000;
+	
+	/*
+	 * Allocate hash table for LOCK structs.  This stores per-locked-object
+	 * information.
+	 */
+	MemSet(&info, 0, sizeof(info));
+	info.keysize = sizeof(Oid);
+	info.entrysize = sizeof(CdbRegionMember);
+	info.hash = int32_hash;
+	info.num_partitions = NUM_LOCK_PARTITIONS;
+	hash_flags = (HASH_ELEM | HASH_FUNCTION);
 
-	if (gp_segment_connect_timeout > 0)
+	LocalRegionMembersHash = hash_create("relfilenode map", max_table_size, &info, hash_flags);
+
+}
+
+SegmentDatabaseDescriptor*
+getAvailableSegDesc(int content, GangType type)
+{
+	SegmentDatabaseDescriptor *result = NULL;
+
+	if (LocalRegionMembersHash == NULL)
+		return NULL;
+
+	CdbRegionMember *tmp = hash_search(LocalRegionMembersHash, (void *)&content, HASH_FIND, NULL);
+
+	if (!tmp)
+		return NULL;
+
+	if (tmp->writer)
 	{
-		diff_us = (now.tv_sec - startTS->tv_sec) * 1000000;
-		diff_us += (int) now.tv_usec - (int) startTS->tv_usec;
-		if (diff_us >= (int64) gp_segment_connect_timeout * 1000000)
-			timeout = 0;
-		else
-			timeout = gp_segment_connect_timeout * 1000 - diff_us / 1000;
+		result = tmp->writer;
+		tmp->writer = NULL;
 	}
 	else
-		/* wait forever */
-		timeout = -1;
+	{
+		ListCell *cur_item = NULL;
+		ListCell *prev_item = NULL;
+		ListCell *next_item = NULL;
 
-	return timeout;
+		cur_item = list_head(tmp->readers);
+
+		while (cur_item != NULL)
+		{
+			SegmentDatabaseDescriptor *segDesc = lfirst(cur_item);	
+			next_item = lnext(cur_item);
+
+			if (segDesc->segindex == content)
+			{
+				tmp->readers = list_delete_cell(tmp->readers, cur_item, prev_item);	
+
+				result = segDesc;
+				break;
+			}
+			cur_item = next_item;
+		}
+	}
+
+	return result;
 }
+#endif
+

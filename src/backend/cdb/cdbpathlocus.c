@@ -33,7 +33,6 @@ static List *cdb_build_distribution_pathkeys(PlannerInfo *root,
 								int nattrs,
 								AttrNumber *attrs);
 
-
 /*
  * This flag controls the policy type returned from
  * cdbpathlocus_from_baserel() for non-partitioned tables.
@@ -139,6 +138,9 @@ cdbpathlocus_compare(CdbPathLocus_Comparison op,
 
 	if (a.locustype == b.locustype)
 	{
+		if (enable_partial_table && !IsRegionListEqual(a.regions, b.regions))
+			return false;
+
 		if (CdbPathLocus_IsHashed(a))
 			return pathkeys_equal(a.partkey_h, b.partkey_h);
 
@@ -344,6 +346,13 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 	else
 		CdbPathLocus_MakeEntry(&result);
 
+	if (enable_partial_table)
+	{
+		if (policy)
+			result.regions = list_make1(getRegionFromPolicy(policy));
+		else
+			result.regions = NULL;
+	}
 	return result;
 }								/* cdbpathlocus_from_baserel */
 
@@ -1087,3 +1096,54 @@ cdbpathlocus_is_valid(CdbPathLocus locus)
 bad:
 	return false;
 }								/* cdbpathlocus_is_valid */
+
+CdbRegion *
+getRegionFromPolicy(GpPolicy *policy)
+{
+	CdbRegion *region = (CdbRegion *)palloc0(sizeof(CdbRegion));
+
+	if (policy->regionid == 1)
+	{
+		region->members = bms_make_singleton(0);		
+		region->members = bms_add_member(region->members ,1);		
+	}
+	else if (policy->regionid == 2)
+	{
+		region->members = bms_make_singleton(2);		
+		region->members = bms_add_member(region->members ,3);		
+	}
+	else
+	{
+		region->members = bms_make_singleton(0);		
+		region->members = bms_add_member(region->members ,1);		
+		region->members = bms_add_member(region->members ,2);		
+		region->members = bms_add_member(region->members ,3);		
+	}
+
+	int member;
+	bms_foreach(member, region->members)
+	{
+		elog(WARNING, "create region with member %d", member);	
+	}
+	elog(WARNING, "xxx");
+	region->tmp_num1gangs_entrydb_reader = 0;
+	region->tmp_num1gangs_primary_reader = 0;
+	region->tmp_numNgangs = 0;
+
+	region->num1gangs_entrydb_reader = 0;
+	region->num1gangs_primary_reader = 0;
+	region->numNgangs = 0;
+
+	return region;
+}
+
+List *
+makeDefaultSegments(void)
+{
+	List *segments = NULL;
+	segments = lappend_int(segments, 0);
+	segments = lappend_int(segments, 1);
+	segments = lappend_int(segments, 2);
+	segments = lappend_int(segments, 3);
+	return segments;
+}

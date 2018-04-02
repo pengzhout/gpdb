@@ -526,6 +526,12 @@ cdbpath_match_preds_to_both_partkeys(PlannerInfo *root,
 		CdbPathLocus_Degree(outer_locus) != CdbPathLocus_Degree(inner_locus))
 		return false;
 
+	if (enable_partial_table)
+	{
+		if (!IsRegionListEqual(outer_locus.regions, inner_locus.regions))
+			return false;
+	}
+
 	Assert(CdbPathLocus_IsHashed(outer_locus) ||
 		   CdbPathLocus_IsHashedOJ(outer_locus));
 	Assert(CdbPathLocus_IsHashed(inner_locus) ||
@@ -779,6 +785,12 @@ cdbpath_partkeys_from_preds(PlannerInfo *root,
 		CdbPathLocus_MakeHashed(b_locus, b_partkey);
 	else
 		*b_locus = *a_locus;
+
+	if (enable_partial_table)
+	{
+		
+	}
+
 	return true;
 }								/* cdbpath_partkeys_from_preds */
 
@@ -1128,6 +1140,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 										   large->locus,
 										   &small->move_to))	/* OUT */
 		{
+			if (enable_partial_table)
+				small->move_to.regions = large->locus.regions;
 		}
 
 		/*
@@ -1137,7 +1151,11 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		else if (!small->require_existing_order &&
 				 small->ok_to_replicate &&
 				 small->bytes * root->config->cdbpath_segments < large->bytes)
+		{
 			CdbPathLocus_MakeReplicated(&small->move_to);
+			if (enable_partial_table)
+				small->move_to.regions = large->locus.regions;
+		}
 
 		/* If joining on smaller rel's partitioning key, redistribute larger. */
 		else if (!large->require_existing_order &&
@@ -1146,13 +1164,20 @@ cdbpath_motion_for_join(PlannerInfo *root,
 												small->locus,
 												&large->move_to))	/* OUT */
 		{
+			if (enable_partial_table)
+				large->move_to.regions = small->locus.regions;
 		}
 
 		/* Replicate smaller rel if cheaper than redistributing both rels. */
 		else if (!small->require_existing_order &&
 				 small->ok_to_replicate &&
 				 small->bytes * root->config->cdbpath_segments < large->bytes + small->bytes)
+		{
 			CdbPathLocus_MakeReplicated(&small->move_to);
+
+			if (enable_partial_table)
+				small->move_to.regions = large->locus.regions;
+		}
 
 		/* Redistribute both rels on equijoin cols. */
 		else if (!small->require_existing_order &&
@@ -1163,6 +1188,11 @@ cdbpath_motion_for_join(PlannerInfo *root,
 											 &large->move_to,
 											 &small->move_to))
 		{
+			if (enable_partial_table)
+			{
+				large->move_to.regions = list_concat(large->locus.regions, small->locus.regions);
+				small->move_to.regions = large->move_to.regions;
+			}
 		}
 
 		/*
@@ -1172,10 +1202,19 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		 */
 		else if (!small->require_existing_order &&
 				 small->ok_to_replicate)
+		{
 			CdbPathLocus_MakeReplicated(&small->move_to);
+
+			if (enable_partial_table)
+				small->move_to.regions = large->locus.regions;
+		}
 		else if (!large->require_existing_order &&
 				 large->ok_to_replicate)
+		{
 			CdbPathLocus_MakeReplicated(&large->move_to);
+			if (enable_partial_table)
+				large->move_to.regions = small->locus.regions;
+		}
 
 		/* Last resort: Move both rels to a single qExec. */
 		else
@@ -1740,4 +1779,31 @@ cdbpath_contains_wts(Path *path)
 	}
 
 	return path->pathtype == T_WorkTableScan;
+}
+
+bool
+IsRegionListEqual(List *reg1, List *reg2)
+{
+	ListCell *lc;
+	Bitmapset *outer_regions = NULL;
+	Bitmapset *inner_regions = NULL;
+
+	if (list_length(reg1) != list_length(reg2))
+		return false;
+
+	foreach(lc, reg1)
+	{
+		CdbRegion *region = (CdbRegion *)lfirst(lc);
+		outer_regions = bms_union(outer_regions, region->members);	
+	}
+	foreach(lc, reg2)
+	{
+		CdbRegion *region = (CdbRegion *)lfirst(lc);
+		inner_regions = bms_union(inner_regions, region->members);	
+	}
+
+	if (!bms_equal(outer_regions, inner_regions))
+		return false;
+
+	return true;
 }

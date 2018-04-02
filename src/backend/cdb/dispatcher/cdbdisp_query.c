@@ -479,7 +479,7 @@ cdbdisp_dispatchCommandInternal(const char *strCommand,
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = AllocateWriterGang();
+	primaryGang = AllocateWriterGang(makeDefaultSegments());
 
 	Assert(primaryGang);
 
@@ -759,7 +759,7 @@ compare_slice_order(const void *aa, const void *bb)
 	 */
 	if (a->slice->primaryGang->gang_id == 1)
 	{
-		Assert(b->slice->primaryGang->gang_id != 1);
+		//Assert(b->slice->primaryGang->gang_id != 1);
 		return -1;
 	}
 	if (b->slice->primaryGang->gang_id == 1)
@@ -957,7 +957,7 @@ buildGpQueryString(struct CdbDispatcherState *ds,
 		sizeof(numSlices) +
 		sizeof(int) * numSlices +
 		sizeof(resgroupInfo.len) +
-		resgroupInfo.len;
+		resgroupInfo.len + sizeof(int);
 
 	if (ds->dispatchStateContext == NULL)
 		ds->dispatchStateContext = AllocSetContextCreate(TopMemoryContext,
@@ -1120,12 +1120,22 @@ buildGpQueryString(struct CdbDispatcherState *ds,
 		pos += resgroupInfo.len;
 	}
 
+	/* add slice id info */	
+//	elog(WARNING, "slice id address is %x", pos);
+	int dummy_sliceId = 777;
+	tmp = htonl(dummy_sliceId);
+	memcpy(pos, &tmp, sizeof(dummy_sliceId));
+	pos += sizeof(dummy_sliceId);
+
+
 	len = pos - shared_query - 1;
 
+//	elog(WARNING, "len is %d", len);
 	/*
 	 * fill in length placeholder
 	 */
 	tmp = htonl(len);
+//	elog(WARNING, "len1 is %d", tmp);
 	memcpy(shared_query + 1, &tmp, sizeof(len));
 
 	Assert(len + 1 == total_query_len);
@@ -1367,7 +1377,7 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = AllocateWriterGang();
+	primaryGang = AllocateWriterGang(makeDefaultSegments());
 
 	Assert(primaryGang);
 
@@ -1381,8 +1391,8 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 								  mppTxnOptions(false), /* no two-phase commit needed for SET */
 								  "cdbdisp_dispatchSetCommandToAllGangs");
 
-	idleReaderGangs = getAllIdleReaderGangs();
-	allocatedReaderGangs = getAllAllocatedReaderGangs();
+	idleReaderGangs = AllocateGang(GANGTYPE_PRIMARY_READER, makeIdleSegments());
+	allocatedReaderGangs = allocatedGangs;
 
 	/*
 	 * Dispatch the command.
@@ -1429,6 +1439,12 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 	}
 
 	cdbdisp_waitDispatchFinish(ds);
+
+	foreach(le, idleReaderGangs)
+	{
+		Gang	   *rg = lfirst(le);
+		releaseGang(rg, false);
+	}
 }
 
 static int *

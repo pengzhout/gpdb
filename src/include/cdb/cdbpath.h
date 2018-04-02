@@ -17,6 +17,8 @@
 
 #include "nodes/relation.h"
 
+bool IsRegionListEqual(List *reg1, List *reg2);
+
 void
 cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath);
 

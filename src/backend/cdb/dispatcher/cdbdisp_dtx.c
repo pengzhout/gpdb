@@ -113,7 +113,7 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = AllocateWriterGang();
+	primaryGang = AllocateWriterGang(twophaseSegments);
 
 	Assert(primaryGang);
 
@@ -278,7 +278,7 @@ buildGpDtxProtocolCommand(struct CdbDispatcherState *ds,
 	gidLen +
 	sizeof(gxid) +
 	sizeof(serializedDtxContextInfoLen) +
-	serializedDtxContextInfoLen;
+	serializedDtxContextInfoLen + sizeof(int);
 
 	char	   *shared_query = NULL;
 	char	   *pos = NULL;
@@ -332,6 +332,12 @@ buildGpDtxProtocolCommand(struct CdbDispatcherState *ds,
 		memcpy(pos, serializedDtxContextInfo, serializedDtxContextInfoLen);
 		pos += serializedDtxContextInfoLen;
 	}
+
+	/* add slice id info */	
+	int dummy_sliceId = -1;
+	tmp = htonl(dummy_sliceId);
+	memcpy(pos, &tmp, sizeof(dummy_sliceId));
+	pos += sizeof(dummy_sliceId);
 
 	len = pos - shared_query - 1;
 

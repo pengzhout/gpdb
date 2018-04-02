@@ -453,6 +453,7 @@ bool		optimizer_analyze_midlevel_partition;
 
 /* GUCs for replicated table */
 bool		optimizer_replicated_table_insert;
+bool		enable_partial_table;
 
 /* System Information */
 static int	gp_server_version_num;
@@ -2839,6 +2840,15 @@ struct config_bool ConfigureNamesBool_gp[] =
 		true, NULL, NULL
 	},
 
+	{
+		{"enable_partial_table", PGC_USERSET, STATS_ANALYZE,
+			gettext_noop("Omit broadcast motion when inserting into replicated table"),
+			gettext_noop("Only when source is SegmentGeneral or General locus"),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&enable_partial_table,
+		false, gpvars_assign_enable_partial_table, NULL
+	},
 
 	/* End-of-list marker */
 	{

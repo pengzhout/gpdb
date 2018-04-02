@@ -1801,7 +1801,7 @@ HandleClientWaitTimeout(void)
 	/*
 	 * Free gangs to free up resources on the segDBs.
 	 */
-	if (GangsExist())
+	if (true)
 	{
 		if (IsTransactionOrTransactionBlock() || TempNamespaceOidIsValid())
 		{
@@ -1814,7 +1814,7 @@ HandleClientWaitTimeout(void)
 			 *
 			 * Since we are idle, any reader gangs will be available but not allocated.
 			 */
-			disconnectAndDestroyIdleReaderGangs();
+			//disconnectAndDestroyIdleGangs();
 		}
 		else
 		{

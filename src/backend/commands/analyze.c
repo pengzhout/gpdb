@@ -1850,7 +1850,7 @@ analyzeEstimateReltuplesRelpages(Oid relationOid, float4 *relTuples, float4 *rel
 
 		policy = GpPolicyFetch(CurrentMemoryContext, singleOid);
 
-		if (policy->ptype == POLICYTYPE_ENTRY)
+		if (policy->ptype == POLICYTYPE_ENTRY || enable_partial_table)
 		{
 			appendStringInfo(&sqlstmt, "select pg_catalog.sum(pg_catalog.gp_statistics_estimate_reltuples_relpages_oid(c.oid))::pg_catalog.float4[] "
 					"from pg_catalog.pg_class c where c.oid=%d", singleOid);
@@ -1925,7 +1925,7 @@ analyzeEstimateIndexpages(Relation onerel, Relation indrel, BlockNumber *indexPa
 
 	policy = GpPolicyFetch(CurrentMemoryContext, RelationGetRelid(onerel));
 
-	if (policy->ptype == POLICYTYPE_ENTRY)
+	if (policy->ptype == POLICYTYPE_ENTRY || enable_partial_table)
 	{
 		appendStringInfo(&sqlstmt, "select pg_catalog.sum(pg_catalog.gp_statistics_estimate_reltuples_relpages_oid(c.oid))::pg_catalog.float4[] "
 						 "from pg_catalog.pg_class c where c.oid=%d", RelationGetRelid(indrel));

@@ -499,6 +499,7 @@ extern bool optimizer_use_gpdb_allocators;
 
 /* optimizer GUCs for replicated table */
 extern bool optimizer_replicated_table_insert;
+extern bool enable_partial_table;
 
 /**
  * Enable logging of DPE match in optimizer.

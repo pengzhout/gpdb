@@ -1501,7 +1501,11 @@ standard_ProcessUtility(Node *parsetree,
 		case T_DropQueueStmt:
 			DropQueue((DropQueueStmt *) parsetree);
 			break;
-
+#if 0
+		case T_CreateRegionStmt:
+			CreateRegion((CreateRegionStmt *) parsetree);
+			break;
+#endif
 			/*
 			 * ********************* RESOURCE GROUP statements ****
 			 */

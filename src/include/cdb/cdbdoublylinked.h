@@ -59,9 +59,20 @@ DoublyLinkedHead_AddFirst(
 	DoublyLinkedHead		*head,
 	void					*ele);
 
+extern void
+DoublyLinkedHead_AddLast(
+	int						offsetToDoubleLinks,
+	DoublyLinkedHead		*head,
+	void					*ele);
+
+extern void*
+DoublyLinkedHead_RemoveFirst(
+	int						offsettodoublelinks,
+	DoublyLinkedHead		*head);
+
 extern void*
 DoublyLinkedHead_RemoveLast(
-	int						offsetToDoubleLinks,
+	int						offsettodoublelinks,
 	DoublyLinkedHead		*head);
 
 extern void

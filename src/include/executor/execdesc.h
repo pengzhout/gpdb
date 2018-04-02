@@ -109,6 +109,9 @@ typedef struct Slice
 	 * implemented.
 	 */
 	List	   *primaryProcesses;
+
+	List		*regions;
+	Bitmapset	*region;
 } Slice;
 
 /*

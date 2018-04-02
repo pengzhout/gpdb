@@ -21,7 +21,7 @@
 struct Plan;                    /* defined in plannodes.h */
 struct RelOptInfo;              /* defined in relation.h */
 struct PlannerInfo;				/* defined in relation.h */
-
+struct Gang;
 
 /*
  * This flag controls the policy type returned from
@@ -34,6 +34,33 @@ struct PlannerInfo;				/* defined in relation.h */
  */
 extern bool cdbpathlocus_querysegmentcatalogs;
 
+struct SegmentDatabaseDescriptor;
+
+typedef struct CdbRegionMember
+{
+	Oid dbid;
+	struct SegmentDatabaseDescriptor* writer;
+	List	*readers; /* List of SegmentDatabaseDescriptor */
+} CdbRegionMember;
+
+typedef struct CdbRegion
+{
+	Bitmapset *members;	
+	bool	allocatedWriter;
+
+	/* info for assignGangs gangs on region */
+	int		numNgangs;
+	int 	num1gangs_primary_reader;
+	int 	num1gangs_entrydb_reader;
+
+	struct Gang	**vecNgangs;
+	struct Gang	**vec1gangs_primary_reader;
+	struct Gang	**vec1gangs_entrydb_reader;
+
+	int		tmp_numNgangs;
+	int 	tmp_num1gangs_primary_reader;
+	int 	tmp_num1gangs_entrydb_reader;
+} CdbRegion;
 
 /*
  * CdbLocusType
@@ -129,6 +156,7 @@ typedef struct CdbPathLocus
     CdbLocusType    locustype;
     List           *partkey_h;
     List           *partkey_oj;
+	List			*regions;
 } CdbPathLocus;
 
 #define CdbPathLocus_Degree(locus)          \
@@ -193,6 +221,7 @@ typedef struct CdbPathLocus
         _locus->locustype = (_locustype);               \
         _locus->partkey_h = NIL;                        \
         _locus->partkey_oj = NIL;                       \
+		_locus->regions = NIL;							\
     } while (0)
 
 #define CdbPathLocus_MakeNull(plocus)                   \
@@ -213,6 +242,7 @@ typedef struct CdbPathLocus
         _locus->locustype = CdbLocusType_Hashed;		\
         _locus->partkey_h = (partkey_);					\
         _locus->partkey_oj = NIL;                       \
+        _locus->regions = NIL;                       \
         Assert(cdbpathlocus_is_valid(*_locus));         \
     } while (0)
 #define CdbPathLocus_MakeHashedOJ(plocus, partkey_)     \
@@ -350,5 +380,12 @@ cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids);
  */
 bool
 cdbpathlocus_is_valid(CdbPathLocus locus);
+
+struct GpPolicy;
+CdbRegion *
+getRegionFromPolicy(struct GpPolicy *policy);
+
+List *
+makeDefaultSegments(void);
 
 #endif   /* CDBPATHLOCUS_H */

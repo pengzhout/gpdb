@@ -974,6 +974,7 @@ pull_up_Flow(Plan *plan, Plan *subplan)
 	}
 
 	new_flow->locustype = model_flow->locustype;
+	new_flow->regions = model_flow->regions;
 
 	return new_flow;
 }

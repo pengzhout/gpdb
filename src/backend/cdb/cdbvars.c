@@ -37,6 +37,7 @@
 #include "storage/bfz.h"
 #include "storage/proc.h"
 #include "cdb/memquota.h"
+#include "cdb/cdbgang.h"
 
 /*
  * ----------------
@@ -443,6 +444,26 @@ role_to_string(GpRoleValue role)
 	}
 }
 
+bool
+gpvars_assign_enable_partial_table(bool newval, bool doit, GucSource source)
+{
+	if (doit)
+	{
+
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			DisconnectAndDestroyAllGangs(true);
+			enable_partial_table = newval;
+		}
+		else
+		{
+			enable_partial_table = newval;
+		}
+	}
+
+	return true;
+}
+
 
 /*
  * Assign hook routine for "gp_session_role" option.  Because this variable
@@ -730,8 +751,7 @@ bool
 gpvars_assign_gp_gpperfmon_send_interval(int newval, bool doit, GucSource source)
 {
 	if (doit)
-	{
-		if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster && GetCurrentRoleId() != InvalidOid && !superuser())
+	{ if (Gp_role == GP_ROLE_DISPATCH && IsUnderPostmaster && GetCurrentRoleId() != InvalidOid && !superuser())
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),

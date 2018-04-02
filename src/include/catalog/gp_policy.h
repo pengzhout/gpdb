@@ -35,15 +35,19 @@ CATALOG(gp_distribution_policy,5002) BKI_WITHOUT_OIDS
 	Oid			localoid;
 	int2		attrnums[1];
 	char		policytype; /* distribution policy type */
+	Oid			distfunc; /* distribution policy type */
+	Oid			regionid; /* distribution policy type */
+	NameData	regionname; /* distribution policy type */
 } FormData_gp_policy;
 
 /* GPDB added foreign key definitions for gpcheckcat. */
 FOREIGN_KEY(localoid REFERENCES pg_class(oid));
 
-#define Natts_gp_policy		3
+#define Natts_gp_policy		6
 #define Anum_gp_policy_localoid	1
 #define Anum_gp_policy_attrnums	2
 #define Anum_gp_policy_type	3
+#define Anum_gp_policy_regionid	5
 
 /*
  * Symbolic values for Anum_gp_policy_type column
@@ -76,6 +80,7 @@ typedef struct GpPolicy
 	GpPolicyType ptype;
 
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
+	int			regionid;
 	int			nattrs;
 	AttrNumber	*attrs;		/* pointer to the first of nattrs attribute numbers.  */
 } GpPolicy;

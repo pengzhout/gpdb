@@ -161,7 +161,7 @@ test__createWriterGang(void **state)
 
 	cdbgang_setAsync(false);
 
-	Gang	   *gang = AllocateWriterGang();
+	Gang	   *gang = AllocateWriterGang(makeDefaultSegments());
 
 	/* validate gang */
 	assert_int_equal(gang->size, TOTOAL_SEGMENTS);

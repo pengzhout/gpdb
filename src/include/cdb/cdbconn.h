@@ -16,6 +16,9 @@
 #ifndef CDBCONN_H
 #define CDBCONN_H
 
+#include "cdb/cdbdoublylinked.h"
+
+struct SegdbDescCache;
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for segment database definition and working values
@@ -62,7 +65,11 @@ typedef struct SegmentDatabaseDescriptor
     uint32		            motionListener; /* interconnect listener port */
     int4					backendPid;
     char                   *whoami;         /* QE identifier for msgs */
+	bool					isWriter;
 
+	DoubleLinks				freelist;
+	DoubleLinks				cachelist;
+	struct SegdbDescCache			*cache;
 } SegmentDatabaseDescriptor;
 
 
