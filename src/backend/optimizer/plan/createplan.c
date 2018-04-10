@@ -23,6 +23,7 @@
 
 #include "catalog/pg_exttable.h"
 #include "catalog/pg_type.h"	/* INT8OID */
+#include "catalog/pg_proc.h"	/* INT8OID */
 #include "access/skey.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -41,6 +42,7 @@
 #include "parser/parsetree.h"
 #include "parser/parse_oper.h"	/* ordering_oper_opid */
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "utils/uri.h"
 
 #include "cdb/cdbllize.h"		/* pull_up_Flow() */
@@ -5666,6 +5668,20 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node)
 														 targetPolicy->nattrs,
 														 targetPolicy->attrs,
 														 false);
+
+				if (enable_dist_udf)
+				{
+					bool    isnull;
+					FuncExpr    *fexpr = NULL;
+					HeapTuple tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(targetPolicy->dfunc));
+					Datum tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prorettype, &isnull);
+					Oid rettype = DatumGetObjectId(tmp);
+					ReleaseSysCache(tuple);
+
+					fexpr = makeFuncExpr(targetPolicy->dfunc, rettype, hashExpr, COERCE_EXPLICIT_CALL);
+					
+					hashExpr = list_make1(fexpr);
+				}
 
 				if (!repartitionPlan(subplan, false, false, hashExpr))
 					ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_YET),

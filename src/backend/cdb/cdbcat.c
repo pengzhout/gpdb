@@ -116,7 +116,7 @@ GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src)
 
 	for (i = 0; i < src->nattrs; i++)
 		tgt->attrs[i] = src->attrs[i];
-
+	tgt->dfunc = src->dfunc;
 	return tgt;
 }								/* GpPolicyCopy */
 
@@ -301,6 +301,7 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		{
 			case SYM_POLICYTYPE_REPLICATED:
 				policy = createReplicatedGpPolicy(mcxt);
+				policy->dfunc = InvalidOid; 
 				break;
 			case SYM_POLICYTYPE_PARTITIONED:
 				/*
@@ -325,6 +326,13 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 				{
 					policy->attrs[i] = attrnums[i];
 				}
+
+				/* set dfunc */
+				attr = heap_getattr(gp_policy_tuple, Anum_gp_policy_func,
+						RelationGetDescr(gp_policy_rel), &isNull);
+
+				policy->dfunc = attr;
+
 				break;
 			default:
 				elog(ERROR, "unrecognized distribution policy type");	

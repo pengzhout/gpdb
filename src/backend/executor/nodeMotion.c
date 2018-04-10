@@ -977,7 +977,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		nkeys = list_length(node->hashDataTypes);
 		
 		if (nkeys > 0)
-			motionstate->hashExpr = (List *) ExecInitExpr((Expr *) node->hashExpr,
+				motionstate->hashExpr = (List *) ExecInitExpr((Expr *) node->hashExpr,
 							(PlanState *) motionstate);
 
 		/*
@@ -1420,8 +1420,20 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 
 		Assert(node->cdbhash->numsegs == motion->numOutputSegs);
 		
-		hval = evalHashKey(econtext, node->hashExpr,
-				motion->hashDataTypes, node->cdbhash);
+		if (enable_dist_udf)
+		{
+			Datum keyval;
+			bool	isNull;
+			ExprState *keyexpr = linitial(node->hashExpr);
+			keyval = ExecEvalExpr(keyexpr, econtext, &isNull, NULL);
+
+			Assert(!isNull);
+
+			hval = keyval;
+		}
+		else
+			hval = evalHashKey(econtext, node->hashExpr,
+					motion->hashDataTypes, node->cdbhash);
 
 		Assert(hval < getgpsegmentCount() && "redistribute destination outside segment array");
 		

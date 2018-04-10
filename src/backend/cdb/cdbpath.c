@@ -520,6 +520,7 @@ cdbpath_match_preds_to_both_partkeys(PlannerInfo *root,
 	ListCell   *innercell;
 	List	   *outer_partkey;
 	List	   *inner_partkey;
+	int			cur_pair = 0;
 
 	if (!mergeclause_list ||
 		CdbPathLocus_Degree(outer_locus) == 0 || CdbPathLocus_Degree(inner_locus) == 0 ||
@@ -541,11 +542,19 @@ cdbpath_match_preds_to_both_partkeys(PlannerInfo *root,
 	else
 		inner_partkey = inner_locus.partkey_oj;
 
+	if (enable_dist_udf)
+	{
+		Assert(list_length(outer_partkey) >= 2);
+		Assert(list_length(inner_partkey) >= 2);
+	}
+
 	forboth(outercell, outer_partkey, innercell, inner_partkey)
 	{
 		List	   *outersublist = (List *) lfirst(outercell);
 		List	   *innersublist = (List *) lfirst(innercell);
 		ListCell   *rcell;
+
+		cur_pair++;
 
 		foreach(rcell, mergeclause_list)
 		{
@@ -585,6 +594,8 @@ cdbpath_match_preds_to_both_partkeys(PlannerInfo *root,
 			/* Skip predicate if neither side matches inner partkey item. */
 			if (innersublist == outersublist)
 			{
+				if (enable_dist_udf && cur_pair == 1)
+					return true;
 			}					/* do nothing */
 			else if (CdbPathLocus_IsHashed(inner_locus))
 			{
@@ -616,10 +627,15 @@ cdbpath_match_preds_to_both_partkeys(PlannerInfo *root,
 			break;
 		}
 
+		/* can not predict from the func expr, try columns directly */
+		if (enable_dist_udf && cur_pair == 1)
+			continue;
+
 		/* Fail if didn't find equijoin between this pair of partkey items. */
 		if (!rcell)
 			return false;
 	}
+
 	return true;
 }								/* cdbpath_match_preds_to_both_partkeys */
 

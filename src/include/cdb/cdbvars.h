@@ -454,6 +454,7 @@ extern bool gp_interconnect_full_crc;
  * Emit interconnect statistics at log-level, instead of debug1
  */
 extern bool gp_interconnect_log_stats;
+extern bool enable_dist_udf;
 
 extern bool gp_interconnect_cache_future_packets;
 

@@ -1222,6 +1222,16 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
+		{"enable_dist_udf", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Emit statistics from the UDP-IC at the end of every statement."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&enable_dist_udf,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_interconnect_cache_future_packets", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Control whether future packets are cached."),
 			NULL,

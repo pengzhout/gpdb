@@ -199,6 +199,8 @@ bool		gp_interconnect_full_crc = false;	/* sanity check UDP data. */
 
 bool		gp_interconnect_log_stats = false;	/* emit stats at log-level */
 
+bool		enable_dist_udf = false;	/* emit stats at log-level */
+
 bool		gp_interconnect_cache_future_packets = true;
 
 int			Gp_udp_bufsize_k;	/* UPD recv buf size, in KB */

@@ -27,6 +27,9 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbpathlocus.h"	/* me */
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
+#include "catalog/pg_proc.h"
 
 static List *cdb_build_distribution_pathkeys(PlannerInfo *root,
 								RelOptInfo *rel,
@@ -297,6 +300,81 @@ cdb_build_distribution_pathkeys(PlannerInfo *root,
 	return retval;
 }								/* cdb_build_distribution_pathkeys */
 
+static List *
+cdb_build_distribution_pathkeys_v1(PlannerInfo *root,
+								RelOptInfo *rel,
+								Oid distfunc,
+								int nattrs,
+								AttrNumber *attrs)
+{
+	List	   *eq = list_make1(makeString("="));
+	int			i;
+	bool		isAppendChildRelation = false;
+	List		*exprArgs = NULL;
+	FuncExpr	*fexpr = NULL;
+	PathKey		*cpathkey;
+
+	if (distfunc == InvalidOid && nattrs == 0)
+		return NULL;
+
+	Assert(distfunc != InvalidOid);
+
+	for (i = 0; i < nattrs; ++i)
+	{
+		/* Find or create a Var node that references the specified column. */
+		Var		   *expr = find_indexkey_var(root, rel, attrs[i]);
+		Assert(expr);
+
+		/* Append to list of pathkeys. */
+		exprArgs = lappend(exprArgs, expr);
+	}
+
+	bool	isnull;
+	HeapTuple tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(distfunc));
+	Datum tmp = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_prorettype, &isnull);
+	Oid rettype = DatumGetObjectId(tmp);
+	ReleaseSysCache(tuple);
+
+	fexpr = makeFuncExpr(distfunc, rettype, exprArgs, COERCE_EXPLICIT_CALL);
+
+	isAppendChildRelation = (rel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+
+	/*
+	 * Find or create a pathkey. We distinguish two cases for performance
+	 * reasons: 1) If the relation in question is a child relation under
+	 * an append node, we don't care about ensuring that we return a
+	 * canonicalized version of its pathkey item. Co-location of
+	 * joins/group-bys happens at the append relation level. In
+	 * create_append_path(), the call to
+	 * cdbpathlocus_pull_above_projection() ensures that canonicalized
+	 * pathkeys are created at the append relation level. (see MPP-3536).
+	 *
+	 * 2) For regular relations, we create a canonical pathkey so that we
+	 * may identify co-location for joins/group-bys.
+	 */
+	if (isAppendChildRelation)
+	{
+		/**
+		 * Append child relation.
+		 */
+		cpathkey = cdb_make_pathkey_for_expr(root, (Node *) fexpr, eq, false);
+		Assert(cpathkey);
+	}
+	else
+	{
+		/**
+		 * Regular relation.
+		 */
+		cpathkey = cdb_make_pathkey_for_expr(root, (Node *) fexpr, eq, true);
+		Assert(cpathkey);
+	}
+
+	list_free_deep(eq);
+
+	return list_make1(cpathkey);
+}								/* cdb_build_distribution_pathkeys */
+
+
 /*
  * cdbpathlocus_from_baserel
  *
@@ -320,10 +398,23 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 		/* Are the rows distributed by hashing on specified columns? */
 		if (policy->nattrs > 0)
 		{
-			List	   *partkey = cdb_build_distribution_pathkeys(root,
-					rel,
-					policy->nattrs,
-					policy->attrs);
+			List *partkey = NULL;
+
+			if (enable_dist_udf)
+			{
+				partkey = cdb_build_distribution_pathkeys_v1(root,
+																	  rel,
+																	  policy->dfunc,
+																	  policy->nattrs,
+																	  policy->attrs);
+				partkey = list_concat(partkey, cdb_build_distribution_pathkeys(root, rel, policy->nattrs, policy->attrs));
+			}
+			else
+				partkey = cdb_build_distribution_pathkeys(root,
+																	  rel,
+																	  policy->nattrs,
+																	  policy->attrs);
+
 
 			CdbPathLocus_MakeHashed(&result, partkey);
 		}

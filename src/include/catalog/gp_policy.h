@@ -47,6 +47,7 @@ FOREIGN_KEY(localoid REFERENCES pg_class(oid));
 #define Anum_gp_policy_localoid	1
 #define Anum_gp_policy_attrnums	2
 #define Anum_gp_policy_type	3
+#define Anum_gp_policy_func	4
 
 /*
  * Symbolic values for Anum_gp_policy_type column
@@ -79,6 +80,7 @@ typedef struct GpPolicy
 	GpPolicyType ptype;
 
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
+	Oid			dfunc;
 	int			nattrs;
 	AttrNumber	*attrs;		/* pointer to the first of nattrs attribute numbers.  */
 } GpPolicy;
