@@ -31,7 +31,7 @@ insert into segwalrep_commit_blocking values (1);
 -- skip FTS probes always
 create extension if not exists gp_inject_fault;
 select gp_inject_fault('fts_probe', 'reset', 1);
-select gp_inject_fault('fts_probe', 'skip', '', '', '', -1, 0, 1);
+select gp_inject_fault_infinite('fts_probe', 'skip', 1);
 -- force scan to trigger the fault
 select gp_request_fts_probe_scan();
 -- verify the failure should be triggered once

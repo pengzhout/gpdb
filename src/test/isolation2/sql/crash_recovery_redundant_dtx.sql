@@ -2,9 +2,9 @@
 1:CREATE TABLE crash_test_redundant(c1 int);
 
 -- transaction of session 2 suspend after inserted 'COMMIT' record 
-1:select gp_inject_fault('dtm_broadcast_commit_prepared', 'suspend', 1);
+1:select gp_inject_fault_infinite('dtm_broadcast_commit_prepared', 'suspend', 1);
 -- checkpoint suspend before scanning proc array
-1:select gp_inject_fault('checkpoint_dtx_info', 'suspend', 1);
+1:select gp_inject_fault_infinite('checkpoint_dtx_info', 'suspend', 1);
 1&:CHECKPOINT;
 
 -- wait till checkpoint reaches intended point

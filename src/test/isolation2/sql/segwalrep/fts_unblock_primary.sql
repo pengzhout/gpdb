@@ -50,7 +50,7 @@ insert into fts_unblock_primary values (1);
 -- skip FTS probes always
 create extension if not exists gp_inject_fault;
 select gp_inject_fault('fts_probe', 'reset', 1);
-select gp_inject_fault('fts_probe', 'skip', '', '', '', -1, 0, 1);
+select gp_inject_fault_infinite('fts_probe', 'skip', 1);
 -- force scan to trigger the fault
 select gp_request_fts_probe_scan();
 -- verify the failure should be triggered once
@@ -92,7 +92,7 @@ select content, role, preferred_role, mode, status from gp_segment_configuration
 2U: show synchronous_standby_names;
 
 --hold walsender in startup
-select gp_inject_fault('initialize_wal_sender', 'suspend', dbid)
+select gp_inject_fault_infinite('initialize_wal_sender', 'suspend', dbid)
 from gp_segment_configuration where role='p' and content=2;
 
 -- bring the mirror back up and see primary s/u and mirror s/u

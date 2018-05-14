@@ -76,7 +76,7 @@ where content = 0;
 select dbid from gp_segment_configuration where content = 0 and role = 'p';
 -- end_ignore
 
-select gp_inject_fault('fts_handle_message', 'infinite_loop', '', '', '', -1, 0, dbid)
+select gp_inject_fault_infinite('fts_handle_message', 'infinite_loop', dbid)
 from gp_segment_configuration
 where content = 0 and role = 'p';
 

@@ -47,10 +47,10 @@ gp_inject_fault
 ---------------
 t              
 (1 row)
-select gp_inject_fault('fts_probe', 'skip', '', '', '', -1, 0, 1);
-gp_inject_fault
----------------
-t              
+select gp_inject_fault_infinite('fts_probe', 'skip', 1);
+gp_inject_fault_infinite
+------------------------
+t                       
 (1 row)
 -- force scan to trigger the fault
 select gp_request_fts_probe_scan();
@@ -147,10 +147,10 @@ synchronous_standby_names
 (1 row)
 
 --hold walsender in startup
-select gp_inject_fault('initialize_wal_sender', 'suspend', dbid) from gp_segment_configuration where role='p' and content=2;
-gp_inject_fault
----------------
-t              
+select gp_inject_fault_infinite('initialize_wal_sender', 'suspend', dbid) from gp_segment_configuration where role='p' and content=2;
+gp_inject_fault_infinite
+------------------------
+t                       
 (1 row)
 
 -- bring the mirror back up and see primary s/u and mirror s/u

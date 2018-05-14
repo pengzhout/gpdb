@@ -22,10 +22,10 @@ CREATE
 INSERT 1
 -- suspend to hit commit-prepared point on segment (as we are
 -- interested in testing Commit here and not really Prepare)
-select gp_inject_fault('finish_prepared_start_of_function', 'suspend', 2);
-gp_inject_fault
----------------
-t              
+select gp_inject_fault_infinite('finish_prepared_start_of_function', 'suspend', 2);
+gp_inject_fault_infinite
+------------------------
+t                       
 (1 row)
 -- Expect: `create table` should be blocked until reset
 -- `wal_sender_loop`. We also verify the `sync_rep_query_cancel` is
@@ -37,10 +37,10 @@ gp_wait_until_triggered_fault
 t                            
 (1 row)
 -- now pause the wal sender on primary for content 0
-select gp_inject_fault('wal_sender_loop', 'suspend', 2);
-gp_inject_fault
----------------
-t              
+select gp_inject_fault_infinite('wal_sender_loop', 'suspend', 2);
+gp_inject_fault_infinite
+------------------------
+t                       
 (1 row)
 -- let the transaction move forward with the commit
 select gp_inject_fault('finish_prepared_start_of_function', 'reset', 2);
@@ -55,10 +55,10 @@ wait_for_replication
 t                   
 (1 row)
 -- hitting this fault, is checked for test validation
-select gp_inject_fault('sync_rep_query_cancel', 'skip', 2);
-gp_inject_fault
----------------
-t              
+select gp_inject_fault_infinite('sync_rep_query_cancel', 'skip', 2);
+gp_inject_fault_infinite
+------------------------
+t                       
 (1 row)
 0U: select pg_cancel_backend(procpid) from pg_stat_activity where waiting_reason='replication' and sess_id in (select sess_id from store_session_id);
 pg_cancel_backend

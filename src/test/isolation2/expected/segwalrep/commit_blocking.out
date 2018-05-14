@@ -37,10 +37,10 @@ gp_inject_fault
 ---------------
 t              
 (1 row)
-select gp_inject_fault('fts_probe', 'skip', '', '', '', -1, 0, 1);
-gp_inject_fault
----------------
-t              
+select gp_inject_fault_infinite('fts_probe', 'skip', 1);
+gp_inject_fault_infinite
+------------------------
+t                       
 (1 row)
 -- force scan to trigger the fault
 select gp_request_fts_probe_scan();

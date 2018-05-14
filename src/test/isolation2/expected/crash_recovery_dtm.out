@@ -30,10 +30,10 @@ CREATE
 1: CREATE EXTENSION IF NOT EXISTS gp_inject_fault;
 CREATE
 -- Inject fault to fail the COMMIT PREPARED always on one segment, till fault is not reset
-1: SELECT gp_inject_fault('finish_prepared_start_of_function', 'error', '', '', '', -1, 0, 2);
-gp_inject_fault
----------------
-t              
+1: SELECT gp_inject_fault_infinite('finish_prepared_start_of_function', 'error', 2);
+gp_inject_fault_infinite
+------------------------
+t                       
 (1 row)
 -- create utility session to segment which will be used to reset the fault
 0U: SELECT 1;
@@ -177,10 +177,10 @@ CHECKPOINT
 11: SET dtx_phase2_retry_count=9;
 SET
 -- skip FTS probes always
-11: SELECT gp_inject_fault('fts_probe', 'skip', '', '', '', -1, 0, 1);
-gp_inject_fault
----------------
-t              
+11: SELECT gp_inject_fault_infinite('fts_probe', 'skip', 1);
+gp_inject_fault_infinite
+------------------------
+t                       
 (1 row)
 11: SET debug_abort_after_segment_prepared = true;
 SET
@@ -191,7 +191,7 @@ count
 -----
 10   
 (1 row)
-11: SELECT gp_inject_fault('fts_probe', 'reset', '', '', '', -1, 0, 1);
+11: SELECT gp_inject_fault('fts_probe', 'reset', 1);
 gp_inject_fault
 ---------------
 t              
