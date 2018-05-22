@@ -12,7 +12,12 @@
 --     corresponding to fsync_test1 and fsync_test2 tables.
 --   * Verify that at least two files were fsync'ed by checkpointer.
 --
-
+-- the hit times of fsync_counter is undetermined, both 5 or 6 are
+-- correct, so mark them out to make case stable.
+-- start_matchsubs
+-- m/num times hit:\'[5-6]\'/
+-- s/num times hit:\'[5-6]\'/num times hit:\'FIVE_OR_SIX\'/
+-- end_matchsubs
 begin;
 create function num_dirty(relid oid) returns bigint as
 $$
@@ -56,7 +61,15 @@ insert into fsync_test2 select -i, i from generate_series(1,100)i;
 end;
 
 -- Reset all faults.
-select gp_inject_fault('all', 'reset', dbid) from gp_segment_configuration;
+-- 
+-- NOTICE: important.
+--
+-- we use gp_inject_fault_infinite here instead of
+-- gp_inject_fault so cache of pg_proc that contains
+-- gp_inject_fault_infinite is loaded before checkpoint and
+-- the following gp_inject_fault_infinite don't dirty the
+-- buffer again.
+select gp_inject_fault_infinite('all', 'reset', dbid) from gp_segment_configuration;
 
 -- Start with a clean slate (no dirty buffers).
 checkpoint;
