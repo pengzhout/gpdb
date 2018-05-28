@@ -113,6 +113,8 @@ SHOW data_checksums;
 
 -- skip FTS probes always
 SELECT gp_inject_fault_infinite('fts_probe', 'skip', 1);
+SELECT gp_request_fts_probe_scan();
+select gp_wait_until_triggered_fault('fts_probe', 1, 1);
 
 --  Corrupt a heap table
 create table corrupt_table(a int);

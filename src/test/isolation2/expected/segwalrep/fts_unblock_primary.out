@@ -65,10 +65,10 @@ gp_request_fts_probe_scan
 t                        
 (1 row)
 -- verify the failure should be triggered once
-select gp_inject_fault('fts_probe', 'status', 1);
-gp_inject_fault
----------------
-t              
+select gp_wait_until_triggered_fault('fts_probe', 1, 1);
+gp_wait_until_triggered_fault
+-----------------------------
+t                            
 (1 row)
 
 -- stop a mirror

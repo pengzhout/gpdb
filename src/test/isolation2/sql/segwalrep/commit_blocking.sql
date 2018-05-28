@@ -35,7 +35,7 @@ select gp_inject_fault_infinite('fts_probe', 'skip', 1);
 -- force scan to trigger the fault
 select gp_request_fts_probe_scan();
 -- verify the failure should be triggered once
-select gp_inject_fault('fts_probe', 'status', 1);
+select gp_wait_until_triggered_fault('fts_probe', 1, 1);
 
 -- stop a mirror and show commit on dbid 2 will block
 -1U: select pg_ctl((select datadir from gp_segment_configuration c where c.role='m' and c.content=0), 'stop', NULL, NULL, NULL);

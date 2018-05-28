@@ -111,6 +111,19 @@ NOTICE:  Success:
  t
 (1 row)
 
+SELECT gp_request_fts_probe_scan();
+ gp_request_fts_probe_scan 
+---------------------------
+ t
+(1 row)
+
+select gp_wait_until_triggered_fault('fts_probe', 1, 1);
+NOTICE:  Success:
+ gp_wait_until_triggered_fault 
+-------------------------------
+ t
+(1 row)
+
 --  Corrupt a heap table
 create table corrupt_table(a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.

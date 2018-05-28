@@ -102,6 +102,8 @@ $$ LANGUAGE plpgsql;
 11: SET dtx_phase2_retry_count=9;
 -- skip FTS probes always
 11: SELECT gp_inject_fault_infinite('fts_probe', 'skip', 1);
+11: SELECT gp_request_fts_probe_scan();
+11: select gp_wait_until_triggered_fault('fts_probe', 1, 1);
 11: SET debug_abort_after_segment_prepared = true;
 11: DELETE FROM QE_panic_test_table;
 11: SELECT count(*) from QE_panic_test_table;

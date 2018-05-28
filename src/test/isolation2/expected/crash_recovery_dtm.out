@@ -194,6 +194,16 @@ gp_inject_fault_infinite
 ------------------------
 t                       
 (1 row)
+11: SELECT gp_request_fts_probe_scan();
+gp_request_fts_probe_scan
+-------------------------
+t                        
+(1 row)
+11: select gp_wait_until_triggered_fault('fts_probe', 1, 1);
+gp_wait_until_triggered_fault
+-----------------------------
+t                            
+(1 row)
 11: SET debug_abort_after_segment_prepared = true;
 SET
 11: DELETE FROM QE_panic_test_table;
