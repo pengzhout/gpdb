@@ -23,6 +23,7 @@ $$
   END; /* in func */
 $$ LANGUAGE plpgsql;
 
+1:SELECT role, preferred_role, content, mode, status FROM gp_segment_configuration;
 -- Scenario 1: Test to fail broadcasting of COMMIT PREPARED to one
 -- segment and hence trigger PANIC in master while after completing
 -- phase 2 of 2PC. Master's recovery cycle should correctly broadcast

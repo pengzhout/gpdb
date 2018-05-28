@@ -36,7 +36,7 @@ returns text as $$
 $$ language plpythonu;
 
 -- make sure we are in-sync for the primary we will be testing with
-select content, role, preferred_role, mode, status from gp_segment_configuration where content=2;
+select content, role, preferred_role, mode, status from gp_segment_configuration;
 
 -- synchronous_standby_names should be set to '*' by default on primary 2, since
 -- we have a working/sync'd mirror
