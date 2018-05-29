@@ -36,6 +36,8 @@ CREATE extension IF NOT EXISTS gp_inject_fault;
   FROM gp_segment_configuration WHERE content = 0 AND role = 'p';
 2:SELECT gp_inject_fault_infinite('fts_handle_message', 'error', dbid)
   FROM gp_segment_configuration WHERE content = 0 AND role = 'p';
+-- do fts probe request twice to guarantee the fault is triggered
+2:SELECT gp_request_fts_probe_scan();
 2:SELECT gp_request_fts_probe_scan();
 1<:
 
@@ -57,6 +59,8 @@ CREATE extension IF NOT EXISTS gp_inject_fault;
   FROM gp_segment_configuration WHERE content = -1 AND role = 'p';
 3:SELECT gp_inject_fault_infinite('fts_handle_message', 'error', dbid)
   FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
+-- do fts probe request twice to guarantee the fault is triggered
+3:SELECT gp_request_fts_probe_scan();
 3:SELECT gp_request_fts_probe_scan();
 3:SELECT gp_inject_fault('transaction_abort_after_distributed_prepared', 'resume', dbid)
   FROM gp_segment_configuration WHERE content = -1 AND role = 'p';
@@ -78,6 +82,8 @@ CREATE extension IF NOT EXISTS gp_inject_fault;
   FROM gp_segment_configuration WHERE content = 2 AND role = 'p';
 4:SELECT gp_inject_fault_infinite('fts_handle_message', 'error', dbid)
   FROM gp_segment_configuration WHERE content = 2 AND role = 'p';
+-- do fts probe request twice to guarantee the fault is triggered
+4:SELECT gp_request_fts_probe_scan();
 4:SELECT gp_request_fts_probe_scan();
 1<:
 
