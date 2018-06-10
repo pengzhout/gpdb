@@ -32,6 +32,10 @@
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
 
+struct CdbDispatcherState * TopDispatcherState = NULL;
+struct CdbDispatcherState * TopTransactionDispatcherState = NULL;
+struct CdbDispatcherState * CurrentDispatcherState = NULL;
+
 typedef struct dispatcher_handle_t
 {
 	struct CdbDispatcherState *dispatcherState;
@@ -609,4 +613,55 @@ dispatcher_abort_callback(ResourceReleasePhase phase,
 			cleanup_dispatcher_handle(curr);
 		}
 	}
+}
+
+void
+DispatcherState_Init(void)
+{
+	Assert(!TopDispatcherState);
+
+	TopDispatcherState = DispatcherState_Create("TopDispatcherState");
+
+	CurrentDispatcherState = TopDispatcherState;
+}
+
+struct CdbDispatcherState *
+DispatcherState_Create(const char* name)
+{
+	struct CdbDispatcherState *ds = palloc0(sizeof(struct CdbDispatcherState));
+	return ds;
+}
+
+struct CdbDispatcherState *
+DispatcherState_connect(void)
+{
+	Assert(CurrentDispatcherState);
+
+	if (CurrentDispatcherState->opened)
+		elog(FATAL, "Dispatcher opened");
+
+	CurrentDispatcherState->opened = true;
+
+	return CurrentDispatcherState;
+}
+
+void
+DispatchState_DispatchCommand(struce CdbDispatcherState *ds, char *formatQuery, int flag, Gang *ex_gang)
+{
+	Gang	*gang;
+
+	AssertImply(ex_gang, ex_gang->ds == ds);
+
+	gang = ex_gang;
+
+	if (!gang && !ds->allocatedGangs)
+		gang = AllocateWriterGang();
+
+	
+#if 0
+	dtmPreCommand("cdbdisp_dispatchCommandInternal", strCommand,
+				  NULL, needTwoPhase, withSnapshot,
+				  false /* inCursor */ );
+#endif
+	
 }

@@ -29,6 +29,7 @@
 #include "utils/resscheduler.h"
 
 #include "cdb/ml_ipc.h"
+#include "cdb/cdbdisp.h"
 
 /*
  * Estimate of the maximum number of open portals a user would have,
@@ -249,6 +250,12 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 		portal->portalId = ResCreatePortalId(name);
 		portal->queueId = GetResQueueId();
 	}
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		portal->dispatchState = DispatcherState_Create(name);
+	}
+
 	portal->is_extended_query = false; /* default value */
 
 	/* put portal in table (sets portal->name) */

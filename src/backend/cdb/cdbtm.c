@@ -2428,6 +2428,9 @@ gatherRMInDoubtTransactions(void)
 	CdbPgResults cdb_pgresults = {NULL, 0};
 	const char *cmdbuf = "select gid from pg_prepared_xacts";
 	PGresult   *rs;
+	char       *dispatchQueryText;
+	DispatchStateResults *results; 
+	struct pg_result* result = NULL;
 
 	InDoubtDtx *lastDtx = NULL;
 
@@ -2438,6 +2441,22 @@ gatherRMInDoubtTransactions(void)
 				rows;
 	bool		found;
 
+	dispatchQueryText = formatDispatchQueryText(cmdbuf, DF_NONE);
+
+	ds = DispatchState_connect();
+
+	DispatchState_DispatchCommand(ds, dispatchQueryText, DF_NONE);
+
+	DispatchState_join(ds);
+
+	while((result = DispatchState_getNext(ds)) != NULL)
+	{
+
+	}
+
+	DispatchState_close(ds);
+
+#if 0
 	/* call to all QE to get in-doubt transactions */
 	CdbDispatchCommand(cmdbuf, DF_NONE, &cdb_pgresults);
 
@@ -2491,6 +2510,7 @@ gatherRMInDoubtTransactions(void)
 	}
 
 	cdbdisp_clearCdbPgResults(&cdb_pgresults);
+#endif
 
 	return htab;
 }

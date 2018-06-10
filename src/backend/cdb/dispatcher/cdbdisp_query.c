@@ -113,6 +113,13 @@ static void cdbdisp_dispatchCommandInternal(const char *strCommand,
 								int flags,
 								CdbPgResults *cdb_pgresults);
 
+static DispatchCommandQueryParms * buildGpCommandQueryParms(const char *strCommand,
+		char *serializedQuerytree,
+		int serializedQuerytreelen,
+		char *serializedQueryDispatchDesc,
+		int serializedQueryDispatchDesclen,
+		int flags);
+
 static int fillSliceVector(SliceTable *sliceTable,
 				int sliceIndex,
 				SliceVec *sliceVector,
@@ -1485,4 +1492,71 @@ deserializeParamListInfo(const char *str, int slen)
 	}
 
 	return paramLI;
+}
+
+char *
+formatDispatchQueryText(char *strCommand, int flag)
+{
+	DispatchCommandQueryParms	*pQueryParms;
+	char				*queryText;
+	int				queryTextLen;
+				
+	pQueryParms = buildGpCommandQueryParms(strCommand, NULL, 0, NULL, 0, flags);
+
+	queryText = buildGpQueryString(pQueryParmsh, &queryTextLen);
+
+	queryTextLen = 0;
+
+	return queryText;
+
+}
+
+
+static DispatchCommandQueryParms *
+buildGpCommandQueryParms(const char *strCommand,
+		char *serializedQuerytree,
+		int serializedQuerytreelen,
+		char *serializedQueryDispatchDesc,
+		int serializedQueryDispatchDesclen,
+		int flags)
+
+{
+	DispatchCommandQueryParms *pQueryParms;
+	CdbComponentDatabaseInfo *qdinfo;
+	char		*queryText = NULL;
+	int		queryTextLength = 0;
+
+	bool		cancelOnError = flags & DF_CANCEL_ON_ERROR;
+	bool		needTwoPhase = flags & DF_NEED_TWO_PHASE;
+	bool		withSnapshot = flags & DF_WITH_SNAPSHOT;
+
+	elogif((Debug_print_full_dtm || log_min_messages <= DEBUG5), LOG,
+		   "cdbdisp_dispatchCommandInternal: %s (needTwoPhase = %s)",
+		   strCommand, (needTwoPhase ? "true" : "false"));
+
+	pQueryParms = palloc0(sizeof(*pQueryParms));
+	pQueryParms->strCommand = strCommand;
+	pQueryParms->serializedQuerytree = serializedQuerytree;
+	pQueryParms->serializedQuerytreelen = serializedQuerytreelen;
+	pQueryParms->serializedQueryDispatchDesc = serializedQueryDispatchDesc;
+	pQueryParms->serializedQueryDispatchDesclen = serializedQueryDispatchDesclen;
+	/*
+	 * Serialize a version of our DTX Context Info
+	 */
+	pQueryParms->serializedDtxContextInfo =
+		qdSerializeDtxContextInfo(&pQueryParms->serializedDtxContextInfolen,
+								  withSnapshot, false,
+								  mppTxnOptions(needTwoPhase),
+								  "cdbdisp_dispatchCommandInternal");
+
+	/*
+	 * sequence server info
+	 */
+	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+	Assert(qdinfo != NULL && qdinfo->hostip != NULL);
+	pQueryParms->seqServerHost = pstrdup(qdinfo->hostip);
+	pQueryParms->seqServerHostlen = strlen(qdinfo->hostip) + 1;
+	pQueryParms->seqServerPort = seqServerCtl->seqServerPort;
+
+	return pQueryParms;
 }

@@ -37,6 +37,7 @@
 #include "utils/resscheduler.h"
 #include "utils/metrics_utils.h"
 #include "utils/tqual.h"
+#include "cdb/cdbdisp.h"
 
 
 /*
@@ -608,6 +609,10 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 		ActivePortal = portal;
 		if (portal->resowner)
 			CurrentResourceOwner = portal->resowner;
+
+		if (portal->dispatchState)
+			CurrentDispatcherState = portal->dispatchState;
+
 		PortalContext = PortalGetHeapMemory(portal);
 
 		MemoryContextSwitchTo(PortalGetHeapMemory(portal));

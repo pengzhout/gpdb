@@ -108,4 +108,6 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 
 extern ParamListInfo deserializeParamListInfo(const char *str, int slen);
 
+extern char * formatDispatchQueryText(char *strCommand, int flag);
+
 #endif   /* CDBDISP_QUERY_H */

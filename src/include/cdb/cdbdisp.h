@@ -65,6 +65,14 @@ typedef struct DispatcherInternalFuncs
 
 }DispatcherInternalFuncs;
 
+extern struct CdbDispatcherState * TopDispatcherState;
+extern struct CdbDispatcherState * TopTransactionDispatcherState;
+extern struct CdbDispatcherState * CurrentDispatcherState;
+
+extern void DispatcherState_Init();
+extern struct CdbDispatcherState * DispatcherState_Create(const char* name);
+extern struct CdbDispatcherState * DispatcherState_connect(void);
+
 /*--------------------------------------------------------------------*/
 /*
  * cdbdisp_dispatchToGang:

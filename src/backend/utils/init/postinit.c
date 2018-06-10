@@ -70,6 +70,7 @@
 #include "utils/tqual.h"
 
 #include "utils/session_state.h"
+#include "cdb/cdbdisp.h"
 
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
@@ -568,6 +569,8 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	/* Initialize memory protection */
 	GPMemoryProtect_Init();
 
+	DispatcherState_Init();
+	
 #ifdef USE_ORCA
 	/* Initialize GPOPT */
 	START_MEMORY_ACCOUNT(MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Optimizer));
