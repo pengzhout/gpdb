@@ -28,6 +28,7 @@
 #include "utils/memaccounting.h"
 
 #include "cdb/cdbvars.h"                    /* gp_process_memory_cutoff_bytes */
+#include "cdb/cdbdisp_new.h"
 #include "inttypes.h"
 
 #ifdef HAVE_STDINT_H
@@ -139,6 +140,11 @@ MemoryContextInit(void)
 										 8 * 1024);
 
 	MemoryAccounting_Reset();
+
+	
+	/* hack way */
+	DispatcherState_Init();
+
 }
 
 /*

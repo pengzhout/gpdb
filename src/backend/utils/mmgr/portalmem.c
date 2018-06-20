@@ -242,6 +242,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	portal->atEnd = true;		/* disallow fetches until query is set */
 	portal->visible = true;
 	portal->creation_time = GetCurrentStatementStartTimestamp();
+	portal->dispatcherState = NULL;
 
 	/* set portal id and queue id if have enabled resource scheduling */
 	if (Gp_role == GP_ROLE_DISPATCH && IsResQueueEnabled())
@@ -249,6 +250,16 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 		portal->portalId = ResCreatePortalId(name);
 		portal->queueId = GetResQueueId();
 	}
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		if (name[0] != '\0')
+			portal->dispatcherState = DispatcherState_Create(name);
+		else
+			portal->dispatcherState = CurrentDispatcherState;
+		portal->dispatcherState->portal = portal;
+	}
+
 	portal->is_extended_query = false; /* default value */
 
 	/* put portal in table (sets portal->name) */

@@ -37,6 +37,7 @@
 #include "utils/resscheduler.h"
 #include "utils/metrics_utils.h"
 #include "utils/tqual.h"
+#include "cdb/cdbdisp_new.h"
 
 
 /*
@@ -587,6 +588,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 	ResourceOwner saveResourceOwner;
 	MemoryContext savePortalContext;
 	MemoryContext oldContext = CurrentMemoryContext;
+	DispatcherState *saveDispatcherState;
 	QueryDesc  *queryDesc;
 	int			eflags;
 
@@ -603,11 +605,16 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 	saveActivePortal = ActivePortal;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
+	saveDispatcherState = CurrentDispatcherState;
 	PG_TRY();
 	{
 		ActivePortal = portal;
 		if (portal->resowner)
 			CurrentResourceOwner = portal->resowner;
+
+		if (portal->dispatcherState)
+			CurrentDispatcherState = portal->dispatcherState;
+
 		PortalContext = PortalGetHeapMemory(portal);
 
 		MemoryContextSwitchTo(PortalGetHeapMemory(portal));
@@ -803,6 +810,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 		/* Restore global vars and propagate error */
 		ActivePortal = saveActivePortal;
 		CurrentResourceOwner = saveResourceOwner;
+		CurrentDispatcherState = saveDispatcherState;
 		PortalContext = savePortalContext;
 
 		PG_RE_THROW();
@@ -813,6 +821,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 
 	ActivePortal = saveActivePortal;
 	CurrentResourceOwner = saveResourceOwner;
+	CurrentDispatcherState = saveDispatcherState;
 	PortalContext = savePortalContext;
 
 	portal->status = PORTAL_READY;
@@ -903,6 +912,7 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	ResourceOwner saveResourceOwner;
 	MemoryContext savePortalContext;
 	MemoryContext saveMemoryContext;
+	DispatcherState *saveDispatcherState;
 
 	AssertArg(PortalIsValid(portal));
 
@@ -949,11 +959,16 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
 	saveMemoryContext = CurrentMemoryContext;
+	saveDispatcherState = CurrentDispatcherState;
 	PG_TRY();
 	{
 		ActivePortal = portal;
 		if (portal->resowner)
 			CurrentResourceOwner = portal->resowner;
+
+		if (portal->dispatcherState)
+			CurrentDispatcherState = portal->dispatcherState;
+
 		PortalContext = PortalGetHeapMemory(portal);
 
 		MemoryContextSwitchTo(PortalContext);
@@ -1037,6 +1052,9 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 			CurrentResourceOwner = TopTransactionResourceOwner;
 		else
 			CurrentResourceOwner = saveResourceOwner;
+
+		CurrentDispatcherState = saveDispatcherState;
+
 		PortalContext = savePortalContext;
 
 		TeardownSequenceServer();
@@ -1055,6 +1073,7 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	else
 		CurrentResourceOwner = saveResourceOwner;
 	PortalContext = savePortalContext;
+	CurrentDispatcherState = saveDispatcherState;
 
 	if (log_executor_stats && portal->strategy != PORTAL_MULTI_QUERY)
 		ShowUsage("EXECUTOR STATISTICS");
@@ -1578,6 +1597,7 @@ PortalRunFetch(Portal portal,
 	Portal		saveActivePortal;
 	ResourceOwner saveResourceOwner;
 	MemoryContext savePortalContext;
+	DispatcherState *saveDispatcherState;
 	MemoryContext oldContext = CurrentMemoryContext;
 
 	AssertArg(PortalIsValid(portal));
@@ -1598,11 +1618,16 @@ PortalRunFetch(Portal portal,
 	saveActivePortal = ActivePortal;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
+	saveDispatcherState = CurrentDispatcherState;
 	PG_TRY();
 	{
 		ActivePortal = portal;
 		if (portal->resowner)
 			CurrentResourceOwner = portal->resowner;
+
+		if (portal->dispatcherState)
+			CurrentDispatcherState = portal->dispatcherState;
+
 		PortalContext = PortalGetHeapMemory(portal);
 
 		MemoryContextSwitchTo(PortalContext);
@@ -1647,6 +1672,7 @@ PortalRunFetch(Portal portal,
 		/* Restore global vars and propagate error */
 		ActivePortal = saveActivePortal;
 		CurrentResourceOwner = saveResourceOwner;
+		CurrentDispatcherState = saveDispatcherState;
 		PortalContext = savePortalContext;
 
 		PG_RE_THROW();
@@ -1660,6 +1686,7 @@ PortalRunFetch(Portal portal,
 
 	ActivePortal = saveActivePortal;
 	CurrentResourceOwner = saveResourceOwner;
+	CurrentDispatcherState = saveDispatcherState;
 	PortalContext = savePortalContext;
 
 	return result;

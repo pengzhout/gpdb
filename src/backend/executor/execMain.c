@@ -108,6 +108,7 @@
 #include "cdb/cdbllize.h"
 #include "cdb/memquota.h"
 #include "cdb/cdbtargeteddispatch.h"
+#include "cdb/cdbdisp_api.h"
 
 extern bool cdbpathlocus_querysegmentcatalogs;
 
@@ -1222,6 +1223,9 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	 */
 	PG_TRY();
 	{
+		if (Gp_role == GP_ROLE_DISPATCH && !optimizer_replicated_table_insert && CurrentDispatcherState->queryDesc)
+			API_DispatchPlanEnd();
+
 		mppExecutorFinishup(queryDesc);
 	}
 	PG_CATCH();

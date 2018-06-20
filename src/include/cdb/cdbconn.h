@@ -16,6 +16,9 @@
 #ifndef CDBCONN_H
 #define CDBCONN_H
 
+#include "cdb/cdbdoublylinked.h"
+
+struct SegdbDescCache;
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for segment database definition and working values
@@ -63,13 +66,15 @@ typedef struct SegmentDatabaseDescriptor
     int4					backendPid;
     char                   *whoami;         /* QE identifier for msgs */
 
+    bool                   isWriter;
+    DoubleLinks             freelist;
+    DoubleLinks             cachelist;
+    struct SegdbDescCache           *cache;
 } SegmentDatabaseDescriptor;
-
 
 /* Initialize a segment descriptor in storage provided by the caller. */
 void
-cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
-                              struct CdbComponentDatabaseInfo  *cdbinfo);
+cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor **segdbDesc, struct CdbComponentDatabaseInfo  *cdbinfo);
 
 
 /* Free all memory owned by a segment descriptor. */

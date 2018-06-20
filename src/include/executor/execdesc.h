@@ -34,7 +34,8 @@ typedef enum GangType
 	GANGTYPE_ENTRYDB_READER,    /* a 1-gang with read access to the entry db */
 	GANGTYPE_SINGLETON_READER,	/* a 1-gang to read the segment dbs */
 	GANGTYPE_PRIMARY_READER,    /* a 1-gang or N-gang to read the segment dbs */
-	GANGTYPE_PRIMARY_WRITER		/* the N-gang that can update the segment dbs */
+	GANGTYPE_PRIMARY_WRITER,	/* the N-gang that can update the segment dbs */
+	GANGTYPE_EXPLICT_READER
 } GangType;
 
 /*

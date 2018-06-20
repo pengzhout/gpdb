@@ -1866,6 +1866,8 @@ AssignGangs(QueryDesc *queryDesc)
 	Slice	  **sliceMap;
 	SliceReq	req,
 				inv;
+	if (!optimizer_replicated_table_insert)
+		return;
 
 	/* Make a map so we can access slices quickly by index. */
 	nslices = list_length(sliceTable->slices);
@@ -2248,7 +2250,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/*
 	 * If QD, wait for QEs to finish and check their results.
 	 */
-	if (estate->dispatcherState && estate->dispatcherState->primaryResults)
+	if (optimizer_replicated_table_insert && estate->dispatcherState && estate->dispatcherState->primaryResults)
 	{
 		CdbDispatchResults *pr = estate->dispatcherState->primaryResults;
 		HTAB 			   *aopartcounts = NULL;

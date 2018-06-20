@@ -51,7 +51,7 @@ typedef struct Gang
 	/*
 	 * Array of QEs/segDBs that make up this gang. Sorted by segment index.
 	 */
-	struct SegmentDatabaseDescriptor *db_descriptors;	
+	struct SegmentDatabaseDescriptor **db_descriptors;	
 
 	/* For debugging purposes only. These do not add any actual functionality. */
 	bool allocated;
@@ -61,6 +61,8 @@ typedef struct Gang
 
 	/* memory context */
 	MemoryContext perGangContext;
+
+	int sliceIndex;
 } Gang;
 
 extern int qe_gang_id;

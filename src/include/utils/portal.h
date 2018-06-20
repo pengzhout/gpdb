@@ -49,6 +49,7 @@
 #include "executor/execdesc.h"
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
+#include "cdb/cdbdisp_new.h"
 
 /*
  * We have several execution strategies for Portals, depending on what
@@ -189,6 +190,8 @@ typedef struct PortalData
 
 	/* MPP: is this portal a CURSOR, or protocol level portal? */
 	bool		is_extended_query; /* simple or extended query protocol? */
+
+	struct DispatcherState *dispatcherState;
 }	PortalData;
 
 /*

@@ -344,6 +344,12 @@ PortalCleanup(Portal portal)
 		}
 	}
 
+	if (Gp_role == GP_ROLE_DISPATCH && portal->dispatcherState->connected)
+	{
+		DispatcherState_Join(DISPATCHER_WAIT_CANCEL);
+		DispatcherState_Close();
+	}
+
 	/*
 	 * Terminate unneeded QE processes.
 	 */

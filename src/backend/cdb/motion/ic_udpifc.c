@@ -3700,9 +3700,10 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 		 */
 		int			wakeEvents = WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH;
 		int			waitFd = PGINVALID_SOCKET;
-
+#if 0
 		if (Gp_role == GP_ROLE_DISPATCH)
 			waitFd = cdbdisp_getWaitSocketFd(pTransportStates->estate->dispatcherState);
+#endif
 		if (waitFd != PGINVALID_SOCKET)
 			wakeEvents |= WL_SOCKET_READABLE;
 
@@ -3724,7 +3725,10 @@ receiveChunksUDPIFC(ChunkTransportState *pTransportStates, ChunkTransportStateEn
 		/* check to see if the dispatcher should cancel */
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			checkForCancelFromQD(pTransportStates);
+			if (!optimizer_replicated_table_insert)
+				DispatcherState_Join(DISPATCHER_WAIT_NONBLOCK);
+			else
+				checkForCancelFromQD(pTransportStates);
 		}
 
 		/*

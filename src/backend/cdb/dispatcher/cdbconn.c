@@ -237,10 +237,9 @@ MPPnoticeReceiver(void *arg, const PGresult *res)
 
 /* Initialize a QE connection descriptor in storage provided by the caller. */
 void
-cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
-							  struct CdbComponentDatabaseInfo *cdbinfo)
+cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor **ptr_segdbDesc, struct CdbComponentDatabaseInfo *cdbinfo)
 {
-	MemSet(segdbDesc, 0, sizeof(*segdbDesc));
+	SegmentDatabaseDescriptor *segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(SegmentDatabaseDescriptor)); 
 
 	/* Segment db info */
 	segdbDesc->segment_database_info = cdbinfo;
@@ -257,6 +256,8 @@ cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc,
 	/* Connection error info */
 	segdbDesc->errcode = 0;
 	initPQExpBuffer(&segdbDesc->error_message);
+
+	*ptr_segdbDesc = segdbDesc;
 }
 
 /* Free memory of segment descriptor. */

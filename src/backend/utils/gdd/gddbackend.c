@@ -67,7 +67,7 @@ static void buildWaitGraph(GddCtx *ctx);
 static void breakDeadLock(GddCtx *ctx);
 static void dumpCancelResult(StringInfo str, List *xids);
 static void findSuperuser(char *superuser, bool try_bootstrap);
-
+static void GDDProgramErrorHandler(SIGNAL_ARGS);
 static MemoryContext	gddContext;
 static MemoryContext    oldContext;
 
@@ -205,6 +205,7 @@ GlobalDeadLockDetectorMain(int argc, char *argv[])
 	pqsignal(SIGUSR2, RequestShutdown);
 	pqsignal(SIGFPE, FloatExceptionHandler);
 	pqsignal(SIGCHLD, SIG_DFL);
+	pqsignal(SIGSEGV, GDDProgramErrorHandler);
 
 	/*
 	 * Create a resource owner to keep track of our resources (currently only
@@ -659,4 +660,14 @@ dumpCancelResult(StringInfo str, List *xids)
 		if (lnext(cell))
 			appendStringInfo(str, ",");
 	}
+}
+
+static void
+GDDProgramErrorHandler(SIGNAL_ARGS)
+{
+    int			save_errno = errno;
+    char       *pts = "process";
+
+    errno = save_errno;
+    StandardHandlerForSigillSigsegvSigbus_OnMainThread(pts, PASS_SIGNAL_ARGS);
 }

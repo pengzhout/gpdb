@@ -145,7 +145,7 @@ create_gang_retry:
 	{
 		parmIndex = i / gp_connections_per_thread;
 		pParms = &doConnectParmsAr[parmIndex];
-		segdbDesc = &newGangDefinition->db_descriptors[i];
+		segdbDesc = newGangDefinition->db_descriptors[i];
 		pParms->segdbDescPtrArray[pParms->db_count++] = segdbDesc;
 	}
 
@@ -404,7 +404,7 @@ checkConnectionStatus(Gang *gp,
 	 */
 	for (i = 0; i < size; i++)
 	{
-		segdbDesc = &gp->db_descriptors[i];
+		segdbDesc = gp->db_descriptors[i];
 
 		/*
 		 * check connection established or not, if not, we may have to

@@ -26,6 +26,7 @@
 #include "cdb/cdbdisp_dtx.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbgang.h"
+#include "cdb/cdbdisp_api.h"
 
 #include "storage/procarray.h"	/* updateSharedLocalSnapshot */
 #include "utils/snapmgr.h"
@@ -92,6 +93,12 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 		 "CdbDispatchDtxProtocolCommand: %s for gid = %s, direct content #: %d",
 		 dtxProtocolCommandLoggingStr, gid,
 		 direct->directed_dispatch ? direct->content[0] : -1);
+
+	if (!optimizer_replicated_table_insert)
+		return API_DispatchDTXCommand(dtxProtocolCommand, flags, dtxProtocolCommandLoggingStr,
+						gid, gxid, qeError, numresults, badGangs,
+						direct, serializedDtxContextInfo,
+						serializedDtxContextInfoLen);
 
 	*badGangs = false;
 	*qeError = NULL;

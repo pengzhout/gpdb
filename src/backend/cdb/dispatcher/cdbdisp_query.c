@@ -45,6 +45,7 @@
 								 * DispatchCommandParms */
 #include "cdb/cdbdisp_dtx.h"	/* for qdSerializeDtxContextInfo() */
 #include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbdisp_api.h"	/* for qdSerializeDtxContextInfo() */
 
 extern bool Test_print_direct_dispatch_info;
 
@@ -184,6 +185,12 @@ CdbDispatchPlan(struct QueryDesc *queryDesc,
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
 
+	if (!optimizer_replicated_table_insert)
+	{
+		API_DispatchPlanStart(queryDesc, planRequiresTxn, cancelOnError);
+		return;
+	}
+
 	/*
 	 * This function is called only for planned statements.
 	 */
@@ -294,6 +301,7 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 								  mppTxnOptions(false), /* no two-phase commit needed for SET */
 								  "CdbDispatchSetCommand");
 
+	return;
 	ds = cdbdisp_makeDispatcherState();
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
@@ -364,6 +372,9 @@ CdbDispatchCommand(const char *strCommand,
 				   int flags,
 				   CdbPgResults *cdb_pgresults)
 {
+	if (!optimizer_replicated_table_insert)
+		return API_DispatchCommand(strCommand, NULL, 0, NULL, 0, flags, cdb_pgresults);
+
 	return cdbdisp_dispatchCommandInternal(strCommand,
 										   NULL,
 										   0,
@@ -436,6 +447,10 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 		serializedQueryDispatchDesc = serializeNode((Node *) qddesc, &serializedQueryDispatchDesc_len,
 													NULL /* uncompressed_size */ );
 	}
+
+	if (!optimizer_replicated_table_insert)
+		return API_DispatchCommand(debug_query_string, serializedQuerytree, serializedQuerytree_len,
+						serializedQueryDispatchDesc, serializedQueryDispatchDesc_len, flags, cdb_pgresults);
 
 	/*
 	 * Dispatch serializedQuerytree to primary writer gang.

@@ -23,6 +23,7 @@ struct pg_result;                   /* PGresult ... #include "libpq-fe.h" */
 struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 struct StringInfoData;              /* #include "lib/stringinfo.h" */
 struct PQExpBufferData;             /* #include "libpq-int.h" */
+struct Gang;
 
 typedef struct CdbPgResults
 {
@@ -116,6 +117,8 @@ typedef struct CdbDispatchResult
 
 	/* num rows completed in COPY FROM ON SEGMENT */
 	int	numrowscompleted;
+
+	struct Gang *gang;
 } CdbDispatchResult;
 
 /*

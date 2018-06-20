@@ -115,7 +115,7 @@ create_gang_retry:
 			 * valid segdb we error out.  Also, if this segdb is invalid, we
 			 * must fail the connection.
 			 */
-			segdbDesc = &newGangDefinition->db_descriptors[i];
+			segdbDesc = newGangDefinition->db_descriptors[i];
 
 			/*
 			 * Build the connection string.  Writer-ness needs to be processed
@@ -164,7 +164,7 @@ create_gang_retry:
 
 			for (i = 0; i < size; i++)
 			{
-				segdbDesc = &newGangDefinition->db_descriptors[i];
+				segdbDesc = newGangDefinition->db_descriptors[i];
 
 				/*
 				 * Skip established connections and in-recovery-mode
@@ -250,7 +250,7 @@ create_gang_retry:
 
 				for (i = 0; i < size; i++)
 				{
-					segdbDesc = &newGangDefinition->db_descriptors[i];
+					segdbDesc = newGangDefinition->db_descriptors[i];
 					if (connStatusDone[i])
 						continue;
 

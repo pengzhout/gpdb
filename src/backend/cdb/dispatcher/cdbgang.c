@@ -269,7 +269,7 @@ AllocateWriterGang()
 		 * overwrite it in function getCdbProcessList.
 		 */
 		for (i = 0; i < writerGang->size; i++)
-			setQEIdentifier(&writerGang->db_descriptors[i], -1, writerGang->perGangContext);
+			setQEIdentifier(writerGang->db_descriptors[i], -1, writerGang->perGangContext);
 
 		MemoryContextSwitchTo(oldContext);
 	}
@@ -308,7 +308,7 @@ isPrimaryWriterGangAlive(void)
 
 	for (i = 0; i < size; i++)
 	{
-		SegmentDatabaseDescriptor *segdb = &primaryWriterGang->db_descriptors[i];
+		SegmentDatabaseDescriptor *segdb = primaryWriterGang->db_descriptors[i];
 
 		if (!isSockAlive(segdb->conn->sock))
 			return false;
@@ -454,7 +454,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 	Gang	   *newGangDefinition = NULL;
 	CdbComponentDatabaseInfo *cdbinfo = NULL;
 	CdbComponentDatabaseInfo *cdbInfoCopy = NULL;
-	SegmentDatabaseDescriptor *segdbDesc = NULL;
+	SegmentDatabaseDescriptor **ptr_segdbDesc = NULL;
 	MemoryContext perGangContext = NULL;
 
 	int			segCount = 0;
@@ -492,7 +492,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 	newGangDefinition->portal_name = NULL;
 	newGangDefinition->perGangContext = perGangContext;
 	newGangDefinition->db_descriptors =
-		(SegmentDatabaseDescriptor *) palloc0(size * sizeof(SegmentDatabaseDescriptor));
+		(SegmentDatabaseDescriptor **) palloc0(size * sizeof(SegmentDatabaseDescriptor*));
 
 	/* initialize db_descriptors */
 	switch (type)
@@ -500,17 +500,17 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 		case GANGTYPE_ENTRYDB_READER:
 			cdbinfo = &cdb_component_dbs->entry_db_info[0];
 			cdbInfoCopy = copyCdbComponentDatabaseInfo(cdbinfo);
-			segdbDesc = &newGangDefinition->db_descriptors[0];
-			cdbconn_initSegmentDescriptor(segdbDesc, cdbInfoCopy);
-			setQEIdentifier(segdbDesc, -1, perGangContext);
+			ptr_segdbDesc = &newGangDefinition->db_descriptors[0];
+			cdbconn_initSegmentDescriptor(ptr_segdbDesc, cdbInfoCopy);
+			setQEIdentifier(*ptr_segdbDesc, -1, perGangContext);
 			break;
 
 		case GANGTYPE_SINGLETON_READER:
 			cdbinfo = findDatabaseInfoBySegIndex(cdb_component_dbs, content);
 			cdbInfoCopy = copyCdbComponentDatabaseInfo(cdbinfo);
-			segdbDesc = &newGangDefinition->db_descriptors[0];
-			cdbconn_initSegmentDescriptor(segdbDesc, cdbInfoCopy);
-			setQEIdentifier(segdbDesc, -1, perGangContext);
+			ptr_segdbDesc = &newGangDefinition->db_descriptors[0];
+			cdbconn_initSegmentDescriptor(ptr_segdbDesc, cdbInfoCopy);
+			setQEIdentifier(*ptr_segdbDesc, -1, perGangContext);
 			break;
 
 		case GANGTYPE_PRIMARY_READER:
@@ -527,10 +527,10 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 				cdbinfo = &cdb_component_dbs->segment_db_info[i];
 				if (SEGMENT_IS_ACTIVE_PRIMARY(cdbinfo))
 				{
-					segdbDesc = &newGangDefinition->db_descriptors[segCount];
+					ptr_segdbDesc = &newGangDefinition->db_descriptors[segCount];
 					cdbInfoCopy = copyCdbComponentDatabaseInfo(cdbinfo);
-					cdbconn_initSegmentDescriptor(segdbDesc, cdbInfoCopy);
-					setQEIdentifier(segdbDesc, -1, perGangContext);
+					cdbconn_initSegmentDescriptor(ptr_segdbDesc, cdbInfoCopy);
+					setQEIdentifier(*ptr_segdbDesc, -1, perGangContext);
 					segCount++;
 				}
 			}
@@ -845,7 +845,7 @@ getAvailableGang(GangType type, int size, int content)
 
 					next_item = lnext(cur_item);
 
-					if (gang->db_descriptors[0].segindex == content)
+					if (gang->db_descriptors[0]->segindex == content)
 					{
 						availableReaderGangs1 = list_delete_cell(availableReaderGangs1, cur_item, prev_item);
 
@@ -948,8 +948,8 @@ getSegmentDescriptorFromGang(const Gang *gp, int seg)
 
 	for (i = 0; i < gp->size; i++)
 	{
-		if (gp->db_descriptors[i].segindex == seg)
-			return &(gp->db_descriptors[i]);
+		if (gp->db_descriptors[i]->segindex == seg)
+			return gp->db_descriptors[i];
 	}
 
 	return NULL;
@@ -1001,10 +1001,12 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 						  sliceIndex, gang->type, gang->size);
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
+#if 0
 	Assert((gang->type == GANGTYPE_PRIMARY_WRITER && gang->size == getgpsegmentCount()) ||
 		   (gang->type == GANGTYPE_PRIMARY_READER && gang->size == getgpsegmentCount()) ||
 		   (gang->type == GANGTYPE_ENTRYDB_READER && gang->size == 1) ||
 		   (gang->type == GANGTYPE_SINGLETON_READER && gang->size == 1));
+#endif
 
 
 	if (directDispatch != NULL && directDispatch->isDirectDispatch)
@@ -1013,7 +1015,7 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 		Assert(list_length(directDispatch->contentIds) == 1);
 
 		int			directDispatchContentId = linitial_int(directDispatch->contentIds);
-		SegmentDatabaseDescriptor *segdbDesc = &gang->db_descriptors[directDispatchContentId];
+		SegmentDatabaseDescriptor *segdbDesc = gang->db_descriptors[directDispatchContentId];
 		CdbProcess *process = makeCdbProcess(segdbDesc);
 
 		setQEIdentifier(segdbDesc, sliceIndex, gang->perGangContext);
@@ -1023,7 +1025,7 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 	{
 		for (i = 0; i < gang->size; i++)
 		{
-			SegmentDatabaseDescriptor *segdbDesc = &gang->db_descriptors[i];
+			SegmentDatabaseDescriptor *segdbDesc = gang->db_descriptors[i];
 			CdbProcess *process = makeCdbProcess(segdbDesc);
 
 			setQEIdentifier(segdbDesc, sliceIndex, gang->perGangContext);
@@ -1053,7 +1055,8 @@ getCdbProcessesForQD(int isPrimary)
 	CdbProcess *proc;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
-	Assert(cdb_component_dbs != NULL);
+
+	cdb_component_dbs = getComponentDatabases();
 
 	if (!isPrimary)
 	{
@@ -1121,7 +1124,7 @@ DisconnectAndDestroyGang(Gang *gp)
 	 */
 	for (i = 0; i < gp->size; i++)
 	{
-		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
 		Assert(segdbDesc != NULL);
 		cdbconn_disconnect(segdbDesc);
@@ -1320,7 +1323,7 @@ cleanupGang(Gang *gp)
 	 */
 	for (i = 0; i < gp->size; i++)
 	{
-		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
 		Assert(segdbDesc != NULL);
 
@@ -1365,7 +1368,7 @@ getGangMaxVmem(Gang *gp)
 
 	for (i = 0; i < gp->size; ++i)
 	{
-		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
 		Assert(segdbDesc != NULL);
 
@@ -1834,7 +1837,7 @@ GangOK(Gang *gp)
 
 	for (i = 0; i < gp->size; i++)
 	{
-		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
 		if (cdbconn_isBadConnection(segdbDesc))
 			return false;
