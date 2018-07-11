@@ -55,12 +55,6 @@
 #define MAX_CACHED_1_GANGS 1
 
 /*
- * Which gang this QE belongs to; this would be used in PostgresMain to find out
- * the slice this QE should execute
- */
-int			qe_gang_id = 0;
-
-/*
  * number of primary segments on this host
  */
 int			host_segments = 0;
@@ -652,7 +646,7 @@ makeOptions(void)
  */
 void
 build_gpqeid_param(char *buf, int bufsz,
-				   bool is_writer, int gangId, int hostSegs)
+				   bool is_writer, int hostSegs)
 {
 #ifdef HAVE_INT64_TIMESTAMP
 #define TIMESTAMP_FORMAT INT64_FORMAT
@@ -664,9 +658,9 @@ build_gpqeid_param(char *buf, int bufsz,
 #endif
 #endif
 
-	snprintf(buf, bufsz, "%d;" TIMESTAMP_FORMAT ";%s;%d;%d",
+	snprintf(buf, bufsz, "%d;" TIMESTAMP_FORMAT ";%s;%d",
 			 gp_session_id, PgStartTime,
-			 (is_writer ? "true" : "false"), gangId, hostSegs);
+			 (is_writer ? "true" : "false"), hostSegs);
 }
 
 static bool
@@ -727,11 +721,6 @@ cdbgang_parse_gpqeid_params(struct Port *port __attribute__((unused)),
 
 	if (gpqeid_next_param(&cp, &np))
 	{
-		qe_gang_id = (int) strtol(cp, NULL, 10);
-	}
-
-	if (gpqeid_next_param(&cp, &np))
-	{
 		host_segments = (int) strtol(cp, NULL, 10);
 	}
 
@@ -739,7 +728,7 @@ cdbgang_parse_gpqeid_params(struct Port *port __attribute__((unused)),
 	if (!cp || np)
 		goto bad;
 
-	if (gp_session_id <= 0 || PgStartTime <= 0 || qe_gang_id <= 0 || host_segments <= 0)
+	if (gp_session_id <= 0 || PgStartTime <= 0 || host_segments <= 0)
 		goto bad;
 
 	pfree(gpqeid);
