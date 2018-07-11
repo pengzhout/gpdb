@@ -101,9 +101,6 @@ typedef struct DispatchCommandQueryParms
 	int			seqServerPort;	/* If seqServerHost non-null, sequence server
 								 * port. */
 
-	/* the map from sliceIndex to gang_id, in array form */
-	int			numSlices;
-	int		   *sliceIndexGangIdMap;
 } DispatchCommandQueryParms;
 
 static int fillSliceVector(SliceTable *sliceTable,
@@ -124,8 +121,6 @@ static void
 cdbdisp_dispatchX(QueryDesc *queryDesc,
 			bool planRequiresTxn,
 			bool cancelOnError);
-
-static int *buildSliceIndexGangIdMap(SliceVec *sliceVec, int numSlices, int numTotalSlices);
 
 static char *serializeParamListInfo(ParamListInfo paramLI, int *len_p);
 
@@ -706,12 +701,6 @@ cdbdisp_destroyQueryParms(DispatchCommandQueryParms *pQueryParms)
 		pQueryParms->seqServerHost = NULL;
 	}
 
-	if (pQueryParms->sliceIndexGangIdMap != NULL)
-	{
-		pfree(pQueryParms->sliceIndexGangIdMap);
-		pQueryParms->sliceIndexGangIdMap = NULL;
-	}
-
 	pfree(pQueryParms);
 }
 
@@ -761,12 +750,12 @@ compare_slice_order(const void *aa, const void *bb)
 	/*
 	 * sort the writer gang slice first, because he sets the shared snapshot
 	 */
-	if (a->slice->primaryGang->gang_id == 1)
+	if (a->slice->primaryGang->type == GANGTYPE_PRIMARY_WRITER)
 	{
-		Assert(b->slice->primaryGang->gang_id != 1);
+		Assert(b->slice->primaryGang->type != GANGTYPE_PRIMARY_WRITER);
 		return -1;
 	}
-	if (b->slice->primaryGang->gang_id == 1)
+	if (b->slice->primaryGang->type == GANGTYPE_PRIMARY_WRITER)
 	{
 		return 1;
 	}
@@ -909,8 +898,6 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	const char *seqServerHost = pQueryParms->seqServerHost;
 	int			seqServerHostlen = pQueryParms->seqServerHostlen;
 	int			seqServerPort = pQueryParms->seqServerPort;
-	int			numSlices = pQueryParms->numSlices;
-	int		   *sliceIndexGangIdMap = pQueryParms->sliceIndexGangIdMap;
 	int64		currentStatementStartTimestamp = GetCurrentStatementStartTimestamp();
 	Oid			sessionUserId = GetSessionUserId();
 	Oid			outerUserId = GetOuterUserId();
@@ -918,12 +905,13 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	StringInfoData resgroupInfo;
 
 	int			tmp,
-				len,
-				i;
+				len;
 	uint32		n32;
 	int			total_query_len;
 	char	   *shared_query,
 			   *pos;
+
+	int localSlice = -1;
 
 	initStringInfo(&resgroupInfo);
 	if (IsResGroupActivated())
@@ -931,6 +919,7 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 
 	total_query_len = 1 /* 'M' */ +
 		sizeof(len) /* message length */ +
+		sizeof(localSlice) /* slice id */ +
 		sizeof(gp_command_count) +
 		sizeof(sessionUserId) /* sessionUserIsSuper */ +
 		sizeof(outerUserId) /* outerUserIsSuper */ +
@@ -953,8 +942,6 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 		params_len +
 		sddesc_len +
 		seqServerHostlen +
-		sizeof(numSlices) +
-		sizeof(int) * numSlices +
 		sizeof(resgroupInfo.len) +
 		resgroupInfo.len;
 
@@ -966,6 +953,11 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	*pos++ = 'M';
 
 	pos += 4;					/* placeholder for message length */
+
+	/* for sliced plan, this field will be replaced accordingly */
+	tmp = htonl(localSlice);
+	memcpy(pos, &tmp, sizeof(localSlice));
+	pos += sizeof(localSlice);
 
 	tmp = htonl(gp_command_count);
 	memcpy(pos, &tmp, sizeof(gp_command_count));
@@ -1078,20 +1070,6 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 		pos += seqServerHostlen;
 	}
 
-	tmp = htonl(numSlices);
-	memcpy(pos, &tmp, sizeof(tmp));
-	pos += sizeof(tmp);
-
-	if (numSlices > 0)
-	{
-		for (i = 0; i < numSlices; ++i)
-		{
-			tmp = htonl(sliceIndexGangIdMap[i]);
-			memcpy(pos, &tmp, sizeof(tmp));
-			pos += sizeof(tmp);
-		}
-	}
-
 	tmp = htonl(resgroupInfo.len);
 	memcpy(pos, &tmp, sizeof(resgroupInfo.len));
 	pos += sizeof(resgroupInfo.len);
@@ -1177,8 +1155,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, nTotalSlices);
 
 	pQueryParms = cdbdisp_buildPlanQueryParms(queryDesc, planRequiresTxn);
-	pQueryParms->numSlices = nTotalSlices;
-	pQueryParms->sliceIndexGangIdMap = buildSliceIndexGangIdMap(sliceVector, nSlices, nTotalSlices);
 	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
 	/*
@@ -1336,30 +1312,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 				break;
 		}
 	}
-}
-
-static int *
-buildSliceIndexGangIdMap(SliceVec *sliceVec, int numSlices, int numTotalSlices)
-{
-	Assert(sliceVec != NULL && numSlices > 0 && numTotalSlices > 0);
-
-	/* would be freed in buildGpQueryString */
-	int		   *sliceIndexGangIdMap = palloc0(numTotalSlices * sizeof(int));
-
-	Slice	   *slice = NULL;
-	int			index;
-
-	for (index = 0; index < numSlices; ++index)
-	{
-		slice = sliceVec[index].slice;
-
-		if (slice->primaryGang == NULL)
-			continue;
-
-		sliceIndexGangIdMap[slice->sliceIndex] = slice->primaryGang->gang_id;
-	}
-
-	return sliceIndexGangIdMap;
 }
 
 /*

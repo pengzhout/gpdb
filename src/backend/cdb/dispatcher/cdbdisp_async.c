@@ -280,7 +280,13 @@ cdbdisp_dispatchToGang_async(struct CdbDispatcherState *ds,
 							 CdbDispatchDirectDesc *dispDirect)
 {
 	int			i;
+	char *queryText;
+	int queryTextLen;
+
 	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
+
+	queryText = cdbdisp_copyAndReplcaceSliceId(pParms->query_text, pParms->query_text_len, sliceIndex);
+	queryTextLen = pParms->query_text_len;
 
 	/*
 	 * Start the dispatching
@@ -317,7 +323,7 @@ cdbdisp_dispatchToGang_async(struct CdbDispatcherState *ds,
 		}
 		pParms->dispatchResultPtrArray[pParms->dispatchCount++] = qeResult;
 
-		dispatchCommand(qeResult, pParms->query_text, pParms->query_text_len);
+		dispatchCommand(qeResult, queryText, queryTextLen);
 	}
 }
 
