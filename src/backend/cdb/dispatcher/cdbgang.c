@@ -414,7 +414,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 {
 	Gang	   *newGangDefinition = NULL;
 	CdbComponentDatabaseInfo *cdbinfo = NULL;
-	CdbComponentDatabaseInfo *cdbInfoCopy = NULL;
 	SegmentDatabaseDescriptor *segdbDesc = NULL;
 	MemoryContext perGangContext = NULL;
 
@@ -460,16 +459,14 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 	{
 		case GANGTYPE_ENTRYDB_READER:
 			cdbinfo = &cdb_component_dbs->entry_db_info[0];
-			cdbInfoCopy = copyCdbComponentDatabaseInfo(cdbinfo);
-			segdbDesc = cdbconn_createSegmentDescriptor(cdbInfoCopy);
+			segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo);
 			setQEIdentifier(segdbDesc, -1, perGangContext);
 			newGangDefinition->db_descriptors[0] = segdbDesc;
 			break;
 
 		case GANGTYPE_SINGLETON_READER:
 			cdbinfo = findDatabaseInfoBySegIndex(cdb_component_dbs, content);
-			cdbInfoCopy = copyCdbComponentDatabaseInfo(cdbinfo);
-			segdbDesc = cdbconn_createSegmentDescriptor(cdbInfoCopy);
+			segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo);
 			setQEIdentifier(segdbDesc, -1, perGangContext);
 			newGangDefinition->db_descriptors[0] = segdbDesc;
 			break;
@@ -488,8 +485,7 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 				cdbinfo = &cdb_component_dbs->segment_db_info[i];
 				if (SEGMENT_IS_ACTIVE_PRIMARY(cdbinfo))
 				{
-					cdbInfoCopy = copyCdbComponentDatabaseInfo(cdbinfo);
-					segdbDesc = cdbconn_createSegmentDescriptor(cdbInfoCopy);
+					segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo);
 					setQEIdentifier(segdbDesc, -1, perGangContext);
 					newGangDefinition->db_descriptors[segCount] = segdbDesc;
 					segCount++;
