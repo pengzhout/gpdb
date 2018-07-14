@@ -267,9 +267,12 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 
 	AllocateWriterGang(ds);
 
-	/* In case there are idle gangs */
-	AllocateAllIdleReaderGangs(ds);
-
+	/* 
+	 * temp fix: it's now not easy to get all idle gang, will fix
+	 * in following commits
+	 */ 
+	cdbcomponent_cleanupIdleSegdbsList(false);
+	
 	cdbdisp_makeDispatchResults(ds, list_length(ds->allocatedGangs), cancelOnError);
 	cdbdisp_makeDispatchParams (ds, list_length(ds->allocatedGangs), queryText, queryTextLength);
 
