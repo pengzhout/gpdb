@@ -125,9 +125,6 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
 		elog(FATAL, "dispatch process called with role %d", Gp_role);
 	}
 
-	insist_log(IsTransactionOrTransactionBlock(),
-			   "cannot allocate segworker group outside of transaction");
-
 	oldContext = MemoryContextSwitchTo(getGangContext());
 
 	switch (type)
@@ -151,19 +148,11 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
 			Assert(false);
 	}
 
-	/*
-	 * First, we look for an unallocated but created gang of the right type if
-	 * it exists, we return it. Else, we create a new gang
-	 */
-	gp = getAvailableGang(type, size, content);
-	if (gp == NULL)
-	{
-		ELOG_DISPATCHER_DEBUG("Creating a new reader size %d gang for %s",
-							  size, (portal_name ? portal_name : "unnamed portal"));
+	ELOG_DISPATCHER_DEBUG("Creating a new reader size %d gang for %s",
+						  size, (portal_name ? portal_name : "unnamed portal"));
 
-		gp = createGang(type, gang_id_counter++, size, content);
-		gp->allocated = true;
-	}
+	gp = createGang(type, gang_id_counter++, size, content);
+	gp->allocated = true;
 
 	/*
 	 * make sure no memory is still allocated for previous portal name that
@@ -175,14 +164,14 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
 	/* let the gang know which portal it is being assigned to */
 	gp->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
 
-	ds->allocatedGangs = lcons(gp, ds->allocatedGangs);
-
 	MemoryContextSwitchTo(oldContext);
 
 	ELOG_DISPATCHER_DEBUG("on return: availableReaderGangsN %d, "
 						  "availableReaderGangs1 %d",
 						  list_length(availableReaderGangsN),
 						  list_length(availableReaderGangs1));
+
+	ds->allocatedGangs = lappend(ds->allocatedGangs, gp);
 
 	return gp;
 }
@@ -196,6 +185,7 @@ AllocateWriterGang(CdbDispatcherState *ds)
 	Gang	   *writerGang = NULL;
 	MemoryContext oldContext = NULL;
 	int			i = 0;
+	int nsegdb = getgpsegmentCount();
 
 	ELOG_DISPATCHER_DEBUG("AllocateWriterGang begin.");
 
@@ -212,48 +202,20 @@ AllocateWriterGang(CdbDispatcherState *ds)
 			 errhint("likely caused by a function that reads or modifies data in a distributed table")));
 	}
 
+	oldContext = MemoryContextSwitchTo(getGangContext());
+
+	writerGang = createGang(GANGTYPE_PRIMARY_WRITER,
+			PRIMARY_WRITER_GANG_ID, nsegdb, -1);
+	writerGang->allocated = true;
+
 	/*
-	 * First, we look for an unallocated but created gang of the right type if
-	 * it exists, we return it. Else, we create a new gang
+	 * set "whoami" for utility statement. non-utility statement will
+	 * overwrite it in function getCdbProcessList.
 	 */
-	if (availablePrimaryWriterGang != NULL)
-	{
-		if (!GangOK(availablePrimaryWriterGang))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-					 errmsg("could not connect to segment: initialization of segworker group failed")));
-		}
-		else
-		{
-			ELOG_DISPATCHER_DEBUG("Reusing an existing primary writer gang");
-			writerGang = availablePrimaryWriterGang;
-			availablePrimaryWriterGang = NULL;
-		}
-	}
+	for (i = 0; i < writerGang->size; i++)
+		setQEIdentifier(&writerGang->db_descriptors[i], -1, writerGang->perGangContext);
 
-	if (writerGang == NULL)
-	{
-		int			nsegdb = getgpsegmentCount();
-
-		insist_log(IsTransactionOrTransactionBlock(),
-				   "cannot allocate segworker group outside of transaction");
-
-		oldContext = MemoryContextSwitchTo(getGangContext());
-
-		writerGang = createGang(GANGTYPE_PRIMARY_WRITER,
-								PRIMARY_WRITER_GANG_ID, nsegdb, -1);
-		writerGang->allocated = true;
-
-		/*
-		 * set "whoami" for utility statement. non-utility statement will
-		 * overwrite it in function getCdbProcessList.
-		 */
-		for (i = 0; i < writerGang->size; i++)
-			setQEIdentifier(writerGang->db_descriptors[i], -1, writerGang->perGangContext);
-
-		MemoryContextSwitchTo(oldContext);
-	}
+	MemoryContextSwitchTo(oldContext);
 
 	ELOG_DISPATCHER_DEBUG("AllocateWriterGang end.");
 
