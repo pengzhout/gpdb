@@ -62,13 +62,13 @@ typedef struct SegmentDatabaseDescriptor
     uint32		            motionListener; /* interconnect listener port */
     int4					backendPid;
     char                   *whoami;         /* QE identifier for msgs */
-
+    bool		isWriter;
 } SegmentDatabaseDescriptor;
 
 
 /* Initialize a segment descriptor in storage provided by the caller. */
 SegmentDatabaseDescriptor *
-cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo  *cdbinfo);
+cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo  *cdbinfo, bool isExtended);
 
 
 /* Free all memory owned by a segment descriptor. */

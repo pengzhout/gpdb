@@ -30,6 +30,7 @@ static uint32 cdbconn_get_motion_listener_port(PGconn *conn);
 #include "cdb/cdbconn.h"		/* me */
 #include "cdb/cdbutil.h"		/* CdbComponentDatabaseInfo */
 #include "cdb/cdbvars.h"
+#include "cdb/cdbgang.h"
 
 int			gp_segment_connect_timeout = 180;
 
@@ -237,27 +238,72 @@ MPPnoticeReceiver(void *arg, const PGresult *res)
 
 /* Initialize a QE connection descriptor in storage provided by the caller. */
 SegmentDatabaseDescriptor *
-cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo)
+cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool isWriter)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
+	MemoryContext oldContext;
+	ListCell *curItem = NULL;
+	ListCell *nextItem = NULL;
+	ListCell *prevItem = NULL;
 
-	segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(SegmentDatabaseDescriptor));
+	Assert(GangContext != NULL);
+	oldContext = MemoryContextSwitchTo(GangContext);
 
-	/* Segment db info */
-	segdbDesc->segment_database_info = cdbinfo;
-	segdbDesc->segindex = cdbinfo->segindex;
+	curItem = list_head(cdbinfo->freelist);
+	while (curItem != NULL)
+	{
+		segdbDesc = (SegmentDatabaseDescriptor *)lfirst(curItem);
+		nextItem = lnext(curItem);
+		Assert(segdbDesc);
 
-	/* Connection info, set in function cdbconn_doConnect */
-	segdbDesc->conn = NULL;
-	segdbDesc->motionListener = 0;
-	segdbDesc->backendPid = 0;
+		if (!isWriter && segdbDesc->isWriter)
+		{
+			segdbDesc = NULL;
+			prevItem = curItem;
+			curItem = nextItem;
+			continue;
+		}
 
-	/* whoami */
-	segdbDesc->whoami = NULL;
+		cdbinfo->freelist = list_delete_cell(cdbinfo->freelist, curItem, prevItem); 
 
-	/* Connection error info */
-	segdbDesc->errcode = 0;
-	initPQExpBuffer(&segdbDesc->error_message);
+		if (cdbconn_isBadConnection(segdbDesc))
+		{
+			cdbconn_disconnect(segdbDesc);
+			cdbconn_termSegmentDescriptor(segdbDesc);
+			segdbDesc = NULL;
+			prevItem = curItem;
+			curItem = nextItem;
+			continue;
+		}
+
+		break;
+	}
+
+	AssertImply(segdbDesc, segdbDesc->isWriter == isWriter);
+
+	if (!segdbDesc)
+	{
+		segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(SegmentDatabaseDescriptor));
+
+		/* Segment db info */
+		segdbDesc->segment_database_info = cdbinfo;
+		segdbDesc->segindex = cdbinfo->segindex;
+
+		/* Connection info, set in function cdbconn_doConnect */
+		segdbDesc->conn = NULL;
+		segdbDesc->motionListener = 0;
+		segdbDesc->backendPid = 0;
+
+		/* whoami */
+		segdbDesc->whoami = NULL;
+		segdbDesc->isWriter = isWriter;
+
+		/* Connection error info */
+		segdbDesc->errcode = 0;
+		initPQExpBuffer(&segdbDesc->error_message);
+	}
+
+	MemoryContextSwitchTo(oldContext);
 
 	return segdbDesc;
 }

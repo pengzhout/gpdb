@@ -228,6 +228,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 			component_databases->total_entry_dbs++;
 		}
 
+		pRow->freelist = NIL;
 		pRow->dbid = dbid;
 		pRow->segindex = content;
 		pRow->role = role;
@@ -277,6 +278,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 			hsEntry->segmentCount++;
 		else
 			hsEntry->segmentCount = 1;
+
 	}
 
 	/*

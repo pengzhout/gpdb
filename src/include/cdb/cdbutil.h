@@ -23,6 +23,7 @@
 
 #include <math.h>
 #include "catalog/gp_segment_config.h"
+#include "nodes/pg_list.h"
 
 /* cdb_rand returns a random float value between 0 and 1 inclusive */
 #define cdb_rand() ((double) random() / (double) MAX_RANDOM_VALUE)
@@ -64,6 +65,7 @@ typedef struct CdbComponentDatabaseInfo
 
 	char	   *hostaddrs[COMPONENT_DBS_MAX_ADDRS];	/* cached lookup of names */	
 	int16		hostSegs;		/* number of primary segments on the same hosts */
+	List	*freelist;
 } CdbComponentDatabaseInfo;
 
 #define SEGMENT_IS_ACTIVE_MIRROR(p) \

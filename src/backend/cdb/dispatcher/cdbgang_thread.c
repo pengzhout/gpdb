@@ -309,6 +309,10 @@ thread_DoConnect(void *arg)
 			continue;
 		}
 
+		/* if it's a cached QE, skip */
+		if (segdbDesc->conn != NULL)
+			continue;
+
 		/*
 		 * Build the connection string.  Writer-ness needs to be processed
 		 * early enough now some locks are taken before command line options

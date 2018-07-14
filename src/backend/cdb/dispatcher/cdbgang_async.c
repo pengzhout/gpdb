@@ -117,6 +117,13 @@ create_gang_retry:
 			 */
 			segdbDesc = newGangDefinition->db_descriptors[i];
 
+			/* if it's a cached QE, skip */
+			if (segdbDesc->conn != NULL)
+			{
+				connStatusDone[i] = true;
+				continue;
+			}
+
 			/*
 			 * Build the connection string.  Writer-ness needs to be processed
 			 * early enough now some locks are taken before command line
@@ -182,6 +189,7 @@ create_gang_retry:
 											errdetail("Internal error: No motion listener port (%s)", segdbDesc->whoami)));
 						successful_connections++;
 						connStatusDone[i] = true;
+
 						continue;
 
 					case PGRES_POLLING_READING:
