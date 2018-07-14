@@ -947,7 +947,7 @@ doNotifyingAbort(void)
 
 	if (currentGxact->state == DTX_STATE_NOTIFYING_ABORT_NO_PREPARED)
 	{
-		if (GangsExist())
+		if (cdbcomponent_segdbsExist())
 		{
 			succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED, /* flags */ 0,
 													 currentGxact->gid, currentGxact->gxid,

@@ -107,7 +107,7 @@ static DispatchCommandQueryParms *cdbdisp_buildPlanQueryParms(struct QueryDesc *
 static DispatchCommandQueryParms *cdbdisp_buildUtilityQueryParms(struct Node *stmt, int flags, List *oid_assignments);
 static DispatchCommandQueryParms *cdbdisp_buildCommandQueryParms(const char *strCommand, int flags);
 
-static void cdbdisp_dispatchCommandInternal(char *queryText, int queryTextLength,
+static void cdbdisp_dispatchCommandInternal(DispatchCommandQueryParms *pQueryParms,
 											int flags, CdbPgResults *cdb_pgresults);
 
 static void
@@ -261,15 +261,19 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 		 strCommand);
 
 	pQueryParms = cdbdisp_buildCommandQueryParms(strCommand, DF_NONE);
-	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
 	ds = cdbdisp_makeDispatcherState(false);
 
+	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
+
 	AllocateWriterGang(ds);
 
-	/* In case there are idle gangs */
-	AllocateAllIdleReaderGangs(ds);
-
+	/* 
+	 * temp fix: it's now not easy to get all idle gang, will fix
+	 * in following commits
+	 */ 
+	cdbcomponent_cleanupIdleSegdbsList(false);
+	
 	cdbdisp_makeDispatchResults(ds, list_length(ds->allocatedGangs), cancelOnError);
 	cdbdisp_makeDispatchParams (ds, list_length(ds->allocatedGangs), queryText, queryTextLength);
 
@@ -317,8 +321,6 @@ CdbDispatchCommand(const char *strCommand,
 				   CdbPgResults *cdb_pgresults)
 {
 	DispatchCommandQueryParms *pQueryParms;
-	char *queryText;
-	int queryTextLength;
 	bool needTwoPhase = flags & DF_NEED_TWO_PHASE;
 	bool withSnapshot = flags & DF_WITH_SNAPSHOT;
 
@@ -331,9 +333,8 @@ CdbDispatchCommand(const char *strCommand,
 		   strCommand, (needTwoPhase ? "true" : "false"));
 
 	pQueryParms = cdbdisp_buildCommandQueryParms(strCommand, flags);
-	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
-	return cdbdisp_dispatchCommandInternal(queryText, queryTextLength, flags, cdb_pgresults);
+	return cdbdisp_dispatchCommandInternal(pQueryParms, flags, cdb_pgresults);
 }
 
 /*
@@ -357,8 +358,6 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 							CdbPgResults *cdb_pgresults)
 {
 	DispatchCommandQueryParms *pQueryParms;
-	char *queryText;
-	int queryTextLength;
 	bool needTwoPhase = flags & DF_NEED_TWO_PHASE;
 	bool withSnapshot = flags & DF_WITH_SNAPSHOT;
 
@@ -371,14 +370,12 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 		   debug_query_string, (needTwoPhase ? "true" : "false"));
 
 	pQueryParms = cdbdisp_buildUtilityQueryParms(stmt, flags, oid_assignments);
-	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
-	return cdbdisp_dispatchCommandInternal(queryText, queryTextLength, flags, cdb_pgresults);
+	return cdbdisp_dispatchCommandInternal(pQueryParms, flags, cdb_pgresults);
 }
 
 static void
-cdbdisp_dispatchCommandInternal(char *queryText,
-								int queryTextLength,
+cdbdisp_dispatchCommandInternal(DispatchCommandQueryParms *pQueryParms,
                                 int flags,
                                 CdbPgResults *cdb_pgresults)
 {
@@ -386,12 +383,15 @@ cdbdisp_dispatchCommandInternal(char *queryText,
 	Gang *primaryGang;
 	CdbDispatchResults *pr;
 	ErrorData *qeError = NULL;
+	char *queryText;
+	int queryTextLength;
 
 	/*
 	 * Dispatch the command.
 	 */
 	ds = cdbdisp_makeDispatcherState(false);
 
+	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
@@ -662,6 +662,12 @@ compare_slice_order(const void *aa, const void *bb)
 		return 1;
 	}
 
+	if (a->slice->primaryGang->size > b->slice->primaryGang->size)
+		return -1;
+
+	if (a->slice->primaryGang->size < b->slice->primaryGang->size)
+		return 1;
+
 	if (a->children == b->children)
 		return 0;
 	else if (a->children > b->children)
@@ -802,6 +808,7 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	Oid			outerUserId = GetOuterUserId();
 	Oid			currentUserId = GetUserId();
 	StringInfoData resgroupInfo;
+	MemoryContext oldContext;
 
 	int			tmp,
 				len;
@@ -811,6 +818,9 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 			   *pos;
 
 	int localSlice = -1;
+
+	Assert(DispatcherContext);
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
 	initStringInfo(&resgroupInfo);
 	if (IsResGroupActivated())
@@ -975,6 +985,7 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	if (finalLen)
 		*finalLen = len + 1;
 
+	MemoryContextSwitchTo(oldContext);
 	return shared_query;
 }
 
@@ -1399,12 +1410,13 @@ CdbDispatchCopyStart(struct CdbCopy *cdbCopy, Node *stmt, int flags)
 		   debug_query_string, (needTwoPhase ? "true" : "false"));
 
 	pQueryParms = cdbdisp_buildUtilityQueryParms(stmt, flags, NULL);
-	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
 	/*
 	 * Dispatch the command.
 	 */
 	ds = cdbdisp_makeDispatcherState(false);
+
+	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
