@@ -198,7 +198,7 @@ cdbdisp_initDispatchParmsForGang(struct CdbDispatcherState *ds,
 		CdbDispatchResult *qeResult = NULL;
 		DispatchCommandParms *pParms = NULL;
 		int			parmsIndex = 0;
-		SegmentDatabaseDescriptor *segdbDesc = &gp->db_descriptors[i];
+		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
 		Assert(segdbDesc != NULL);
 
