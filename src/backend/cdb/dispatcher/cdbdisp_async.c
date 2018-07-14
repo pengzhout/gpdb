@@ -291,7 +291,7 @@ cdbdisp_dispatchToGang_async(struct CdbDispatcherState *ds,
 	{
 		CdbDispatchResult *qeResult;
 
-		SegmentDatabaseDescriptor *segdbDesc = &gp->db_descriptors[i];
+		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
 		Assert(segdbDesc != NULL);
 
