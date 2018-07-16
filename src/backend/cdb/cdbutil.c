@@ -41,6 +41,7 @@
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "libpq/ip.h"
+#include "cdb/cdbconn.h"
 
 /*
  * Helper Functions
@@ -486,6 +487,8 @@ static void
 freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 {
 	int			i;
+	ListCell *lc;
+	SegmentDatabaseDescriptor *segdbDesc;
 
 	if (cdi == NULL)
 		return;
@@ -507,6 +510,16 @@ freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 			cdi->hostaddrs[i] = NULL;
 		}
 	}
+
+	foreach(lc, cdi->freelist)
+	{
+		segdbDesc = (SegmentDatabaseDescriptor *)lfirst(lc);
+		
+		cdbconn_disconnect(segdbDesc);
+		cdbconn_termSegmentDescriptor(segdbDesc);
+	}
+
+	cdi->freelist = NIL;
 }
 
 /*

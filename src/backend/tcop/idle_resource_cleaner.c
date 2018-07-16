@@ -57,7 +57,7 @@ get_idle_session_timeout(void)
 static void
 idle_gang_timeout_action(void)
 {
-	DisconnectAndDestroyUnusedGangs();
+	DisconnectAndDestroyUnusedQEs();
 }
 
 /*

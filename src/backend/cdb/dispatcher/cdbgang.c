@@ -88,7 +88,6 @@ static int	gang_id_counter = 2;
 
 
 static Gang *createGang(GangType type, int gang_id, int size, int content);
-static void disconnectAndDestroyAllReaderGangs(bool destroyAllocated);
 
 static bool cleanupGang(Gang *gp);
 static void resetSessionForPrimaryGangLoss(void);
@@ -213,7 +212,7 @@ AllocateWriterGang(CdbDispatcherState *ds)
 	 * overwrite it in function getCdbProcessList.
 	 */
 	for (i = 0; i < writerGang->size; i++)
-		setQEIdentifier(&writerGang->db_descriptors[i], -1, writerGang->perGangContext);
+		setQEIdentifier(writerGang->db_descriptors[i], -1, writerGang->perGangContext);
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -458,7 +457,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 
 			if (size != segCount)
 			{
-				DisconnectAndDestroyAllGangs(true);
 				elog(ERROR, "Not all primary segment instances are active and connected");
 			}
 			break;
@@ -1021,36 +1019,6 @@ DisconnectAndDestroyGang(Gang *gp)
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyGang done");
 }
 
-/*
- * disconnectAndDestroyAllReaderGangs
- *
- * Here we destroy all reader gangs regardless of the portal they belong to.
- * TODO: This may need to be done more carefully when multiple cursors are
- * enabled.
- * If the parameter destroyAllocated is true, then destroy allocated as well as
- * available gangs.
- */
-static void
-disconnectAndDestroyAllReaderGangs(bool destroyAllocated)
-{
-	Gang	   *gp = NULL;
-	ListCell   *lc = NULL;
-
-	foreach(lc, availableReaderGangsN)
-	{
-		gp = (Gang *) lfirst(lc);
-		DisconnectAndDestroyGang(gp);
-	}
-	availableReaderGangsN = NULL;
-
-	foreach(lc, availableReaderGangs1)
-	{
-		gp = (Gang *) lfirst(lc);
-		DisconnectAndDestroyGang(gp);
-	}
-	availableReaderGangs1 = NULL;
-}
-
 void
 DisconnectAndDestroyAllGangs(bool resetSession)
 {
@@ -1066,11 +1034,18 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 		CurrentGangCreating = NULL;
 	}
 
-	/* for now, destroy all readers, regardless of the portal that owns them */
-	disconnectAndDestroyAllReaderGangs(true);
+	/*
+	 * Dispatcher state may contain allocated gangs.
+	 * Callers should make sure no dispatcher states exist
+	 */
+	Assert(cdbdisp_noDispatcherStates());
 
-	DisconnectAndDestroyGang(availablePrimaryWriterGang);
-	availablePrimaryWriterGang = NULL;
+	/*
+	 * Clean up cdb_component_dbs which will cleanup
+	 * all allocated segdbDescs.
+	 */
+	freeCdbComponentDatabases(cdb_component_dbs);
+	cdb_component_dbs = NULL;
 
 	if (resetSession)
 		resetSessionForPrimaryGangLoss();
@@ -1082,73 +1057,103 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	if (NULL != GangContext)
 	{
 		MemoryContextReset(GangContext);
-		cdb_component_dbs = NULL;
 	}
 
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyAllGangs done");
 }
 
-/*
- * Destroy all idle (i.e available) reader gangs.
- * It is always safe to get rid of the reader gangs.
- *
- * call only from an idle session.
- */
 void
-disconnectAndDestroyIdleReaderGangs(void)
+DisconnectAndDestroyIdleQEs(bool includeWriter)
 {
-	ELOG_DISPATCHER_DEBUG("disconnectAndDestroyIdleReaderGangs beginning");
+	CdbComponentDatabases *pDBs;
+	SegmentDatabaseDescriptor *segdbDesc;
+	ListCell *lc;
+	int i;
 
-	disconnectAndDestroyAllReaderGangs(false);
+	if (cdb_component_dbs == NULL)		
+		return;
 
-	ELOG_DISPATCHER_DEBUG("disconnectAndDestroyIdleReaderGangs done");
+	pDBs = cdb_component_dbs;
+
+	if (pDBs->segment_db_info != NULL)
+	{
+		for (i = 0; i < pDBs->total_segment_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *cdi = &pDBs->segment_db_info[i];
+
+			foreach(lc, cdi->freelist)
+			{
+				segdbDesc = (SegmentDatabaseDescriptor *)lfirst(lc);
+
+				if (segdbDesc->isWriter && !includeWriter)
+					continue;
+
+				cdbconn_disconnect(segdbDesc);
+				cdbconn_termSegmentDescriptor(segdbDesc);
+			}
+		}
+	}
+
+	if (pDBs->entry_db_info != NULL)
+	{
+		for (i = 0; i < pDBs->total_entry_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *cdi = &pDBs->entry_db_info[i];
+
+			foreach(lc, cdi->freelist)
+			{
+				segdbDesc = (SegmentDatabaseDescriptor *)lfirst(lc);
+
+				if (segdbDesc->isWriter && !includeWriter)
+					continue;
+
+				cdbconn_disconnect(segdbDesc);
+				cdbconn_termSegmentDescriptor(segdbDesc);
+			}
+		}
+
+	}
 
 	return;
 }
 
 /*
- * Destroy all idle (i.e available) reader gangs.
- * It is always safe to get rid of the reader gangs.
+ * Destroy all idle (i.e available) QEs.
+ * It is always safe to get rid of the reader QEs.
  *
  * If we are not in a transaction and we do not have a TempNamespace, destroy
- * writer gangs as well.
+ * writer QEs as well.
  *
  * call only from an idle session.
  */
-void DisconnectAndDestroyUnusedGangs(void)
+void DisconnectAndDestroyUnusedQEs(void)
 {
-	/*
-	 * Free gangs to free up resources on the segDBs.
-	 */
-	if (GangsExist())
+	if (IsTransactionOrTransactionBlock() || TempNamespaceOidIsValid())
 	{
-		if (IsTransactionOrTransactionBlock() || TempNamespaceOidIsValid())
-		{
-			/*
-			 * If we are in a transaction, we can't release the writer gang,
-			 * as this will abort the transaction.
-			 *
-			 * If we have a TempNameSpace, we can't release the writer gang, as this
-			 * would drop any temp tables we own.
-			 *
-			 * Since we are idle, any reader gangs will be available but not allocated.
-			 */
-			disconnectAndDestroyIdleReaderGangs();
-		}
-		else
-		{
-			/*
-			 * Get rid of ALL gangs... Readers and primary writer.
-			 * After this, we have no resources being consumed on the segDBs at all.
-			 *
-			 * Our session wasn't destroyed due to an fatal error or FTS action, so
-			 * we don't need to do anything special.  Specifically, we DON'T want
-			 * to act like we are now in a new session, since that would be confusing
-			 * in the log.
-			 *
-			 */
-			DisconnectAndDestroyAllGangs(false);
-		}
+		/*
+		 * If we are in a transaction, we can't release the writer gang,
+		 * as this will abort the transaction.
+		 *
+		 * If we have a TempNameSpace, we can't release the writer gang, as this
+		 * would drop any temp tables we own.
+		 *
+		 * Since we are idle, any reader gangs will be available but not allocated.
+		 */
+		DisconnectAndDestroyIdleQEs(false);
+	}
+	else
+	{
+		/*
+		 * Get rid of ALL gangs... Readers and primary writer.
+		 * After this, we have no resources being consumed on the segDBs at all.
+		 *
+		 * Our session wasn't destroyed due to an fatal error or FTS action, so
+		 * we don't need to do anything special.  Specifically, we DON'T want
+		 * to act like we are now in a new session, since that would be confusing
+		 * in the log.
+		 *
+		 */
+		DisconnectAndDestroyIdleQEs(true);
 	}
 }
 

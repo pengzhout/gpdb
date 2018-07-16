@@ -125,7 +125,7 @@ test__DoIdleResourceCleanup_HandlesGangTimeoutWhenSessionTimeoutIsLater(
 	IdleSessionTimeoutCached = 25000;
 	NextTimeoutAction = GANG_TIMEOUT;
 
-	will_be_called(DisconnectAndDestroyUnusedGangs);
+	will_be_called(DisconnectAndDestroyUnusedQEs);
 	expect_value(disable_sig_alarm, is_statement_timeout, false);
 	will_return(disable_sig_alarm, true);
 	expect_value(enable_sig_alarm, delayms, 5000);
@@ -146,7 +146,7 @@ test__DoIdleResourceCleanup_HandlesSessionTimeoutWhenGangTimeoutIsLater(
 	IdleSessionTimeoutCached = 19000;
 	NextTimeoutAction = GANG_TIMEOUT;
 
-	will_be_called(DisconnectAndDestroyUnusedGangs);
+	will_be_called(DisconnectAndDestroyUnusedQEs);
 	expect_value(disable_sig_alarm, is_statement_timeout, false);
 	will_return(disable_sig_alarm, true);
 	/* cmockery implicitly asserts that enable_sig_alarm is not called */
@@ -168,7 +168,7 @@ test__DoIdleResourceCleanup_HandlesSessionTimeoutWithSimultaneousGangTimeout(
 	IdleSessionTimeoutCached = 24000;
 	NextTimeoutAction = GANG_TIMEOUT;
 
-	will_be_called(DisconnectAndDestroyUnusedGangs);
+	will_be_called(DisconnectAndDestroyUnusedQEs);
 	expect_value(disable_sig_alarm, is_statement_timeout, false);
 	will_return(disable_sig_alarm, true);
 
@@ -186,7 +186,7 @@ test__DoIdleResourceCleanup_HandlesSessionTimeoutWithSimultaneousGangTimeoutButN
 
 	idle_session_timeout_action_hook = NULL;
 
-	will_be_called(DisconnectAndDestroyUnusedGangs);
+	will_be_called(DisconnectAndDestroyUnusedQEs);
 	expect_value(disable_sig_alarm, is_statement_timeout, false);
 	will_return(disable_sig_alarm, true);
 
@@ -202,7 +202,7 @@ test__DoIdleResourceCleanup_HandlesIdleSessionTimeoutAfterGangTimeout(void **sta
 	IdleSessionTimeoutCached = 15000;
 	NextTimeoutAction = IDLE_SESSION_TIMEOUT;
 
-	/* not called: DisconnectAndDestroyUnusedGangs, enable_sig_alarm; */
+	/* not called: DisconnectAndDestroyUnusedQEs, enable_sig_alarm; */
 	expect_value(disable_sig_alarm, is_statement_timeout, false);
 	will_return(disable_sig_alarm, true);
 
@@ -221,7 +221,7 @@ test__DoIdleResourceCleanup_HandlesIdleSessionTimeoutAfterGangTimeoutWithNullAct
 
 	idle_session_timeout_action_hook = NULL;
 
-	/* not called: DisconnectAndDestroyUnusedGangs, enable_sig_alarm; */
+	/* not called: DisconnectAndDestroyUnusedQEs, enable_sig_alarm; */
 	expect_value(disable_sig_alarm, is_statement_timeout, false);
 	will_return(disable_sig_alarm, true);
 
@@ -238,7 +238,7 @@ test__DoIdleResourceCleanup_HandlesGangTimeoutWhenSessionTimeoutDisabled(void **
 	NextTimeoutAction = GANG_TIMEOUT;
 
 	/* not called: enable_sig_alarm */
-	will_be_called(DisconnectAndDestroyUnusedGangs);
+	will_be_called(DisconnectAndDestroyUnusedQEs);
 	expect_value(disable_sig_alarm, is_statement_timeout, false);
 	will_return(disable_sig_alarm, true);
 

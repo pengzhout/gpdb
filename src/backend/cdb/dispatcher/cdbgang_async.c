@@ -311,7 +311,6 @@ create_gang_retry:
 			DisconnectAndDestroyGang(newGangDefinition);
 			newGangDefinition = NULL;
 			CurrentGangCreating = NULL;
-			DisconnectAndDestroyAllGangs(true);
 			CheckForResetSession();
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("failed to acquire resources on one or more segments"),
@@ -325,7 +324,6 @@ create_gang_retry:
 
 		if (type == GANGTYPE_PRIMARY_WRITER)
 		{
-			DisconnectAndDestroyAllGangs(true);
 			CheckForResetSession();
 		}
 
