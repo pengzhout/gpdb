@@ -126,8 +126,6 @@ extern bool segment_failure_due_to_recovery(const char *error_message);
  */
 extern void DisconnectAndDestroyIdleQEs(bool includeWriter);
 
-extern void cleanupPortalGangs(Portal portal);
-
 extern int largestGangsize(void);
 extern void setLargestGangsize(int size);
 

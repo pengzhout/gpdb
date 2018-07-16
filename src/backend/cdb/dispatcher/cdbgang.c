@@ -1010,6 +1010,7 @@ DisconnectAndDestroyGang(Gang *gp)
 		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
 		Assert(segdbDesc != NULL);
+
 		cdbconn_disconnect(segdbDesc);
 		cdbconn_termSegmentDescriptor(segdbDesc);
 	}
@@ -1250,87 +1251,6 @@ getGangMaxVmem(Gang *gp)
 	}
 
 	return (maxmop >> 20);
-}
-
-/*
- * remove elements from gang list when:
- * 1. list size > cachelimit
- * 2. max mop of this gang > gp_vmem_protect_gang_cache_limit
- */
-static List *
-cleanupPortalGangList(List *gplist, int cachelimit)
-{
-	ListCell   *cell = NULL;
-	ListCell   *prevcell = NULL;
-	int			nLeft = list_length(gplist);
-
-	if (gplist == NULL)
-		return NULL;
-
-	cell = list_head(gplist);
-	while (cell != NULL)
-	{
-		Gang	   *gang = (Gang *) lfirst(cell);
-
-		Assert(gang->type != GANGTYPE_PRIMARY_WRITER);
-
-		if (nLeft > cachelimit ||
-			getGangMaxVmem(gang) > gp_vmem_protect_gang_cache_limit)
-		{
-			DisconnectAndDestroyGang(gang);
-			gplist = list_delete_cell(gplist, cell, prevcell);
-			nLeft--;
-
-			if (prevcell != NULL)
-				cell = lnext(prevcell);
-			else
-				cell = list_head(gplist);
-		}
-		else
-		{
-			prevcell = cell;
-			cell = lnext(cell);
-		}
-	}
-
-	return gplist;
-}
-
-/*
- * Portal drop... Clean up what gangs we hold
- */
-void
-cleanupPortalGangs(Portal portal)
-{
-	MemoryContext oldContext;
-	const char *portal_name;
-
-	if (portal->name && strcmp(portal->name, "") != 0)
-	{
-		portal_name = portal->name;
-		ELOG_DISPATCHER_DEBUG("cleanupPortalGangs %s", portal_name);
-	}
-	else
-	{
-		portal_name = NULL;
-		ELOG_DISPATCHER_DEBUG("cleanupPortalGangs (unamed portal)");
-	}
-
-	if (GangContext)
-		oldContext = MemoryContextSwitchTo(GangContext);
-	else
-		oldContext = MemoryContextSwitchTo(TopMemoryContext);
-
-	availableReaderGangsN = cleanupPortalGangList(availableReaderGangsN, gp_cached_gang_threshold);
-	availableReaderGangs1 = cleanupPortalGangList(availableReaderGangs1, MAX_CACHED_1_GANGS);
-
-	ELOG_DISPATCHER_DEBUG("cleanupPortalGangs '%s'. Reader gang inventory: "
-						  "availableN=%d available1=%d",
-						  (portal_name ? portal_name : "unnamed portal"),
-						  list_length(availableReaderGangsN),
-						  list_length(availableReaderGangs1));
-
-	MemoryContextSwitchTo(oldContext);
 }
 
 /*
@@ -1619,6 +1539,17 @@ RecycleGang(Gang *gp)
 		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
 		Assert(segdbDesc != NULL);
+
+		int maxLen = segdbDesc->segindex == -1 ? 1 : gp_cached_gang_threshold;
+
+		/* check if freelist length have exceeded gp_cached_gang_threshold */
+		if (list_length(segdbDesc->segment_database_info->freelist) >= maxLen)
+		{
+			cdbconn_disconnect(segdbDesc);
+			cdbconn_termSegmentDescriptor(segdbDesc);
+			
+			continue;
+		}
 
 		if (segdbDesc->isWriter)
 		{
