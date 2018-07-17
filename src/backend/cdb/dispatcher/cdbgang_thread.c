@@ -100,7 +100,10 @@ createGang_thread(GangType type, int gang_id, int size, int content)
 
 	/* Writer gang is created before reader gangs. */
 	if (type == GANGTYPE_PRIMARY_WRITER)
-		Insist(!GangsExist());
+	{
+		CdbComponentDatabases *dbs = getCurrentComponentDbs();
+		AssertImply(dbs, dbs->busyQEs == 0);
+	}
 
 	initPQExpBuffer(&create_gang_error);
 
@@ -261,12 +264,6 @@ create_gang_retry:
 exit:
 	if (newGangDefinition != NULL)
 		DisconnectAndDestroyGang(newGangDefinition);
-
-	if (type == GANGTYPE_PRIMARY_WRITER)
-	{
-		DisconnectAndDestroyAllGangs(true);
-		CheckForResetSession();
-	}
 
 	CurrentGangCreating = NULL;
 

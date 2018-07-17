@@ -96,8 +96,6 @@ extern List *getAllIdleReaderGangs(struct CdbDispatcherState *ds);
 
 extern CdbComponentDatabases *getComponentDatabases(void);
 
-extern bool GangsExist(void);
-
 extern struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
 Gang *buildGangDefinition(GangType type, int gang_id, int size, int content);
@@ -176,5 +174,6 @@ typedef struct CdbProcess
 typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int content);
 
 extern void cdbgang_setAsync(bool async);
+extern CdbComponentDatabases * getCurrentComponentDbs(void);
 
 #endif   /* _CDBGANG_H_ */

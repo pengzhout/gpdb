@@ -74,7 +74,10 @@ createGang_async(GangType type, int gang_id, int size, int content)
 	Assert(CurrentMemoryContext == GangContext);
 	/* Writer gang is created before reader gangs. */
 	if (type == GANGTYPE_PRIMARY_WRITER)
-		Insist(!GangsExist());
+	{
+		CdbComponentDatabases *dbs = getCurrentComponentDbs();
+		AssertImply(dbs, dbs->busyQEs == 0);
+	}
 
 	Assert(CurrentGangCreating == NULL);
 
@@ -312,7 +315,6 @@ create_gang_retry:
 			DisconnectAndDestroyGang(newGangDefinition);
 			newGangDefinition = NULL;
 			CurrentGangCreating = NULL;
-			CheckForResetSession();
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("failed to acquire resources on one or more segments"),
 							errdetail("FTS detected one or more segments are down")));
@@ -322,11 +324,6 @@ create_gang_retry:
 		DisconnectAndDestroyGang(newGangDefinition);
 		newGangDefinition = NULL;
 		CurrentGangCreating = NULL;
-
-		if (type == GANGTYPE_PRIMARY_WRITER)
-		{
-			CheckForResetSession();
-		}
 
 		PG_RE_THROW();
 	}

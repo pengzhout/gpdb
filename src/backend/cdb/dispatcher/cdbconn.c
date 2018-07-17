@@ -245,6 +245,7 @@ cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool i
 	ListCell *curItem = NULL;
 	ListCell *nextItem = NULL;
 	ListCell *prevItem = NULL;
+	CdbComponentDatabases *dbs = getCurrentComponentDbs();
 
 	Assert(GangContext != NULL);
 	oldContext = MemoryContextSwitchTo(GangContext);
@@ -273,9 +274,11 @@ cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool i
 			segdbDesc = NULL;
 			prevItem = curItem;
 			curItem = nextItem;
+			dbs->idleQEs--;
 			continue;
 		}
 
+		dbs->idleQEs--;
 		break;
 	}
 
@@ -304,6 +307,8 @@ cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool i
 	}
 
 	MemoryContextSwitchTo(oldContext);
+
+	dbs->busyQEs++;
 
 	return segdbDesc;
 }

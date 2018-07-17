@@ -90,10 +90,6 @@ static bool cleanupGang(Gang *gp);
 static void resetSessionForPrimaryGangLoss(void);
 static CdbComponentDatabaseInfo *findDatabaseInfoBySegIndex(
 						   CdbComponentDatabases *cdbs, int segIndex);
-#ifdef USE_ASSERT_CHECKING
-static bool readerGangsExist(void);
-#endif
-
 /*
  * Create a reader gang.
  *
@@ -823,10 +819,6 @@ DisconnectAndDestroyGang(Gang *gp)
 	if (gp == NULL)
 		return;
 
-#if 0
-	AssertImply(gp->type == GANGTYPE_PRIMARY_WRITER, !readerGangsExist());
-#endif
-
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyGang entered: id = %d", gp->gang_id);
 
 	if (gp->allocated)
@@ -845,6 +837,7 @@ DisconnectAndDestroyGang(Gang *gp)
 
 		cdbconn_disconnect(segdbDesc);
 		cdbconn_termSegmentDescriptor(segdbDesc);
+		getCurrentComponentDbs()->busyQEs--;
 	}
 
 	MemoryContextDelete(gp->perGangContext);
@@ -1073,14 +1066,15 @@ CheckForResetSession(void)
 	int			oldSessionId = 0;
 	int			newSessionId = 0;
 	Oid			dropTempNamespaceOid;
+	CdbComponentDatabases *dbs;
 
 	if (!NeedResetSession)
 		return;
 
-	/* Do the session id change early. */
-
 	/* If we have gangs, we can't change our session ID. */
-	Assert(!GangsExist());
+	dbs = getCurrentComponentDbs();
+
+	Assert(cdbdisp_noDispatcherStates() && dbs == NULL);
 
 	oldSessionId = gp_session_id;
 	ProcNewMppSessionId(&newSessionId);
@@ -1280,24 +1274,6 @@ GangOK(Gang *gp)
 	return true;
 }
 
-bool
-GangsExist(void)
-{
-	return (!cdbdisp_noDispatcherStates());
-}
-
-
-#if 0 
-static bool
-readerGangsExist(void)
-{
-	return (allocatedReaderGangsN != NIL ||
-			availableReaderGangsN != NIL ||
-			allocatedReaderGangs1 != NIL ||
-			availableReaderGangs1 != NIL);
-}
-#endif
-
 int
 largestGangsize(void)
 {
@@ -1368,6 +1344,9 @@ RecycleGang(Gang *gp)
 			segdbDesc->segment_database_info->freelist =
 				lappend(segdbDesc->segment_database_info->freelist, segdbDesc);
 		}
+
+		getCurrentComponentDbs()->busyQEs--;
+		getCurrentComponentDbs()->idleQEs++;
 	}
 
 	MemoryContextSwitchTo(oldContext);
@@ -1388,4 +1367,10 @@ getGangContext(void)
 	Assert(GangContext != NULL);
 
 	return GangContext;
+}
+
+CdbComponentDatabases *
+getCurrentComponentDbs(void)
+{
+	return cdb_component_dbs;
 }
