@@ -121,6 +121,7 @@ create_gang_retry:
 			if (segdbDesc->conn != NULL)
 			{
 				connStatusDone[i] = true;
+				successful_connections++;
 				continue;
 			}
 
