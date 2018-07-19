@@ -48,6 +48,9 @@ extern CdbDispatchDirectDesc default_dispatch_direct_desc;
 
 typedef struct CdbDispatcherState
 {
+	char *portalName;
+	List *allocatedGangs;
+	bool destroyGang;
 	struct CdbDispatchResults *primaryResults;
 	void *dispatchParams;
 } CdbDispatcherState;
@@ -173,7 +176,7 @@ cdbdisp_cancelDispatch(CdbDispatcherState *ds);
  *
  * Call cdbdisp_destroyDispatcherState to free it.
  */
-CdbDispatcherState * cdbdisp_makeDispatcherState(void);
+CdbDispatcherState * cdbdisp_makeDispatcherState(char *portal_name);
 
 /*
  * Free memory in CdbDispatcherState
@@ -194,5 +197,7 @@ int cdbdisp_getWaitSocketFd(CdbDispatcherState *ds);
 void cdbdisp_onProcExit(void);
 
 void cdbdisp_setAsync(bool async);
+
+void cdbdisp_markNamedPortalGangNoReuse(void);
 
 #endif   /* CDBDISP_H */

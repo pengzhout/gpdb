@@ -109,24 +109,14 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	dtxProtocolParms.serializedDtxContextInfoLen = serializedDtxContextInfoLen;
 
 	/*
-	 * Allocate a primary QE for every available segDB in the system.
+	 * Dispatch the command.
 	 */
-	primaryGang = AllocateWriterGang();
+	ds = cdbdisp_makeDispatcherState(NULL);
+
+	primaryGang = AllocateWriterGang(ds);
 
 	Assert(primaryGang);
 
-	if (primaryGang->dispatcherActive)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("query plan with multiple segworker groups is not supported"),
-				 errhint("dispatching DTX commands to a busy gang")));
-	}
-
-	/*
-	 * Dispatch the command.
-	 */
-	ds = cdbdisp_makeDispatcherState();
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 	queryText = buildGpDtxProtocolCommand(&dtxProtocolParms, &queryTextLen);
 	ds->primaryResults = cdbdisp_makeDispatchResults(1, false);

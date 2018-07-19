@@ -76,9 +76,6 @@ makeCdbCopy(bool is_copy_in)
 		c->segdb_state[seg][0] = SEGDB_IDLE;	/* Primary can't be OUT */
 	}
 
-	/* init gangs */
-	c->primary_writer = AllocateWriterGang();
-
 	/* init seg list for copy out */
 	if (!c->copy_in)
 	{
@@ -130,6 +127,9 @@ cdbCopyStart(CdbCopy *c, CopyStmt *stmt, struct GpPolicy *policy)
 								(c->copy_in ? DF_NEED_TWO_PHASE | DF_WITH_SNAPSHOT : DF_WITH_SNAPSHOT) | DF_CANCEL_ON_ERROR,
 								NIL,
 								NULL);
+
+	/* FIXME */
+//	c->primary_writer = availablePrimaryWriterGang;
 
 	SIMPLE_FAULT_INJECTOR(CdbCopyStartAfterDispatch);
 

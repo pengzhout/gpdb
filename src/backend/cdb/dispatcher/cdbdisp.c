@@ -243,6 +243,9 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 {
 	CdbDispatchResults *pr;
 	ErrorData *error;
+	ListCell *cur_item = NULL;
+	ListCell *prev_item = NULL;
+	ListCell *next_item = NULL;
 
 	/*
 	 * If cdbdisp_dispatchToGang() wasn't called, don't wait.
@@ -263,6 +266,22 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 		return;
 
 	pr = cdbdisp_getDispatchResults(ds, &error);
+
+	/* free gangs allocated in this dispatcher state */
+	cur_item = list_head(ds->allocatedGangs);
+	while (cur_item != NULL)
+	{
+		Gang	   *gp = (Gang *) lfirst(cur_item);
+		next_item = lnext(cur_item);
+
+		/* cur_item must be removed */
+		ds->allocatedGangs = list_delete_cell(ds->allocatedGangs, cur_item, prev_item);
+
+		RecycleGang(gp);
+
+		cur_item = next_item;
+	}
+
 	if (pr == NULL)
 	{
 		if (!throwError)
@@ -312,6 +331,9 @@ CdbDispatchHandleError(struct CdbDispatcherState *ds)
 	int		qderrcode;
 	bool		useQeError = false;
 	ErrorData *error;
+	ListCell *cur_item = NULL;
+	ListCell *prev_item = NULL;
+	ListCell *next_item = NULL;
 
 	/*
 	 * If cdbdisp_dispatchToGang() wasn't called, don't wait.
@@ -326,6 +348,21 @@ CdbDispatchHandleError(struct CdbDispatcherState *ds)
 	 * running.
 	 */
 	cdbdisp_cancelDispatch(ds);
+
+	/* free gangs allocated in this dispatcher state */
+	cur_item = list_head(ds->allocatedGangs);
+	while (cur_item != NULL)
+	{
+		Gang	   *gp = (Gang *) lfirst(cur_item);
+		next_item = lnext(cur_item);
+
+		/* cur_item must be removed */
+		ds->allocatedGangs = list_delete_cell(ds->allocatedGangs, cur_item, prev_item);
+
+		RecycleGang(gp);
+
+		cur_item = next_item;
+	}
 
 	/*
 	 * When a QE stops executing a command due to an error, as a consequence
@@ -396,9 +433,13 @@ CdbDispatchHandleError(struct CdbDispatcherState *ds)
  *	 maxSlices: max number of slices of the query/command.
  */
 CdbDispatcherState *
-cdbdisp_makeDispatcherState(void)
+cdbdisp_makeDispatcherState(char *portal_name)
 {
 	dispatcher_handle_t *handle = allocate_dispatcher_handle();
+	handle->dispatcherState->destroyGang = false;
+	handle->dispatcherState->portalName = (portal_name ? pstrdup(portal_name)
+								: (char *) NULL);
+	handle->dispatcherState->allocatedGangs = NIL;
 	return handle->dispatcherState;
 }
 
@@ -443,8 +484,7 @@ cdbdisp_destroyDispatcherState(CdbDispatcherState *ds)
 }
 
 void
-cdbdisp_cancelDispatch(CdbDispatcherState *ds)
-{
+cdbdisp_cancelDispatch(CdbDispatcherState *ds) {
 	CdbCheckDispatchResult(ds, DISPATCH_WAIT_CANCEL);
 }
 
@@ -608,5 +648,17 @@ dispatcher_abort_callback(ResourceReleasePhase phase,
 
 			cleanup_dispatcher_handle(curr);
 		}
+	}
+}
+
+void
+cdbdisp_markNamedPortalGangNoReuse()
+{
+	dispatcher_handle_t *head = open_dispatcher_handles;
+	while (head != NULL)
+	{
+		if (!head->dispatcherState->portalName)
+			head->dispatcherState->destroyGang = true;
+		head = head->next;
 	}
 }

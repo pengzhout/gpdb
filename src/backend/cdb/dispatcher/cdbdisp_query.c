@@ -45,6 +45,7 @@
 								 * DispatchCommandParms */
 #include "cdb/cdbdisp_dtx.h"	/* for qdSerializeDtxContextInfo() */
 #include "cdb/cdbdispatchresult.h"
+#include "executor/execUtils.h"
 
 extern bool Test_print_direct_dispatch_info;
 
@@ -267,16 +268,19 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 	int		queryTextLength;
 	Gang	   *primaryGang;
 	List	   *idleReaderGangs;
-	List	   *allocatedReaderGangs;
 	ListCell   *le;
 	int			gangCount;
 	MemoryContext oldContext;
 
-	primaryGang = AllocateWriterGang();
+
+	ds = cdbdisp_makeDispatcherState(NULL);
+
+	primaryGang = AllocateWriterGang(ds);
 	Assert(primaryGang);
-	idleReaderGangs = getAllIdleReaderGangs();
-	allocatedReaderGangs = getAllAllocatedReaderGangs();
-	gangCount = 1 + list_length(idleReaderGangs) + list_length(allocatedReaderGangs);
+
+	idleReaderGangs = getAllIdleReaderGangs(ds);
+
+	gangCount = 1 + list_length(idleReaderGangs);
 
 	pQueryParms = palloc0(sizeof(*pQueryParms));
 	pQueryParms->strCommand = strCommand;
@@ -290,7 +294,6 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 								  mppTxnOptions(false), /* no two-phase commit needed for SET */
 								  "CdbDispatchSetCommand");
 
-	ds = cdbdisp_makeDispatcherState();
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 	ds->primaryResults = cdbdisp_makeDispatchResults(gangCount, cancelOnError);
@@ -317,32 +320,16 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 		cdbdisp_dispatchToGang(ds, rg, -1, DEFAULT_DISP_DIRECT);
 	}
 
-	/*
-	 * Can not send set command to busy gangs, so those gangs can not be
-	 * reused because their GUC is not set.
-	 */
-	foreach(le, allocatedReaderGangs)
-	{
-		Gang	   *rg = lfirst(le);
-
-		if (rg->portal_name != NULL)
-		{
-			/*
-			 * For named portal (like CURSOR), SET command will not be
-			 * dispatched. Meanwhile such gang should not be reused because
-			 * it's guc was not set.
-			 */
-			rg->noReuse = true;
-		}
-		else
-		{
-			cdbdisp_dispatchToGang(ds, rg, -1, DEFAULT_DISP_DIRECT);
-		}
-	}
-
 	cdbdisp_waitDispatchFinish(ds);
 
 	cdbdisp_finishCommand(ds, NULL, NULL, true);
+
+	/*
+	 * For named portal (like CURSOR), SET command will not be
+	 * dispatched. Meanwhile such gang should not be reused because
+	 * it's guc was not set.
+	 */
+	cdbdisp_markNamedPortalGangNoReuse();
 }
 
 /*
@@ -485,11 +472,6 @@ cdbdisp_dispatchCommandInternal(const char *strCommand,
 	pQueryParms->serializedQueryDispatchDesc = serializedQueryDispatchDesc;
 	pQueryParms->serializedQueryDispatchDesclen = serializedQueryDispatchDesclen;
 
-	/*
-	 * Allocate a primary QE for every available segDB in the system.
-	 */
-	primaryGang = AllocateWriterGang();
-	Assert(primaryGang);
 
 	/*
 	 * Serialize a version of our DTX Context Info
@@ -499,7 +481,6 @@ cdbdisp_dispatchCommandInternal(const char *strCommand,
 								  withSnapshot, false,
 								  mppTxnOptions(needTwoPhase),
 								  "cdbdisp_dispatchCommandInternal");
-
 	/*
 	 * sequence server info
 	 */
@@ -512,7 +493,14 @@ cdbdisp_dispatchCommandInternal(const char *strCommand,
 	/*
 	 * Dispatch the command.
 	 */
-	ds = cdbdisp_makeDispatcherState();
+	ds = cdbdisp_makeDispatcherState(NULL);
+
+	/*
+	 * Allocate a primary QE for every available segDB in the system.
+	 */
+	primaryGang = AllocateWriterGang(ds);
+	Assert(primaryGang);
+
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 	ds->primaryResults = cdbdisp_makeDispatchResults(1, cancelOnError);
@@ -1118,16 +1106,31 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 		   (rootIdx > sliceTbl->nMotions &&
 			rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
 
+	nTotalSlices = list_length(sliceTbl->slices);
+
+	ds = cdbdisp_makeDispatcherState(queryDesc->portal_name);
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
+
+	/*
+	 * Since we intend to execute the plan, inventory the slice tree,
+	 * allocate gangs, and associate them with slices.
+	 *
+	 * For now, always use segment 'gp_singleton_segindex' for
+	 * singleton gangs.
+	 *
+	 * On return, gangs have been allocated and CDBProcess lists have
+	 * been filled in in the slice table.)
+	 * 
+	 * Notice: This must be done before cdbdisp_buildPlanQueryParms
+	 */
+	AssignGangs(ds, queryDesc);
+
 	/*
 	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
 	 * vector of slice indexes specifying the order of [potential] dispatch.
 	 */
-	nTotalSlices = list_length(sliceTbl->slices);
 	sliceVector = palloc0(nTotalSlices * sizeof(SliceVec));
 	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, nTotalSlices);
-
-	ds = cdbdisp_makeDispatcherState();
-	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
 	pQueryParms = cdbdisp_buildPlanQueryParms(queryDesc, planRequiresTxn);
 	pQueryParms->numSlices = nTotalSlices;
