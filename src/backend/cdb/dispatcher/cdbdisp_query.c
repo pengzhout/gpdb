@@ -749,12 +749,12 @@ compare_slice_order(const void *aa, const void *bb)
 	 */
 	if (a->slice->primaryGang == NULL)
 	{
-		Assert(a->slice->gangType == GANGTYPE_UNALLOCATED);
+		//Assert(a->slice->gangType == GANGTYPE_UNALLOCATED);
 		return 1;
 	}
 	if (b->slice->primaryGang == NULL)
 	{
-		Assert(b->slice->gangType == GANGTYPE_UNALLOCATED);
+		//Assert(b->slice->gangType == GANGTYPE_UNALLOCATED);
 		return -1;
 	}
 
