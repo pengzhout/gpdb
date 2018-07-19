@@ -106,14 +106,6 @@ typedef struct DispatchCommandQueryParms
 	int		   *sliceIndexGangIdMap;
 } DispatchCommandQueryParms;
 
-static void cdbdisp_dispatchCommandInternal(const char *strCommand,
-								char *serializedQuerytree,
-								int serializedQuerytreelen,
-								char *serializedQueryDispatchDesc,
-								int serializedQueryDispatchDesclen,
-								int flags,
-								CdbPgResults *cdb_pgresults);
-
 static int fillSliceVector(SliceTable *sliceTable,
 				int sliceIndex,
 				SliceVec *sliceVector,
@@ -123,6 +115,8 @@ static char *buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 				   int *finalLen);
 
 static DispatchCommandQueryParms *cdbdisp_buildPlanQueryParms(struct QueryDesc *queryDesc, bool planRequiresTxn);
+static DispatchCommandQueryParms *cdbdisp_buildUtilityQueryParms(struct Node *stmt, int flags, List *oid_assignments);
+static DispatchCommandQueryParms *cdbdisp_buildCommandQueryParms(const char *strCommand, int flags);
 
 static void cdbdisp_destroyQueryParms(DispatchCommandQueryParms *pQueryParms);
 
@@ -347,13 +341,39 @@ CdbDispatchCommand(const char *strCommand,
 				   int flags,
 				   CdbPgResults *cdb_pgresults)
 {
-	return cdbdisp_dispatchCommandInternal(strCommand,
-										   NULL,
-										   0,
-										   NULL,
-										   0,
-										   flags,
-										   cdb_pgresults);
+	DispatchCommandQueryParms *pQueryParms;
+	char *queryText;
+	int queryTextLength;
+	CdbDispatcherState *ds;
+	Gang *primaryGang;
+	MemoryContext oldContext;
+
+	pQueryParms = cdbdisp_buildCommandQueryParms(strCommand, flags);
+
+	/*
+	 * Dispatch the command.
+	 */
+	ds = cdbdisp_makeDispatcherState(NULL);
+
+	/*
+	 * Allocate a primary QE for every available segDB in the system.
+	 */
+	primaryGang = AllocateWriterGang(ds);
+	Assert(primaryGang);
+
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
+	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
+	ds->primaryResults = cdbdisp_makeDispatchResults(1, flags & DF_CANCEL_ON_ERROR);
+	ds->dispatchParams = cdbdisp_makeDispatchParams (1, queryText, queryTextLength);
+	ds->primaryResults->writer_gang = primaryGang;
+	MemoryContextSwitchTo(oldContext);
+	cdbdisp_destroyQueryParms(pQueryParms);
+
+	cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
+
+	cdbdisp_waitDispatchFinish(ds);
+
+	cdbdisp_finishCommand(ds, NULL, cdb_pgresults, true);
 }
 
 /*
@@ -376,12 +396,99 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 							List *oid_assignments,
 							CdbPgResults *cdb_pgresults)
 {
-	char	   *serializedQuerytree;
-	int			serializedQuerytree_len;
-	char	   *serializedQueryDispatchDesc = NULL;
-	int			serializedQueryDispatchDesc_len = 0;
-	Query	   *q;
+	DispatchCommandQueryParms *pQueryParms;
+	char *queryText;
+	int queryTextLength;
+	CdbDispatcherState *ds;
+	Gang *primaryGang;
+	MemoryContext oldContext;
+
+	pQueryParms = cdbdisp_buildUtilityQueryParms(stmt, flags, oid_assignments);
+
+	/*
+	 * Dispatch the command.
+	 */
+	ds = cdbdisp_makeDispatcherState(NULL);
+
+	/*
+	 * Allocate a primary QE for every available segDB in the system.
+	 */
+	primaryGang = AllocateWriterGang(ds);
+	Assert(primaryGang);
+
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
+	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
+	ds->primaryResults = cdbdisp_makeDispatchResults(1, flags & DF_CANCEL_ON_ERROR);
+	ds->dispatchParams = cdbdisp_makeDispatchParams (1, queryText, queryTextLength);
+	ds->primaryResults->writer_gang = primaryGang;
+	MemoryContextSwitchTo(oldContext);
+	cdbdisp_destroyQueryParms(pQueryParms);
+
+	cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
+
+	cdbdisp_waitDispatchFinish(ds);
+
+	cdbdisp_finishCommand(ds, NULL, cdb_pgresults, true);
+}
+
+static DispatchCommandQueryParms *
+cdbdisp_buildCommandQueryParms(const char *strCommand, int flags)
+{
+	bool needTwoPhase = flags & DF_NEED_TWO_PHASE;
+	bool withSnapshot = flags & DF_WITH_SNAPSHOT;
+	DispatchCommandQueryParms *pQueryParms;
+	CdbComponentDatabaseInfo *qdinfo;
+
+	pQueryParms = palloc0(sizeof(*pQueryParms));
+	pQueryParms->strCommand = strCommand;
+	pQueryParms->serializedQuerytree = NULL;
+	pQueryParms->serializedQuerytreelen = 0;
+	pQueryParms->serializedQueryDispatchDesc = NULL;
+	pQueryParms->serializedQueryDispatchDesclen = 0;
+
+	dtmPreCommand("cdbdisp_dispatchCommandInternal", strCommand,
+				  NULL, needTwoPhase, withSnapshot,
+				  false /* inCursor */ );
+
+	elogif((Debug_print_full_dtm || log_min_messages <= DEBUG5), LOG,
+		   "cdbdisp_dispatchUtility: %s (needTwoPhase = %s)",
+		   strCommand, (needTwoPhase ? "true" : "false"));
+
+	/*
+	 * Serialize a version of our DTX Context Info
+	 */
+	pQueryParms->serializedDtxContextInfo =
+		qdSerializeDtxContextInfo(&pQueryParms->serializedDtxContextInfolen,
+								  withSnapshot, false,
+								  mppTxnOptions(needTwoPhase),
+								  "cdbdisp_dispatchCommandInternal");
+	/*
+	 * sequence server info
+	 */
+	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+	Assert(qdinfo != NULL && qdinfo->hostip != NULL);
+	pQueryParms->seqServerHost = pstrdup(qdinfo->hostip);
+	pQueryParms->seqServerHostlen = strlen(qdinfo->hostip) + 1;
+	pQueryParms->seqServerPort = seqServerCtl->seqServerPort;
+
+	return pQueryParms;
+}
+
+static DispatchCommandQueryParms *
+cdbdisp_buildUtilityQueryParms(struct Node *stmt,
+				int flags,
+				List *oid_assignments)
+{
+	char *serializedQuerytree = NULL;
+	char *serializedQueryDispatchDesc = NULL;
+	int serializedQuerytree_len = 0;
+	int serializedQueryDispatchDesc_len = 0;
+	bool needTwoPhase = flags & DF_NEED_TWO_PHASE;
+	bool withSnapshot = flags & DF_WITH_SNAPSHOT;
 	QueryDispatchDesc *qddesc;
+	Query *q;
+	DispatchCommandQueryParms *pQueryParms;
+	CdbComponentDatabaseInfo *qdinfo;
 
 	Assert(stmt != NULL);
 	Assert(stmt->type < 1000);
@@ -420,58 +527,20 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 													NULL /* uncompressed_size */ );
 	}
 
-	/*
-	 * Dispatch serializedQuerytree to primary writer gang.
-	 */
-	return cdbdisp_dispatchCommandInternal(debug_query_string,
-										   serializedQuerytree, serializedQuerytree_len,
-										   serializedQueryDispatchDesc, serializedQueryDispatchDesc_len,
-										   flags, cdb_pgresults);
-}
+	pQueryParms = palloc0(sizeof(*pQueryParms));
+	pQueryParms->strCommand = debug_query_string;
+	pQueryParms->serializedQuerytree = serializedQuerytree;
+	pQueryParms->serializedQuerytreelen = serializedQuerytree_len;
+	pQueryParms->serializedQueryDispatchDesc = serializedQueryDispatchDesc;
+	pQueryParms->serializedQueryDispatchDesclen = serializedQueryDispatchDesc_len;
 
-/*
- * Internal function to send plain command or serialized query tree to all segdbs in
- * the cluster
- */
-static void
-cdbdisp_dispatchCommandInternal(const char *strCommand,
-								char *serializedQuerytree,
-								int serializedQuerytreelen,
-								char *serializedQueryDispatchDesc,
-								int serializedQueryDispatchDesclen,
-								int flags,
-								CdbPgResults *cdb_pgresults)
-{
-	struct CdbDispatcherState *ds;
-	MemoryContext oldContext;
-	DispatchCommandQueryParms *pQueryParms;
-	Gang		*primaryGang;
-	CdbComponentDatabaseInfo *qdinfo;
-	char		*queryText = NULL;
-	int		queryTextLength = 0;
-
-	if (log_dispatch_stats)
-		ResetUsage();
-
-	bool		cancelOnError = flags & DF_CANCEL_ON_ERROR;
-	bool		needTwoPhase = flags & DF_NEED_TWO_PHASE;
-	bool		withSnapshot = flags & DF_WITH_SNAPSHOT;
-
-	dtmPreCommand("cdbdisp_dispatchCommandInternal", strCommand,
+	dtmPreCommand("cdbdisp_dispatchCommandInternal", debug_query_string,
 				  NULL, needTwoPhase, withSnapshot,
 				  false /* inCursor */ );
 
 	elogif((Debug_print_full_dtm || log_min_messages <= DEBUG5), LOG,
-		   "cdbdisp_dispatchCommandInternal: %s (needTwoPhase = %s)",
-		   strCommand, (needTwoPhase ? "true" : "false"));
-
-	pQueryParms = palloc0(sizeof(*pQueryParms));
-	pQueryParms->strCommand = strCommand;
-	pQueryParms->serializedQuerytree = serializedQuerytree;
-	pQueryParms->serializedQuerytreelen = serializedQuerytreelen;
-	pQueryParms->serializedQueryDispatchDesc = serializedQueryDispatchDesc;
-	pQueryParms->serializedQueryDispatchDesclen = serializedQueryDispatchDesclen;
-
+		   "cdbdisp_dispatchUtility: %s (needTwoPhase = %s)",
+		   debug_query_string, (needTwoPhase ? "true" : "false"));
 
 	/*
 	 * Serialize a version of our DTX Context Info
@@ -490,30 +559,7 @@ cdbdisp_dispatchCommandInternal(const char *strCommand,
 	pQueryParms->seqServerHostlen = strlen(qdinfo->hostip) + 1;
 	pQueryParms->seqServerPort = seqServerCtl->seqServerPort;
 
-	/*
-	 * Dispatch the command.
-	 */
-	ds = cdbdisp_makeDispatcherState(NULL);
-
-	/*
-	 * Allocate a primary QE for every available segDB in the system.
-	 */
-	primaryGang = AllocateWriterGang(ds);
-	Assert(primaryGang);
-
-	oldContext = MemoryContextSwitchTo(DispatcherContext);
-	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
-	ds->primaryResults = cdbdisp_makeDispatchResults(1, cancelOnError);
-	ds->dispatchParams = cdbdisp_makeDispatchParams (1, queryText, queryTextLength);
-	ds->primaryResults->writer_gang = primaryGang;
-	MemoryContextSwitchTo(oldContext);
-	cdbdisp_destroyQueryParms(pQueryParms);
-
-	cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
-
-	cdbdisp_waitDispatchFinish(ds);
-
-	cdbdisp_finishCommand(ds, NULL, cdb_pgresults, true);
+	return pQueryParms;
 }
 
 static DispatchCommandQueryParms *
