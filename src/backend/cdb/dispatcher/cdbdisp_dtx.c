@@ -81,7 +81,6 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 {
 	CdbDispatcherState *ds;
 	CdbDispatchResults *pr;
-	MemoryContext oldContext;
 	CdbPgResults cdb_pgresults = {NULL, 0};
 
 	DispatchCommandDtxProtocolParms dtxProtocolParms;
@@ -112,29 +111,15 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	queryText = buildGpDtxProtocolCommand(&dtxProtocolParms, &queryTextLen);
 
 	/*
-	 * Allocate a primary QE for every available segDB in the system.
-	 */
-	primaryGang = AllocateWriterGang();
-
-	Assert(primaryGang);
-
-	if (primaryGang->dispatcherActive)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("query plan with multiple segworker groups is not supported"),
-				 errhint("dispatching DTX commands to a busy gang")));
-	}
-
-	/*
 	 * Dispatch the command.
 	 */
-	ds = cdbdisp_makeDispatcherState();
-	oldContext = MemoryContextSwitchTo(DispatcherContext);
-	ds->primaryResults = cdbdisp_makeDispatchResults(1, false);
-	ds->dispatchParams = cdbdisp_makeDispatchParams (1, queryText, queryTextLen);
-	ds->primaryResults->writer_gang = primaryGang;
-	MemoryContextSwitchTo(oldContext);
+	ds = cdbdisp_makeDispatcherState(false);
+
+	primaryGang = AllocateWriterGang(ds);
+	Assert(primaryGang);
+
+	cdbdisp_makeDispatchResults(ds, 1, false);
+	cdbdisp_makeDispatchParams(ds, 1, queryText, queryTextLen);
 
 	cdbdisp_dispatchToGang(ds, primaryGang, -1, direct);
 

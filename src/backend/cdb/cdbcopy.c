@@ -140,7 +140,7 @@ cdbCopyStart(CdbCopy *c, CopyStmt *stmt, struct GpPolicy *policy)
 void
 cdbCopySendDataToAll(CdbCopy *c, const char *buffer, int nbytes)
 {
-	Gang	   *gp = c->dispatcherState->primaryResults->writer_gang;
+	Gang	   *gp = (Gang *)linitial(c->dispatcherState->allocatedGangs);
 
 	for (int i = 0; i < gp->size; ++i)
 	{
@@ -172,7 +172,7 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 	 * code above. I didn't do it because it's broken right now
 	 */
 
-	gp = c->dispatcherState->primaryResults->writer_gang;
+	gp = (Gang *)linitial(c->dispatcherState->allocatedGangs);
 
 	q = getSegmentDescriptorFromGang(gp, target_seg);
 
@@ -219,7 +219,7 @@ cdbCopyGetData(CdbCopy *c, bool copy_cancel, uint64 *rows_processed)
 	c->copy_out_buf.data[0] = '\0';
 	c->copy_out_buf.cursor = 0;
 
-	gp = c->dispatcherState->primaryResults->writer_gang;
+	gp = (Gang *)linitial(c->dispatcherState->allocatedGangs);
 
 	/*
 	 * MPP-7712: we used to issue the cancel-requests for each *row* we got
@@ -642,7 +642,7 @@ cdbCopyEndAndFetchRejectNum(CdbCopy *c, int64 *total_rows_completed, char *abort
 	 * GPDB_91_MERGE_FIXME: ugh, this is nasty. We shouldn't be calling
 	 * cdbCopyEnd twice on the same CdbCopy in the first place!
 	 */
-	if (!c->dispatcherState || !c->dispatcherState->primaryResults->writer_gang)
+	if (!c->dispatcherState || !((Gang *)linitial(c->dispatcherState->allocatedGangs)))
 		return -1;
 
 	/* clean err message */
@@ -653,7 +653,7 @@ cdbCopyEndAndFetchRejectNum(CdbCopy *c, int64 *total_rows_completed, char *abort
 	/* allocate a failed segment database pointer array */
 	failedSegDBs = (SegmentDatabaseDescriptor **) palloc(c->total_segs * 2 * sizeof(SegmentDatabaseDescriptor *));
 
-	gp = c->dispatcherState->primaryResults->writer_gang;
+	gp = (Gang *)linitial(c->dispatcherState->allocatedGangs);
 	db_descriptors = gp->db_descriptors;
 	size = gp->size;
 

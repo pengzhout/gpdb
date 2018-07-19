@@ -1521,8 +1521,6 @@ initTM(void)
 		}
 
 		RestoreToUser(olduser);
-
-		freeGangsForPortal(NULL);
 	}
 }
 

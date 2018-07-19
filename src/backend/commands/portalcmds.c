@@ -333,7 +333,6 @@ PortalCleanup(Portal portal)
 				 */
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					freeGangsForPortal((char *) portal->name);
 					cleanupPortalGangs(portal);
 				}
 

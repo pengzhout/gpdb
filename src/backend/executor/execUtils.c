@@ -1831,7 +1831,6 @@ typedef struct SliceReq
 
 /* Forward declarations */
 static void InitSliceReq(SliceReq * req);
-static void AccumSliceReq(SliceReq * inv, SliceReq * req);
 static void InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 static void FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
@@ -1855,7 +1854,7 @@ static void FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
  * slice in the slice table.
  */
 void
-AssignGangs(QueryDesc *queryDesc)
+AssignGangs(CdbDispatcherState *ds, QueryDesc *queryDesc)
 {
 	EState	   *estate = queryDesc->estate;
 	SliceTable *sliceTable = estate->es_sliceTable;
@@ -1864,8 +1863,10 @@ AssignGangs(QueryDesc *queryDesc)
 	int			i,
 				nslices;
 	Slice	  **sliceMap;
-	SliceReq	req,
-				inv;
+	SliceReq inv;
+	int rootIdx;
+
+	rootIdx = RootSliceIndex(queryDesc->estate);
 
 	/* Make a map so we can access slices quickly by index. */
 	nslices = list_length(sliceTable->slices);
@@ -1883,17 +1884,8 @@ AssignGangs(QueryDesc *queryDesc)
 	InitSliceReq(&inv);
 
 	/* Capture main slice tree requirement. */
-	InventorySliceTree(sliceMap, 0, &inv);
-	FinalizeSliceTree(sliceMap, 0, &inv);
-
-	/* Capture initPlan slice tree requirements. */
-	for (i = sliceTable->nMotions + 1; i < nslices; i++)
-	{
-		InitSliceReq(&req);
-		InventorySliceTree(sliceMap, i, &req);
-		FinalizeSliceTree(sliceMap, i, &req);
-		AccumSliceReq(&inv, &req);
-	}
+	InventorySliceTree(sliceMap, rootIdx, &inv);
+	FinalizeSliceTree(sliceMap, rootIdx, &inv);
 
 	/*
 	 * Get the gangs we'll use.
@@ -1908,13 +1900,12 @@ AssignGangs(QueryDesc *queryDesc)
 		{
 			if (i == 0 && !queryDesc->extended_query)
 			{
-				inv.vecNgangs[i] = AllocateWriterGang();
-
+				inv.vecNgangs[i] = AllocateWriterGang(ds);
 				Assert(inv.vecNgangs[i] != NULL);
 			}
 			else
 			{
-				inv.vecNgangs[i] = AllocateReaderGang(GANGTYPE_PRIMARY_READER, queryDesc->portal_name);
+				inv.vecNgangs[i] = AllocateReaderGang(ds, GANGTYPE_PRIMARY_READER, queryDesc->portal_name);
 			}
 		}
 	}
@@ -1923,7 +1914,7 @@ AssignGangs(QueryDesc *queryDesc)
 		inv.vec1gangs_primary_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_primary_reader);
 		for (i = 0; i < inv.num1gangs_primary_reader; i++)
 		{
-			inv.vec1gangs_primary_reader[i] = AllocateReaderGang(GANGTYPE_SINGLETON_READER, queryDesc->portal_name);
+			inv.vec1gangs_primary_reader[i] = AllocateReaderGang(ds, GANGTYPE_SINGLETON_READER, queryDesc->portal_name);
 		}
 	}
 	if (inv.num1gangs_entrydb_reader > 0)
@@ -1931,7 +1922,7 @@ AssignGangs(QueryDesc *queryDesc)
 		inv.vec1gangs_entrydb_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_entrydb_reader);
 		for (i = 0; i < inv.num1gangs_entrydb_reader; i++)
 		{
-			inv.vec1gangs_entrydb_reader[i] = AllocateReaderGang(GANGTYPE_ENTRYDB_READER, queryDesc->portal_name);
+			inv.vec1gangs_entrydb_reader[i] = AllocateReaderGang(ds, GANGTYPE_ENTRYDB_READER, queryDesc->portal_name);
 		}
 	}
 
@@ -1939,15 +1930,7 @@ AssignGangs(QueryDesc *queryDesc)
 	inv.nxtNgang = 0;
     inv.nxt1gang_primary_reader = 0;
     inv.nxt1gang_entrydb_reader = 0;
-	AssociateSlicesToProcesses(sliceMap, 0, &inv);		/* Main tree. */
-
-	for (i = sliceTable->nMotions + 1; i < nslices; i++)
-	{
-		inv.nxtNgang = 0;
-        inv.nxt1gang_primary_reader = 0;
-        inv.nxt1gang_entrydb_reader = 0;
-		AssociateSlicesToProcesses(sliceMap, i, &inv);	/* An initPlan */
-	}
+	AssociateSlicesToProcesses(sliceMap, rootIdx, &inv);		/* Main tree. */
 
 	/* Clean up */
 	pfree(sliceMap);
@@ -1961,15 +1944,6 @@ AssignGangs(QueryDesc *queryDesc)
 }
 
 void
-ReleaseGangs(QueryDesc *queryDesc)
-{
-	Assert(queryDesc != NULL);
-
-	freeGangsForPortal(queryDesc->portal_name);
-}
-
-
-void
 InitSliceReq(SliceReq * req)
 {
 	req->numNgangs = 0;
@@ -1980,16 +1954,6 @@ InitSliceReq(SliceReq * req)
 	req->vec1gangs_primary_reader = NULL;
 	req->vec1gangs_entrydb_reader = NULL;
 }
-
-void
-AccumSliceReq(SliceReq * inv, SliceReq * req)
-{
-	inv->numNgangs = Max(inv->numNgangs, req->numNgangs);
-	inv->num1gangs_primary_reader = Max(inv->num1gangs_primary_reader, req->num1gangs_primary_reader);
-	inv->num1gangs_entrydb_reader = Max(inv->num1gangs_entrydb_reader, req->num1gangs_entrydb_reader);
-	inv->writer = (inv->writer || req->writer);
-}
-
 
 /*
  * Helper for AssignGangs takes a simple inventory of the gangs required
@@ -2429,7 +2393,7 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	 * Wait for them to finish and clean up the dispatching structures.
 	 * Replace current error info with QE error info if more interesting.
 	 */
-	if (ds && ds->primaryResults)
+	if (ds)
 	{
 		/*
 		 * If we are finishing a query before all the tuples of the query
