@@ -643,7 +643,7 @@ cdbCopyEndAndFetchRejectNum(CdbCopy *c, int64 *total_rows_completed, char *abort
 	 * GPDB_91_MERGE_FIXME: ugh, this is nasty. We shouldn't be calling
 	 * cdbCopyEnd twice on the same CdbCopy in the first place!
 	 */
-	if (!c->ds->primaryResults->writer_gang)
+	if (!c->ds || !c->ds->primaryResults->writer_gang)
 		return -1;
 
 	/* clean err message */
@@ -679,6 +679,7 @@ cdbCopyEndAndFetchRejectNum(CdbCopy *c, int64 *total_rows_completed, char *abort
 
 	/* recycle gangs and discard datas in each connections */
 	cdbdisp_finishCommand(c->ds, NULL, NULL, false);
+	c->ds = NULL;
 
 	/* If lost contact with segment db, try to reconnect. */
 	if (failed_count > 0)
