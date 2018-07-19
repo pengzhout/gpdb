@@ -620,7 +620,7 @@ cleanup_dispatcher_handle(dispatcher_handle_t *h)
 	}
 
 	cdbdisp_cancelDispatch(h->dispatcherState);
-	cdbdisp_destroyDispatcherState(h->dispatcherState);
+	cdbdisp_finishCommand(h->dispatcherState, NULL, NULL, false);
 }
 
 static void
