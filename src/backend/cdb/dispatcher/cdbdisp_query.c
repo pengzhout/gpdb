@@ -1152,7 +1152,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 	nTotalSlices = list_length(sliceTbl->slices);
 
 	ds = cdbdisp_makeDispatcherState(queryDesc->portal_name);
-	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
 	/*
 	 * Since we intend to execute the plan, inventory the slice tree,
@@ -1172,6 +1171,7 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
 	 * vector of slice indexes specifying the order of [potential] dispatch.
 	 */
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
 	sliceVector = palloc0(nTotalSlices * sizeof(SliceVec));
 	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, nTotalSlices);
 

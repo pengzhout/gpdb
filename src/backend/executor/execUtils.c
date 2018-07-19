@@ -1864,6 +1864,9 @@ AssignGangs(CdbDispatcherState *ds, QueryDesc *queryDesc)
 				nslices;
 	Slice	  **sliceMap;
 	SliceReq inv;
+	int rootIdx;
+
+	rootIdx = RootSliceIndex(queryDesc->estate);
 
 	/* Make a map so we can access slices quickly by index. */
 	nslices = list_length(sliceTable->slices);
@@ -1881,8 +1884,8 @@ AssignGangs(CdbDispatcherState *ds, QueryDesc *queryDesc)
 	InitSliceReq(&inv);
 
 	/* Capture main slice tree requirement. */
-	InventorySliceTree(sliceMap, 0, &inv);
-	FinalizeSliceTree(sliceMap, 0, &inv);
+	InventorySliceTree(sliceMap, rootIdx, &inv);
+	FinalizeSliceTree(sliceMap, rootIdx, &inv);
 
 	/*
 	 * Get the gangs we'll use.
@@ -1927,7 +1930,7 @@ AssignGangs(CdbDispatcherState *ds, QueryDesc *queryDesc)
 	inv.nxtNgang = 0;
     inv.nxt1gang_primary_reader = 0;
     inv.nxt1gang_entrydb_reader = 0;
-	AssociateSlicesToProcesses(sliceMap, 0, &inv);		/* Main tree. */
+	AssociateSlicesToProcesses(sliceMap, rootIdx, &inv);		/* Main tree. */
 
 	/* Clean up */
 	pfree(sliceMap);
