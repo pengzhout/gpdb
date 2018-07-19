@@ -105,6 +105,7 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 							List *oid_assignments,
 							struct CdbPgResults* cdb_pgresults);
 
+struct CdbDispatcherState * CdbCopyDispatchStart(Node *stmt, int flags);
 
 extern ParamListInfo deserializeParamListInfo(const char *str, int slen);
 

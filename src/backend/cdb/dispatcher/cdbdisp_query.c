@@ -408,10 +408,7 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 	/*
 	 * Dispatch the command.
 	 */
-	ds = cdbdisp_makeDispatcherState(NULL);
-
-	/*
-	 * Allocate a primary QE for every available segDB in the system.
+	ds = cdbdisp_makeDispatcherState(NULL); /* * Allocate a primary QE for every available segDB in the system.
 	 */
 	primaryGang = AllocateWriterGang(ds);
 	Assert(primaryGang);
@@ -1534,4 +1531,57 @@ deserializeParamListInfo(const char *str, int slen)
 	}
 
 	return paramLI;
+}
+
+/*
+ * CdbCopyDispatchStart allocate a writer gang and
+ * dispatch the COPY command to segments.
+ *
+ * In COPY protocol, after a COPY command is dispatched, a response
+ * to this will be a PGresult object bearing a status code of
+ * PGRES_COPY_OUT or PGRES_COPY_IN, then client can use APIs like
+ * PQputCopyData/PQgetCopyData to copy in/out data.
+ *
+ * CdbCheckDispatchResult will block until all connections has issued
+ * a  PGRES_COPY_OUT/PGRES_COPY_IN PGresult.
+ * 
+ */
+CdbDispatcherState *
+CdbCopyDispatchStart(Node *stmt, int flags)
+{
+	DispatchCommandQueryParms *pQueryParms;
+	char *queryText;
+	int queryTextLength;
+	CdbDispatcherState *ds;
+	Gang *primaryGang;
+	MemoryContext oldContext;
+
+	pQueryParms = cdbdisp_buildUtilityQueryParms(stmt, flags, NULL);
+
+	/*
+	 * Dispatch the command.
+	 */
+	ds = cdbdisp_makeDispatcherState(NULL);
+
+	/*
+	 * Allocate a primary QE for every available segDB in the system.
+	 */
+	primaryGang = AllocateWriterGang(ds);
+	Assert(primaryGang);
+
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
+	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
+	ds->primaryResults = cdbdisp_makeDispatchResults(1, flags & DF_CANCEL_ON_ERROR);
+	ds->dispatchParams = cdbdisp_makeDispatchParams (1, queryText, queryTextLength);
+	ds->primaryResults->writer_gang = primaryGang;
+	MemoryContextSwitchTo(oldContext);
+	cdbdisp_destroyQueryParms(pQueryParms);
+
+	cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
+
+	cdbdisp_waitDispatchFinish(ds);
+
+	CdbCheckDispatchResult(ds, DISPATCH_WAIT_NONE);
+
+	return ds;
 }

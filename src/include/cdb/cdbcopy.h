@@ -37,7 +37,6 @@ typedef enum SegDbState
 
 typedef struct CdbCopy
 {
-	Gang	   *primary_writer;
 	int			total_segs;		/* total number of segments in cdb */
 	int		   *mirror_map;		/* indicates how many db's each segment has */
 	bool		copy_in;		/* direction: true for COPY FROM false for COPY TO */
@@ -58,6 +57,7 @@ typedef struct CdbCopy
 	List		  *ao_segnos;
 	HTAB		  *aotupcounts; /* hash of ao relation id to processed tuple count */
 	bool		hasReplicatedTable;
+	struct CdbDispatcherState *ds;
 } CdbCopy;
 
 

@@ -2467,6 +2467,9 @@ CopyToDispatch(CopyState cstate)
 				CopyToDispatchFlush(cstate);
 			}
 		} while(!done);
+
+		/* Temp fix, COPY code is messing up, we need to refactor it, especially dispatcher related code */
+		cdbdisp_finishCommand(cdbCopy->ds, NULL, NULL, false);
 	}
     /* catch error from CopyStart, CopySendEndOfRow or CopyToDispatchFlush */
 	PG_CATCH();
