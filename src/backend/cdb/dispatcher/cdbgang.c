@@ -1621,6 +1621,7 @@ bool
 GangsExist(void)
 {
 	return (primaryWriterGang != NULL ||
+		availablePrimaryWriterGang != NULL ||
 			availableReaderGangsN != NIL ||
 			availableReaderGangs1 != NIL);
 }
