@@ -1139,8 +1139,8 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	/* for now, destroy all readers, regardless of the portal that owns them */
 	disconnectAndDestroyAllReaderGangs(true);
 
-	DisconnectAndDestroyGang(primaryWriterGang);
-	primaryWriterGang = NULL;
+	DisconnectAndDestroyGang(availablePrimaryWriterGang);
+	availablePrimaryWriterGang = NULL;
 
 	if (resetSession)
 		resetSessionForPrimaryGangLoss();
