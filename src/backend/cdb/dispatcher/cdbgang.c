@@ -210,7 +210,13 @@ AllocateWriterGang(CdbDispatcherState *ds)
 		elog(FATAL, "dispatch process called with role %d", Gp_role);
 	}
 
-	Assert(primaryWriterGang == NULL);
+	if (primaryWriterGang)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("query plan with multiple segworker groups is not supported"),
+			 errhint("likely caused by a function that reads or modifies data in a distributed table")));
+	}
 
 	/*
 	 * First, we look for an unallocated but created gang of the right type if
