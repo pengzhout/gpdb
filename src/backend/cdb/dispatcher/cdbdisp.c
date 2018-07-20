@@ -251,7 +251,26 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 	 * If cdbdisp_dispatchToGang() wasn't called, don't wait.
 	 */
 	if (!ds || !ds->primaryResults)
+	{
+		/* free gangs allocated in this dispatcher state */
+		cur_item = list_head(ds->allocatedGangs);
+		while (cur_item != NULL)
+		{
+			Gang	   *gp = (Gang *) lfirst(cur_item);
+			next_item = lnext(cur_item);
+
+			/* cur_item must be removed */
+			ds->allocatedGangs = list_delete_cell(ds->allocatedGangs, cur_item, prev_item);
+
+			RecycleGang(gp);
+
+			cur_item = next_item;
+		}
+
+		cdbdisp_destroyDispatcherState(ds);
+
 		return;
+	}
 
 	/*
 	 * If we are called in the dying sequence, don't touch QE connections.
@@ -339,7 +358,26 @@ CdbDispatchHandleError(struct CdbDispatcherState *ds)
 	 * If cdbdisp_dispatchToGang() wasn't called, don't wait.
 	 */
 	if (!ds || !ds->primaryResults)
+	{
+		/* free gangs allocated in this dispatcher state */
+		cur_item = list_head(ds->allocatedGangs);
+		while (cur_item != NULL)
+		{
+			Gang	   *gp = (Gang *) lfirst(cur_item);
+			next_item = lnext(cur_item);
+
+			/* cur_item must be removed */
+			ds->allocatedGangs = list_delete_cell(ds->allocatedGangs, cur_item, prev_item);
+
+			RecycleGang(gp);
+
+			cur_item = next_item;
+		}
+
+		cdbdisp_destroyDispatcherState(ds);
+
 		return;
+	}
 
 	/*
 	 * Request any remaining commands executing on qExecs to stop. We need to

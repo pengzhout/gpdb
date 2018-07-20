@@ -1152,6 +1152,7 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 	nTotalSlices = list_length(sliceTbl->slices);
 
 	ds = cdbdisp_makeDispatcherState(queryDesc->portal_name);
+	queryDesc->estate->dispatcherState = ds;
 
 	/*
 	 * Since we intend to execute the plan, inventory the slice tree,
@@ -1335,8 +1336,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 				break;
 		}
 	}
-
-	queryDesc->estate->dispatcherState = ds;
 }
 
 static int *
