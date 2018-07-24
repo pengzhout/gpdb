@@ -1045,7 +1045,7 @@ cleanupGang(Gang *gp)
 			elog(FATAL, "cleanup called when a segworker is still busy");
 
 		/* QE is no longer associated with a slice. */
-		setQEIdentifier(segdbDesc, /* slice index */ -1, gp->perGangContext);
+		segdbDesc->whoami = NULL;
 	}
 
 	/* disassociate this gang with any portal that it may have belonged to */
