@@ -91,11 +91,8 @@ static Gang *createGang(GangType type, int gang_id, int size, int content);
 
 static bool cleanupGang(Gang *gp);
 static void resetSessionForPrimaryGangLoss(void);
-static CdbComponentDatabaseInfo *copyCdbComponentDatabaseInfo(
-							 CdbComponentDatabaseInfo *dbInfo);
 static CdbComponentDatabaseInfo *findDatabaseInfoBySegIndex(
 						   CdbComponentDatabases *cdbs, int segIndex);
-static Gang *getAvailableGang(GangType type, int size, int content);
 #ifdef USE_ASSERT_CHECKING
 static bool readerGangsExist(void);
 #endif
@@ -313,33 +310,6 @@ getComponentDatabases(void)
 	MemoryContextSwitchTo(oldContext);
 
 	return cdb_component_dbs;
-}
-
-/*
- * Make a copy of CdbComponentDatabaseInfo.
- *
- * Caller destroy it.
- */
-static CdbComponentDatabaseInfo *
-copyCdbComponentDatabaseInfo(
-							 CdbComponentDatabaseInfo *dbInfo)
-{
-	int			i = 0;
-	int			size = sizeof(CdbComponentDatabaseInfo);
-	CdbComponentDatabaseInfo *newInfo = palloc0(size);
-
-	memcpy(newInfo, dbInfo, size);
-
-	if (dbInfo->hostip)
-		newInfo->hostip = pstrdup(dbInfo->hostip);
-
-	/* So far, we don't need them. */
-	newInfo->address = NULL;
-	newInfo->hostname = NULL;
-	for (i = 0; i < COMPONENT_DBS_MAX_ADDRS; i++)
-		newInfo->hostaddrs[i] = NULL;
-
-	return newInfo;
 }
 
 /*
@@ -720,106 +690,6 @@ getAllIdleReaderGangs(CdbDispatcherState *ds)
 		res = lappend(res, AllocateReaderGang(ds, type, NULL));
 	}
 	return res;
-}
-
-static Gang *
-getAvailableGang(GangType type, int size, int content)
-{
-	Gang	   *retGang = NULL;
-
-	switch (type)
-	{
-		case GANGTYPE_SINGLETON_READER:
-		case GANGTYPE_ENTRYDB_READER:
-			if (availableReaderGangs1 != NULL)	/* There are gangs already
-												 * created */
-			{
-				ListCell   *cur_item = NULL;
-				ListCell   *prev_item = NULL;
-				ListCell   *next_item = NULL;
-
-				cur_item = list_head(availableReaderGangs1);
-
-				while (cur_item != NULL)
-				{
-					Gang	   *gang = (Gang *) lfirst(cur_item);
-
-					Assert(gang != NULL);
-					Assert(gang->size == size);
-
-					next_item = lnext(cur_item);
-
-					if (gang->db_descriptors[0]->segindex == content)
-					{
-						availableReaderGangs1 = list_delete_cell(availableReaderGangs1, cur_item, prev_item);
-
-						/* sanity check */
-						if (!GangOK(gang))
-						{
-							/* connection is bad or segment is down */
-							DisconnectAndDestroyGang(gang);
-						}
-						else
-						{
-							ELOG_DISPATCHER_DEBUG("reusing an available reader 1-gang for seg%d", content);
-							retGang = gang;
-							break;
-						}
-						/* prev_item does not advance */
-					}
-					else
-					{
-						prev_item = cur_item;
-					}
-
-					cur_item = next_item;
-				}
-			}
-			break;
-
-		case GANGTYPE_PRIMARY_READER:
-			if (availableReaderGangsN != NULL)	/* There are gangs already
-												 * created */
-			{
-				ListCell   *cur_item = NULL;
-				ListCell   *prev_item = NULL;
-				ListCell   *next_item = NULL;
-
-				cur_item = list_head(availableReaderGangsN);
-
-				while (cur_item != NULL)
-				{
-					Gang	   *gang = (Gang *) lfirst(cur_item);
-
-					Assert(gang != NULL);
-					Assert(gang->size == size);
-					next_item = lnext(cur_item);
-
-					availableReaderGangsN = list_delete_cell(availableReaderGangsN, cur_item, prev_item);
-
-					/* sanity check */
-					if (!GangOK(gang))
-					{
-						/* connection is bad or segment is down */
-						DisconnectAndDestroyGang(gang);
-					}
-					else
-					{
-						ELOG_DISPATCHER_DEBUG("reusing an available reader N-gang");
-						retGang = gang;
-						break;
-					}
-					/* prev_item does not advance */
-					cur_item = next_item;
-				}
-			}
-			break;
-
-		default:
-			Assert(false);
-	}
-
-	return retGang;
 }
 
 struct SegmentDatabaseDescriptor *
@@ -1227,30 +1097,6 @@ cleanupGang(Gang *gp)
 
 	ELOG_DISPATCHER_DEBUG("cleanupGang done");
 	return true;
-}
-
-/*
- * Get max maxVmemChunksTracked of a gang.
- *
- * return in MB.
- */
-static int
-getGangMaxVmem(Gang *gp)
-{
-	int64		maxmop = 0;
-	int			i = 0;
-
-	for (i = 0; i < gp->size; ++i)
-	{
-		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
-
-		Assert(segdbDesc != NULL);
-
-		if (!cdbconn_isBadConnection(segdbDesc))
-			maxmop = Max(maxmop, segdbDesc->conn->mop_high_watermark);
-	}
-
-	return (maxmop >> 20);
 }
 
 /*
