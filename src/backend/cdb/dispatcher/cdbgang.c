@@ -74,9 +74,6 @@ static int	largest_gangsize = 0;
 static bool NeedResetSession = false;
 static Oid	OldTempNamespace = InvalidOid;
 
-static List *availableReaderGangsN = NIL;
-static List *availableReaderGangs1 = NIL;
-static Gang *availablePrimaryWriterGang= NULL;
 static Gang *primaryWriterGang = NULL;
 
 static MemoryContext getGangContext(void);
@@ -109,12 +106,6 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
 	Gang	   *gp = NULL;
 	int			size = 0;
 	int			content = 0;
-
-	ELOG_DISPATCHER_DEBUG("AllocateReaderGang for portal %s: availableReaderGangsN %d, "
-						  "availableReaderGangs1 %d",
-						  (portal_name ? portal_name : "<unnamed>"),
-						  list_length(availableReaderGangsN),
-						  list_length(availableReaderGangs1));
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 	{
@@ -161,11 +152,6 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
 	gp->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
 
 	MemoryContextSwitchTo(oldContext);
-
-	ELOG_DISPATCHER_DEBUG("on return: availableReaderGangsN %d, "
-						  "availableReaderGangs1 %d",
-						  list_length(availableReaderGangsN),
-						  list_length(availableReaderGangs1));
 
 	ds->allocatedGangs = lappend(ds->allocatedGangs, gp);
 
@@ -663,33 +649,9 @@ bad:
 List *
 getAllIdleReaderGangs(CdbDispatcherState *ds)
 {
-	List	   *res = NIL;
-	ListCell   *lc;
-	int i, len;
-	List *typeList = NIL;
-
-	/*
-	 * Do not use list_concat() here, it would destructively modify the lists!
-	 */
-	len =  list_length(availableReaderGangsN);
-	for (i = 0; i < len; i++)
-	{
-		res = lappend(res, AllocateReaderGang(ds, GANGTYPE_PRIMARY_READER, NULL));
-	}
-
-	len = list_length(availableReaderGangs1);
-	foreach(lc, availableReaderGangs1)
-	{
-		Gang *gp = (Gang *)lfirst(lc);
-		typeList = lappend_int(typeList, gp->type);
-	}
-
-	foreach (lc, typeList)
-	{
-		enum GangType type = (enum GangType)lfirst(lc);	
-		res = lappend(res, AllocateReaderGang(ds, type, NULL));
-	}
-	return res;
+	/*Temp fix*/
+	DisconnectAndDestroyIdleQEs(false);
+	return NULL;
 }
 
 struct SegmentDatabaseDescriptor *
@@ -1321,10 +1283,7 @@ GangOK(Gang *gp)
 bool
 GangsExist(void)
 {
-	return (primaryWriterGang != NULL ||
-		availablePrimaryWriterGang != NULL ||
-			availableReaderGangsN != NIL ||
-			availableReaderGangs1 != NIL);
+	return (!cdbdisp_noDispatcherStates());
 }
 
 
