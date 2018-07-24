@@ -1594,6 +1594,7 @@ void
 RecycleGang(Gang *gp)
 {
 	MemoryContext oldContext;
+	int i;
 
 	if (!gp)
 		return;
@@ -1603,25 +1604,33 @@ RecycleGang(Gang *gp)
 
 	oldContext = MemoryContextSwitchTo(getGangContext());
 
-	switch (gp->type)
+	/*
+	 * Loop through the segment_database_descriptors array and, for each
+	 * SegmentDatabaseDescriptor: 1) discard the query results (if any), 2)
+	 * disconnect the session, and 3) discard any connection error message.
+	 */
+	for (i = 0; i < gp->size; i++)
 	{
-		case GANGTYPE_SINGLETON_READER:
-		case GANGTYPE_ENTRYDB_READER:
-			availableReaderGangs1 = lappend(availableReaderGangs1, gp);
-			break;
+		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
 
-		case GANGTYPE_PRIMARY_READER:
-			availableReaderGangsN = lappend(availableReaderGangsN, gp);
-			break;
-		case GANGTYPE_PRIMARY_WRITER:
-			availablePrimaryWriterGang = gp;
-			primaryWriterGang = NULL;
-			break;
-		default:
-			Assert(false);
+		Assert(segdbDesc != NULL);
+
+		if (segdbDesc->isWriter)
+		{
+			/* writer is always the header of freelist */
+			segdbDesc->segment_database_info->freelist =
+				lcons(segdbDesc, segdbDesc->segment_database_info->freelist);
+		}
+		else
+		{
+			/* attatch reader to the tail of freelist */
+			segdbDesc->segment_database_info->freelist =
+				lappend(segdbDesc->segment_database_info->freelist, segdbDesc);
+		}
 	}
 
 	MemoryContextSwitchTo(oldContext);
+	MemoryContextDelete(gp->perGangContext);
 }
 
 static MemoryContext
