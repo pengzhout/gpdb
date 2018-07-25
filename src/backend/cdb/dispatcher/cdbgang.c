@@ -837,7 +837,7 @@ DisconnectAndDestroyGang(Gang *gp)
 
 		cdbconn_disconnect(segdbDesc);
 		cdbconn_termSegmentDescriptor(segdbDesc);
-		getCurrentComponentDbs()->busyQEs--;
+		cdb_component_dbs->busyQEs--;
 	}
 
 	MemoryContextDelete(gp->perGangContext);
@@ -896,10 +896,6 @@ cleanupComponentFreelist(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 	ListCell *nextItem = NULL;
 	ListCell *prevItem = NULL;
 	SegmentDatabaseDescriptor *segdbDesc;
-	CdbComponentDatabases *pDBs;
-
-	pDBs = getCurrentComponentDbs();
-	Assert(pDBs);
 
 	curItem = list_head(cdi->freelist);
 
@@ -921,7 +917,7 @@ cleanupComponentFreelist(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 		cdbconn_disconnect(segdbDesc);
 		cdbconn_termSegmentDescriptor(segdbDesc);
 
-		pDBs->idleQEs--;
+		cdb_component_dbs->idleQEs--;
 
 		curItem = nextItem;
 	}
@@ -933,7 +929,7 @@ DisconnectAndDestroyIdleQEs(bool includeWriter)
 	CdbComponentDatabases *pDBs;
 	int i;
 
-	pDBs = getCurrentComponentDbs();
+	pDBs = cdb_component_dbs;
 
 	if (pDBs == NULL)		
 		return;
@@ -1344,7 +1340,7 @@ RecycleGang(Gang *gp)
 		{
 			cdbconn_disconnect(segdbDesc);
 			cdbconn_termSegmentDescriptor(segdbDesc);
-			getCurrentComponentDbs()->busyQEs--;
+			cdb_component_dbs->busyQEs--;
 			
 			continue;
 		}
@@ -1362,8 +1358,8 @@ RecycleGang(Gang *gp)
 				lappend(segdbDesc->segment_database_info->freelist, segdbDesc);
 		}
 
-		getCurrentComponentDbs()->busyQEs--;
-		getCurrentComponentDbs()->idleQEs++;
+		cdb_component_dbs->busyQEs--;
+		cdb_component_dbs->idleQEs++;
 	}
 
 	MemoryContextSwitchTo(oldContext);
@@ -1386,8 +1382,9 @@ getGangContext(void)
 	return GangContext;
 }
 
-CdbComponentDatabases *
-getCurrentComponentDbs(void)
+bool
+CdbComponentDatabasesIsEmpty(void)
 {
-	return cdb_component_dbs;
+	return !cdb_component_dbs ? true :
+			(cdb_component_dbs->idleQEs == 0 && cdb_component_dbs->busyQEs == 0);
 }

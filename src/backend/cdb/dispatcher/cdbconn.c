@@ -245,7 +245,7 @@ cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool i
 	ListCell *curItem = NULL;
 	ListCell *nextItem = NULL;
 	ListCell *prevItem = NULL;
-	CdbComponentDatabases *dbs = getCurrentComponentDbs();
+	CdbComponentDatabases *dbs = NULL; //getCurrentComponentDbs();
 
 	Assert(GangContext != NULL);
 	oldContext = MemoryContextSwitchTo(GangContext);

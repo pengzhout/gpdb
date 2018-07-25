@@ -722,3 +722,5 @@ cdbdisp_copyAndReplcaceSliceId(char *queryText, int len, int sliceId)
        memcpy(newQuery + 1 + sizeof(int), &tmp, sizeof(tmp));
        return newQuery;
 }
+
+

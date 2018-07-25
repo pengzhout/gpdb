@@ -174,6 +174,6 @@ typedef struct CdbProcess
 typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int content);
 
 extern void cdbgang_setAsync(bool async);
-extern CdbComponentDatabases * getCurrentComponentDbs(void);
+extern bool CdbComponentDatabasesIsEmpty(void);
 
 #endif   /* _CDBGANG_H_ */

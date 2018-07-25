@@ -492,11 +492,9 @@ PG_FUNCTION_INFO_V1(hasGangsExist);
 Datum
 hasGangsExist(PG_FUNCTION_ARGS)
 {
-	CdbComponentDatabases *dbs;
 	if (Gp_role != GP_ROLE_DISPATCH)
 		elog(ERROR, "hasGangsExist can only be executed on master");
-	dbs = getCurrentComponentDbs();
-	if (dbs && (dbs->busyQEs > 0 || dbs->idleQEs > 0))
+	if (CdbComponentDatabasesIsEmpty())
 		PG_RETURN_BOOL(true);
 	PG_RETURN_BOOL(false);
 }

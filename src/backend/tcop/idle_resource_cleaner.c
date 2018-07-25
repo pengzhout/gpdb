@@ -32,14 +32,7 @@ static enum
 static int
 get_idle_gang_timeout(void)
 {
-	CdbComponentDatabases *dbs;
-
-	if (IdleSessionGangTimeout <= 0)
-		return IDLE_RESOURCES_NEVER_TIME_OUT;
-
-	dbs = getCurrentComponentDbs();
-
-	if (!dbs || (dbs->busyQEs == 0 && dbs->idleQEs == 0))
+	if (IdleSessionGangTimeout <= 0 || CdbComponentDatabasesIsEmpty())
 		return IDLE_RESOURCES_NEVER_TIME_OUT;
 
 	return IdleSessionGangTimeout;
