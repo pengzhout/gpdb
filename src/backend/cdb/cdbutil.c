@@ -125,6 +125,9 @@ getCdbComponentInfo(bool DNSLookupAsError)
 	 */
 	component_databases = palloc0(sizeof(CdbComponentDatabases));
 
+	component_databases->idleQEs = 0;
+	component_databases->busyQEs = 0;
+
 	component_databases->segment_db_info =
 		(CdbComponentDatabaseInfo *) palloc0(sizeof(CdbComponentDatabaseInfo) * segment_array_size);
 

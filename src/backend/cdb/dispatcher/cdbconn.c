@@ -240,7 +240,7 @@ MPPnoticeReceiver(void *arg, const PGresult *res)
 SegmentDatabaseDescriptor *
 cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool isWriter)
 {
-	SegmentDatabaseDescriptor *segdbDesc;
+	SegmentDatabaseDescriptor *segdbDesc = NULL;
 	MemoryContext oldContext;
 	ListCell *curItem = NULL;
 	ListCell *nextItem = NULL;
