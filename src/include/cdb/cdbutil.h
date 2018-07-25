@@ -32,6 +32,7 @@
 #define cdb_randint(upper,lower) \
 	( (int) floor( cdb_rand()*(((upper)-(lower))+0.999999) ) + (lower) )
 
+struct SegmentDatabaseDescriptor;
 /* --------------------------------------------------------------------------------------------------
  * Structure for MPP 2.0 database information
  *
@@ -184,6 +185,11 @@ extern int16 contentid_get_dbid(int16 contentid, char role, bool getPreferredRol
 extern int	getgpsegmentCount(void);
 
 extern bool isSockAlive(int sock);
+
+extern void returnSegToCdbComponentDatabases(CdbComponentDatabases *dbs, struct SegmentDatabaseDescriptor *segdbDesc);
+extern void cleanupComponentFreelist(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *cdi, bool includeWriter);
+extern struct SegmentDatabaseDescriptor *
+getFreeSegFromCdbComponentDatabases(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *cdbinfo, bool isWriter);
 
 #define ELOG_DISPATCHER_DEBUG(...) do { \
        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG) elog(LOG, __VA_ARGS__); \

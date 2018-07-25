@@ -70,7 +70,6 @@ createGang_async(GangType type, int gang_id, int size, int content)
 
 	/* check arguments */
 	Assert(size == 1 || size == getgpsegmentCount());
-	Assert(CurrentMemoryContext == GangContext);
 
 	Assert(CurrentGangCreating == NULL);
 
@@ -87,8 +86,6 @@ create_gang_retry:
 
 	Assert(newGangDefinition != NULL);
 	Assert(newGangDefinition->size == size);
-	Assert(newGangDefinition->perGangContext != NULL);
-	MemoryContextSwitchTo(newGangDefinition->perGangContext);
 
 	/*
 	 * allocate memory within perGangContext and will be freed automatically
@@ -274,8 +271,6 @@ create_gang_retry:
 		ELOG_DISPATCHER_DEBUG("createGang: %d processes requested; %d successful connections %d in recovery",
 							  size, successful_connections, in_recovery_mode_count);
 
-		MemoryContextSwitchTo(GangContext);
-
 		/* some segments are in recovery mode */
 		if (successful_connections != size)
 		{
@@ -298,8 +293,6 @@ create_gang_retry:
 	}
 	PG_CATCH();
 	{
-		MemoryContextSwitchTo(GangContext);
-
 		FtsNotifyProber();
 		/* FTS shows some segment DBs are down */
 		if (FtsTestSegmentDBIsDown(newGangDefinition->db_descriptors, size))

@@ -59,9 +59,6 @@ typedef struct Gang
 
 	/* should be destroyed if set */
 	bool noReuse;
-
-	/* memory context */
-	MemoryContext perGangContext;
 } Gang;
 
 extern int qe_gang_id;

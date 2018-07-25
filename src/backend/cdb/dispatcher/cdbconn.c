@@ -241,73 +241,24 @@ SegmentDatabaseDescriptor *
 cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool isWriter)
 {
 	SegmentDatabaseDescriptor *segdbDesc = NULL;
-	MemoryContext oldContext;
-	ListCell *curItem = NULL;
-	ListCell *nextItem = NULL;
-	ListCell *prevItem = NULL;
-	CdbComponentDatabases *dbs = NULL; //getCurrentComponentDbs();
+	segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(SegmentDatabaseDescriptor));
 
-	Assert(GangContext != NULL);
-	oldContext = MemoryContextSwitchTo(GangContext);
+	/* Segment db info */
+	segdbDesc->segment_database_info = cdbinfo;
+	segdbDesc->segindex = cdbinfo->segindex;
 
-	curItem = list_head(cdbinfo->freelist);
-	while (curItem != NULL)
-	{
-		segdbDesc = (SegmentDatabaseDescriptor *)lfirst(curItem);
-		nextItem = lnext(curItem);
-		Assert(segdbDesc);
+	/* Connection info, set in function cdbconn_doConnect */
+	segdbDesc->conn = NULL;
+	segdbDesc->motionListener = 0;
+	segdbDesc->backendPid = 0;
 
-		if (!isWriter && segdbDesc->isWriter)
-		{
-			segdbDesc = NULL;
-			prevItem = curItem;
-			curItem = nextItem;
-			continue;
-		}
+	/* whoami */
+	segdbDesc->whoami = NULL;
+	segdbDesc->isWriter = isWriter;
 
-		cdbinfo->freelist = list_delete_cell(cdbinfo->freelist, curItem, prevItem); 
-
-		if (cdbconn_isBadConnection(segdbDesc))
-		{
-			cdbconn_disconnect(segdbDesc);
-			cdbconn_termSegmentDescriptor(segdbDesc);
-			segdbDesc = NULL;
-			curItem = nextItem;
-			dbs->idleQEs--;
-			continue;
-		}
-
-		dbs->idleQEs--;
-		break;
-	}
-
-	AssertImply(segdbDesc, segdbDesc->isWriter == isWriter);
-
-	if (!segdbDesc)
-	{
-		segdbDesc = (SegmentDatabaseDescriptor *)palloc0(sizeof(SegmentDatabaseDescriptor));
-
-		/* Segment db info */
-		segdbDesc->segment_database_info = cdbinfo;
-		segdbDesc->segindex = cdbinfo->segindex;
-
-		/* Connection info, set in function cdbconn_doConnect */
-		segdbDesc->conn = NULL;
-		segdbDesc->motionListener = 0;
-		segdbDesc->backendPid = 0;
-
-		/* whoami */
-		segdbDesc->whoami = NULL;
-		segdbDesc->isWriter = isWriter;
-
-		/* Connection error info */
-		segdbDesc->errcode = 0;
-		initPQExpBuffer(&segdbDesc->error_message);
-	}
-
-	MemoryContextSwitchTo(oldContext);
-
-	dbs->busyQEs++;
+	/* Connection error info */
+	segdbDesc->errcode = 0;
+	initPQExpBuffer(&segdbDesc->error_message);
 
 	return segdbDesc;
 }
@@ -675,10 +626,9 @@ cdbconn_resetQEErrorMessage(SegmentDatabaseDescriptor *segdbDesc)
  */
 void
 setQEIdentifier(SegmentDatabaseDescriptor *segdbDesc,
-				int sliceIndex, MemoryContext mcxt)
+				int sliceIndex)
 {
 	CdbComponentDatabaseInfo *cdbinfo = segdbDesc->segment_database_info;
-	MemoryContext oldContext = MemoryContextSwitchTo(mcxt);
 	StringInfoData string;
 
 	initStringInfo(&string);
@@ -705,7 +655,6 @@ setQEIdentifier(SegmentDatabaseDescriptor *segdbDesc,
 	if (segdbDesc->whoami != NULL)
 		pfree(segdbDesc->whoami);
 	segdbDesc->whoami = string.data;
-	MemoryContextSwitchTo(oldContext);
 }
 
 /*

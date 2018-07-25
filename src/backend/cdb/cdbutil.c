@@ -43,6 +43,8 @@
 #include "libpq/ip.h"
 #include "cdb/cdbconn.h"
 
+MemoryContext CdbComponentsContext = NULL;
+
 /*
  * Helper Functions
  */
@@ -437,7 +439,22 @@ getCdbComponentInfo(bool DNSLookupAsError)
 CdbComponentDatabases *
 getCdbComponentDatabases(void)
 {
-	return getCdbComponentInfo(true);
+	CdbComponentDatabases *dbs;
+	MemoryContext oldContext;
+
+	if (CdbComponentsContext == NULL)
+		CdbComponentsContext = AllocSetContextCreate(TopMemoryContext, "cdb components Context",
+											ALLOCSET_DEFAULT_MINSIZE,
+											ALLOCSET_DEFAULT_INITSIZE,
+											ALLOCSET_DEFAULT_MAXSIZE);
+	
+	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
+
+	dbs = getCdbComponentInfo(true);
+
+	MemoryContextSwitchTo(oldContext);
+
+	return dbs;
 }
 
 
@@ -463,8 +480,6 @@ freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 
 			freeCdbComponentDatabaseInfo(cdi);
 		}
-
-		pfree(pDBs->segment_db_info);
 	}
 
 	if (pDBs->entry_db_info != NULL)
@@ -475,11 +490,10 @@ freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 
 			freeCdbComponentDatabaseInfo(cdi);
 		}
-
-		pfree(pDBs->entry_db_info);
 	}
 
-	pfree(pDBs);
+	MemoryContextDelete(CdbComponentsContext);	
+	CdbComponentsContext = NULL;
 }
 
 /*
@@ -1268,3 +1282,134 @@ isSockAlive(int sock)
 
 	return true;
 }
+
+void
+returnSegToCdbComponentDatabases(CdbComponentDatabases *dbs, SegmentDatabaseDescriptor *segdbDesc)
+{
+	MemoryContext oldContext;	
+	int maxLen;
+
+	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
+
+	maxLen = segdbDesc->segindex == -1 ? 1 : gp_cached_gang_threshold;
+
+	/* check if freelist length have exceeded gp_cached_gang_threshold */
+	if (list_length(segdbDesc->segment_database_info->freelist) >= maxLen)
+	{
+		cdbconn_disconnect(segdbDesc);
+		cdbconn_termSegmentDescriptor(segdbDesc);
+		dbs->busyQEs--;
+
+		return;
+	}
+
+	if (segdbDesc->isWriter)
+	{
+		/* writer is always the header of freelist */
+		segdbDesc->segment_database_info->freelist =
+			lcons(segdbDesc, segdbDesc->segment_database_info->freelist);
+	}
+	else
+	{
+		/* attatch reader to the tail of freelist */
+		segdbDesc->segment_database_info->freelist =
+			lappend(segdbDesc->segment_database_info->freelist, segdbDesc);
+	}
+
+	dbs->busyQEs--;
+	dbs->idleQEs++;
+
+	MemoryContextSwitchTo(oldContext);
+}
+
+SegmentDatabaseDescriptor *
+getFreeSegFromCdbComponentDatabases(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *cdbinfo, bool isWriter)
+{
+	MemoryContext oldContext;
+	SegmentDatabaseDescriptor *segdbDesc = NULL;
+	ListCell *curItem = NULL;
+	ListCell *nextItem = NULL;
+	ListCell *prevItem = NULL;
+
+	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
+
+	curItem = list_head(cdbinfo->freelist);
+	while (curItem != NULL)
+	{
+		segdbDesc = (SegmentDatabaseDescriptor *)lfirst(curItem);
+		nextItem = lnext(curItem);
+		Assert(segdbDesc);
+
+		if (!isWriter && segdbDesc->isWriter)
+		{
+			segdbDesc = NULL;
+			prevItem = curItem;
+			curItem = nextItem;
+			continue;
+		}
+
+		cdbinfo->freelist = list_delete_cell(cdbinfo->freelist, curItem, prevItem); 
+
+		if (cdbconn_isBadConnection(segdbDesc))
+		{
+			cdbconn_disconnect(segdbDesc);
+			cdbconn_termSegmentDescriptor(segdbDesc);
+			segdbDesc = NULL;
+			curItem = nextItem;
+			dbs->idleQEs--;
+			continue;
+		}
+
+		dbs->idleQEs--;
+		break;
+	}
+
+	if (!segdbDesc)
+		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, isWriter);
+
+	dbs->busyQEs++;
+
+	MemoryContextSwitchTo(oldContext);
+
+	return segdbDesc;
+}
+
+void
+cleanupComponentFreelist(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *cdi, bool includeWriter)
+{
+	ListCell *curItem = NULL;
+	ListCell *nextItem = NULL;
+	ListCell *prevItem = NULL;
+	SegmentDatabaseDescriptor *segdbDesc;
+	MemoryContext oldContext;
+
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
+
+	curItem = list_head(cdi->freelist);
+
+	while (curItem != NULL)
+	{
+		segdbDesc = (SegmentDatabaseDescriptor *)lfirst(curItem);
+		nextItem = lnext(curItem);
+		Assert(segdbDesc);
+
+		if (segdbDesc->isWriter && !includeWriter)
+		{
+			prevItem = curItem;
+			curItem = nextItem;
+			continue;
+		}
+
+		cdi->freelist = list_delete_cell(cdi->freelist, curItem, prevItem); 
+
+		cdbconn_disconnect(segdbDesc);
+		cdbconn_termSegmentDescriptor(segdbDesc);
+
+		curItem = nextItem;
+		dbs->idleQEs--;
+	}
+
+	MemoryContextSwitchTo(oldContext);
+}
+
+

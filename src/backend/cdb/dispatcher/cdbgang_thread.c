@@ -95,7 +95,6 @@ createGang_thread(GangType type, int gang_id, int size, int content)
 	/* check arguments */
 	Assert(size == 1 || size == getgpsegmentCount());
 	Assert(CurrentResourceOwner != NULL);
-	Assert(CurrentMemoryContext == GangContext);
 	Assert(gp_connections_per_thread > 0);
 
 	initPQExpBuffer(&create_gang_error);
@@ -120,8 +119,6 @@ create_gang_retry:
 
 	Assert(newGangDefinition != NULL);
 	Assert(newGangDefinition->size == size);
-	Assert(newGangDefinition->perGangContext != NULL);
-	MemoryContextSwitchTo(newGangDefinition->perGangContext);
 
 	resetPQExpBuffer(&create_gang_error);
 
@@ -205,8 +202,6 @@ create_gang_retry:
 
 	ELOG_DISPATCHER_DEBUG("createGang: %d processes requested; %d successful connections %d in recovery",
 						  size, successful_connections, in_recovery_mode_count);
-
-	MemoryContextSwitchTo(GangContext);
 
 	if (size == successful_connections)
 	{
