@@ -272,7 +272,6 @@ cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool i
 			cdbconn_disconnect(segdbDesc);
 			cdbconn_termSegmentDescriptor(segdbDesc);
 			segdbDesc = NULL;
-			prevItem = curItem;
 			curItem = nextItem;
 			dbs->idleQEs--;
 			continue;

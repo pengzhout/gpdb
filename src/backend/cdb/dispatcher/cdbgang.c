@@ -877,35 +877,61 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyAllGangs done");
 }
 
+static void
+cleanupComponentFreelist(CdbComponentDatabaseInfo *cdi, bool includeWriter)
+{
+	ListCell *curItem = NULL;
+	ListCell *nextItem = NULL;
+	ListCell *prevItem = NULL;
+	SegmentDatabaseDescriptor *segdbDesc;
+	CdbComponentDatabases *pDBs;
+
+	pDBs = getCurrentComponentDbs();
+	Assert(pDBs);
+
+	curItem = list_head(cdi->freelist);
+
+	while (curItem != NULL)
+	{
+		segdbDesc = (SegmentDatabaseDescriptor *)lfirst(curItem);
+		nextItem = lnext(curItem);
+		Assert(segdbDesc);
+
+		if (segdbDesc->isWriter && !includeWriter)
+		{
+			prevItem = curItem;
+			curItem = nextItem;
+			continue;
+		}
+
+		cdi->freelist = list_delete_cell(cdi->freelist, curItem, prevItem); 
+
+		cdbconn_disconnect(segdbDesc);
+		cdbconn_termSegmentDescriptor(segdbDesc);
+
+		pDBs->idleQEs--;
+
+		curItem = nextItem;
+	}
+}
+
 void
 DisconnectAndDestroyIdleQEs(bool includeWriter)
 {
 	CdbComponentDatabases *pDBs;
-	SegmentDatabaseDescriptor *segdbDesc;
-	ListCell *lc;
 	int i;
 
-	if (cdb_component_dbs == NULL)		
-		return;
+	pDBs = getCurrentComponentDbs();
 
-	pDBs = cdb_component_dbs;
+	if (pDBs == NULL)		
+		return;
 
 	if (pDBs->segment_db_info != NULL)
 	{
 		for (i = 0; i < pDBs->total_segment_dbs; i++)
 		{
 			CdbComponentDatabaseInfo *cdi = &pDBs->segment_db_info[i];
-
-			foreach(lc, cdi->freelist)
-			{
-				segdbDesc = (SegmentDatabaseDescriptor *)lfirst(lc);
-
-				if (segdbDesc->isWriter && !includeWriter)
-					continue;
-
-				cdbconn_disconnect(segdbDesc);
-				cdbconn_termSegmentDescriptor(segdbDesc);
-			}
+			cleanupComponentFreelist(cdi, includeWriter);
 		}
 	}
 
@@ -914,17 +940,7 @@ DisconnectAndDestroyIdleQEs(bool includeWriter)
 		for (i = 0; i < pDBs->total_entry_dbs; i++)
 		{
 			CdbComponentDatabaseInfo *cdi = &pDBs->entry_db_info[i];
-
-			foreach(lc, cdi->freelist)
-			{
-				segdbDesc = (SegmentDatabaseDescriptor *)lfirst(lc);
-
-				if (segdbDesc->isWriter && !includeWriter)
-					continue;
-
-				cdbconn_disconnect(segdbDesc);
-				cdbconn_termSegmentDescriptor(segdbDesc);
-			}
+			cleanupComponentFreelist(cdi, includeWriter);
 		}
 
 	}
