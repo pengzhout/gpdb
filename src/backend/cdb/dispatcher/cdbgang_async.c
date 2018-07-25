@@ -70,7 +70,6 @@ createGang_async(GangType type, int gang_id, int size, int content)
 
 	/* check arguments */
 	Assert(size == 1 || size == getgpsegmentCount());
-	Assert(CurrentResourceOwner != NULL);
 	Assert(CurrentMemoryContext == GangContext);
 	/* Writer gang is created before reader gangs. */
 	if (type == GANGTYPE_PRIMARY_WRITER)
