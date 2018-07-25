@@ -61,8 +61,10 @@ int			host_segments = 0;
 
 MemoryContext GangContext = NULL;
 Gang	   *CurrentGangCreating = NULL;
+static Gang *primaryWriterGang = NULL;
 
 CreateGangFunc pCreateGangFunc = NULL;
+
 
 /*
  * Points to the result of getCdbComponentDatabases()
@@ -170,6 +172,14 @@ AllocateWriterGang(CdbDispatcherState *ds)
 		elog(FATAL, "dispatch process called with role %d", Gp_role);
 	}
 
+	if (primaryWriterGang)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("query plan with multiple segworker groups is not supported"),
+				 errhint("likely caused by a function that reads or modifies data in a distributed table")));
+	}
+
 	oldContext = MemoryContextSwitchTo(getGangContext());
 
 	writerGang = createGang(GANGTYPE_PRIMARY_WRITER,
@@ -188,6 +198,7 @@ AllocateWriterGang(CdbDispatcherState *ds)
 	ELOG_DISPATCHER_DEBUG("AllocateWriterGang end.");
 
 	ds->allocatedGangs = lcons(writerGang, ds->allocatedGangs);
+	primaryWriterGang = writerGang;
 
 	return writerGang;
 }
@@ -1309,6 +1320,9 @@ RecycleGang(Gang *gp)
 
 	if (!gp)
 		return;
+
+	if (gp->type == GANGTYPE_PRIMARY_WRITER)
+		primaryWriterGang = NULL;
 
 	if (!cleanupGang(gp))
 		DisconnectAndDestroyGang(gp);
