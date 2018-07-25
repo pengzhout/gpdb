@@ -864,7 +864,7 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	 * Dispatcher state may contain allocated gangs.
 	 * Callers should make sure no dispatcher states exist
 	 */
-	Assert(cdbdisp_noDispatcherStates());
+	//Assert(cdbdisp_noDispatcherStates());
 
 	/*
 	 * Clean up cdb_component_dbs which will cleanup
