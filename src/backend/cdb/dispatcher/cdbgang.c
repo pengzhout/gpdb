@@ -863,8 +863,9 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	/*
 	 * Dispatcher state may contain allocated gangs.
 	 * Callers should make sure no dispatcher states exist
+	 *
+	 * FIXME: free all dispatcher state
 	 */
-	//Assert(cdbdisp_noDispatcherStates());
 
 	/*
 	 * Clean up cdb_component_dbs which will cleanup
@@ -1082,15 +1083,11 @@ CheckForResetSession(void)
 	int			oldSessionId = 0;
 	int			newSessionId = 0;
 	Oid			dropTempNamespaceOid;
-	CdbComponentDatabases *dbs;
 
 	if (!NeedResetSession)
 		return;
 
-	/* If we have gangs, we can't change our session ID. */
-	dbs = getCurrentComponentDbs();
-
-	Assert(cdbdisp_noDispatcherStates() && dbs == NULL);
+	Assert(cdb_component_dbs == NULL);
 
 	oldSessionId = gp_session_id;
 	ProcNewMppSessionId(&newSessionId);

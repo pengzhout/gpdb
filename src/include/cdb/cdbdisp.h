@@ -201,6 +201,4 @@ void cdbdisp_setAsync(bool async);
 void cdbdisp_markNamedPortalGangNoReuse(void);
 char *cdbdisp_copyAndReplcaceSliceId(char *queryText, int len, int sliceId);
 
-bool cdbdisp_noDispatcherStates(void);
-
 #endif   /* CDBDISP_H */
