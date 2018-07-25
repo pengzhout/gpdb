@@ -98,13 +98,6 @@ createGang_thread(GangType type, int gang_id, int size, int content)
 	Assert(CurrentMemoryContext == GangContext);
 	Assert(gp_connections_per_thread > 0);
 
-	/* Writer gang is created before reader gangs. */
-	if (type == GANGTYPE_PRIMARY_WRITER)
-	{
-		CdbComponentDatabases *dbs = getCurrentComponentDbs();
-		AssertImply(dbs, dbs->busyQEs == 0);
-	}
-
 	initPQExpBuffer(&create_gang_error);
 
 	Assert(CurrentGangCreating == NULL);
