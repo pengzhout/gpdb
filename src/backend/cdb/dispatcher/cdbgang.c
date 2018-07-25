@@ -1317,6 +1317,7 @@ RecycleGang(Gang *gp)
 		{
 			cdbconn_disconnect(segdbDesc);
 			cdbconn_termSegmentDescriptor(segdbDesc);
+			getCurrentComponentDbs()->busyQEs--;
 			
 			continue;
 		}
