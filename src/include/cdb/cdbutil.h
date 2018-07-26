@@ -144,7 +144,7 @@ extern CdbComponentDatabases *getCdbComponentDatabases(void);
  * freeCdbComponentDatabases() releases the palloc'd storage returned by
  * getCdbComponentDatabases().
  */
-extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
+extern void freeCdbComponentDatabases(void);
 
 // UNDONE: This was a private procedure... are there any issues in making it public???
 /*
@@ -186,10 +186,12 @@ extern int	getgpsegmentCount(void);
 
 extern bool isSockAlive(int sock);
 
-extern void returnSegToCdbComponentDatabases(CdbComponentDatabases *dbs, struct SegmentDatabaseDescriptor *segdbDesc);
-extern void cleanupComponentFreelist(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *cdi, bool includeWriter);
-extern struct SegmentDatabaseDescriptor *
-getFreeSegFromCdbComponentDatabases(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *cdbinfo, bool isWriter);
+extern bool CdbComponentDatabasesIsEmpty(void);
+extern void returnSegToCdbComponentDatabases(struct SegmentDatabaseDescriptor *segdbDesc);
+extern void destroySegToCdbComponentDatabases(struct SegmentDatabaseDescriptor *segdbDesc);
+extern void cleanupComponentsIdleQEs(bool includeWriter);
+extern struct SegmentDatabaseDescriptor * getFreeSegFromCdbComponentDatabases(int contentId, bool isWriter);
+extern CdbComponentDatabaseInfo *getComponentDatabaseInfo(int contentId);
 
 #define ELOG_DISPATCHER_DEBUG(...) do { \
        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG) elog(LOG, __VA_ARGS__); \

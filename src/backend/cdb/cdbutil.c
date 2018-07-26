@@ -42,8 +42,10 @@
 #include "libpq-int.h"
 #include "libpq/ip.h"
 #include "cdb/cdbconn.h"
+#include "cdb/cdbfts.h"
 
 MemoryContext CdbComponentsContext = NULL;
+static CdbComponentDatabases *cdb_component_dbs = NULL;
 
 /*
  * Helper Functions
@@ -78,6 +80,7 @@ typedef struct HostSegsEntry
 CdbComponentDatabases *
 getCdbComponentInfo(bool DNSLookupAsError)
 {
+	MemoryContext oldContext;
 	CdbComponentDatabaseInfo *pOld = NULL;
 	CdbComponentDatabaseInfo *cdbInfo;
 	CdbComponentDatabases *component_databases = NULL;
@@ -116,6 +119,15 @@ getCdbComponentInfo(bool DNSLookupAsError)
 
 	bool		found;
 	HostSegsEntry *hsEntry;
+
+	if (!CdbComponentsContext)
+		CdbComponentsContext = AllocSetContextCreate(TopMemoryContext, "cdb components Context",
+								ALLOCSET_DEFAULT_MINSIZE,
+								ALLOCSET_DEFAULT_INITSIZE,
+								ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
+
 	HTAB	   *hostSegsHash = hostSegsHashTableInit();
 
 	/*
@@ -426,6 +438,8 @@ getCdbComponentInfo(bool DNSLookupAsError)
 
 	hash_destroy(hostSegsHash);
 
+	MemoryContextSwitchTo(oldContext);
+
 	return component_databases;
 }
 
@@ -439,22 +453,22 @@ getCdbComponentInfo(bool DNSLookupAsError)
 CdbComponentDatabases *
 getCdbComponentDatabases(void)
 {
-	CdbComponentDatabases *dbs;
-	MemoryContext oldContext;
+	uint8		ftsVersion = getFtsVersion();
 
-	if (CdbComponentsContext == NULL)
-		CdbComponentsContext = AllocSetContextCreate(TopMemoryContext, "cdb components Context",
-											ALLOCSET_DEFAULT_MINSIZE,
-											ALLOCSET_DEFAULT_INITSIZE,
-											ALLOCSET_DEFAULT_MAXSIZE);
-	
-	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
+	if (cdb_component_dbs == NULL)
+	{
+		cdb_component_dbs = getCdbComponentInfo(true);
+		cdb_component_dbs->fts_version = ftsVersion;
+	}
+	else if (cdb_component_dbs->fts_version != ftsVersion)
+	{
+		ELOG_DISPATCHER_DEBUG("FTS rescanned, get new component databases info.");
+		freeCdbComponentDatabases();
+		cdb_component_dbs = getCdbComponentInfo(true);
+		cdb_component_dbs->fts_version = ftsVersion;
+	}
 
-	dbs = getCdbComponentInfo(true);
-
-	MemoryContextSwitchTo(oldContext);
-
-	return dbs;
+	return cdb_component_dbs;
 }
 
 
@@ -465,9 +479,10 @@ getCdbComponentDatabases(void)
  * struct pointed to by the argument.
  */
 void
-freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
+freeCdbComponentDatabases(void)
 {
 	int			i;
+	CdbComponentDatabases *pDBs = cdb_component_dbs;
 
 	if (pDBs == NULL)
 		return;
@@ -494,6 +509,7 @@ freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 
 	MemoryContextDelete(CdbComponentsContext);	
 	CdbComponentsContext = NULL;
+	cdb_component_dbs = NULL;
 }
 
 /*
@@ -1284,10 +1300,12 @@ isSockAlive(int sock)
 }
 
 void
-returnSegToCdbComponentDatabases(CdbComponentDatabases *dbs, SegmentDatabaseDescriptor *segdbDesc)
+returnSegToCdbComponentDatabases(SegmentDatabaseDescriptor *segdbDesc)
 {
 	MemoryContext oldContext;	
 	int maxLen;
+
+	Assert(cdb_component_dbs);
 
 	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
 
@@ -1298,7 +1316,7 @@ returnSegToCdbComponentDatabases(CdbComponentDatabases *dbs, SegmentDatabaseDesc
 	{
 		cdbconn_disconnect(segdbDesc);
 		cdbconn_termSegmentDescriptor(segdbDesc);
-		dbs->busyQEs--;
+		cdb_component_dbs->busyQEs--;
 
 		return;
 	}
@@ -1316,20 +1334,25 @@ returnSegToCdbComponentDatabases(CdbComponentDatabases *dbs, SegmentDatabaseDesc
 			lappend(segdbDesc->segment_database_info->freelist, segdbDesc);
 	}
 
-	dbs->busyQEs--;
-	dbs->idleQEs++;
+	cdb_component_dbs->busyQEs--;
+	cdb_component_dbs->idleQEs++;
 
 	MemoryContextSwitchTo(oldContext);
 }
 
 SegmentDatabaseDescriptor *
-getFreeSegFromCdbComponentDatabases(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *cdbinfo, bool isWriter)
+getFreeSegFromCdbComponentDatabases(int contentId, bool isWriter)
 {
 	MemoryContext oldContext;
+	CdbComponentDatabaseInfo *cdbinfo;
+	CdbComponentDatabases *dbs;
 	SegmentDatabaseDescriptor *segdbDesc = NULL;
 	ListCell *curItem = NULL;
 	ListCell *nextItem = NULL;
 	ListCell *prevItem = NULL;
+
+	cdbinfo = getComponentDatabaseInfo(contentId);	
+	dbs = getCdbComponentDatabases();
 
 	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
 
@@ -1367,6 +1390,8 @@ getFreeSegFromCdbComponentDatabases(CdbComponentDatabases *dbs, CdbComponentData
 	if (!segdbDesc)
 		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, isWriter);
 
+	setQEIdentifier(segdbDesc, -1);
+
 	dbs->busyQEs++;
 
 	MemoryContextSwitchTo(oldContext);
@@ -1374,14 +1399,16 @@ getFreeSegFromCdbComponentDatabases(CdbComponentDatabases *dbs, CdbComponentData
 	return segdbDesc;
 }
 
-void
-cleanupComponentFreelist(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *cdi, bool includeWriter)
+static void
+cleanupComponentFreelist(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 {
 	ListCell *curItem = NULL;
 	ListCell *nextItem = NULL;
 	ListCell *prevItem = NULL;
 	SegmentDatabaseDescriptor *segdbDesc;
 	MemoryContext oldContext;
+
+	Assert(cdb_component_dbs != NULL);
 
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
@@ -1406,10 +1433,98 @@ cleanupComponentFreelist(CdbComponentDatabases *dbs, CdbComponentDatabaseInfo *c
 		cdbconn_termSegmentDescriptor(segdbDesc);
 
 		curItem = nextItem;
-		dbs->idleQEs--;
+		cdb_component_dbs->idleQEs--;
 	}
 
 	MemoryContextSwitchTo(oldContext);
 }
 
+void
+cleanupComponentsIdleQEs(bool includeWriter)
+{
+	CdbComponentDatabases *pDBs;
+	int i;
 
+	pDBs = cdb_component_dbs;
+
+	if (pDBs == NULL)		
+		return;
+
+	if (pDBs->segment_db_info != NULL)
+	{
+		for (i = 0; i < pDBs->total_segment_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *cdi = &pDBs->segment_db_info[i];
+			cleanupComponentFreelist(cdi, includeWriter);
+		}
+	}
+
+	if (pDBs->entry_db_info != NULL)
+	{
+		for (i = 0; i < pDBs->total_entry_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *cdi = &pDBs->entry_db_info[i];
+			cleanupComponentFreelist(cdi, includeWriter);
+		}
+
+	}
+
+	return;
+}
+
+bool
+CdbComponentDatabasesIsEmpty(void)
+{
+	return !cdb_component_dbs ? true :
+			(cdb_component_dbs->idleQEs == 0 && cdb_component_dbs->busyQEs == 0);
+}
+
+void 
+destroySegToCdbComponentDatabases(SegmentDatabaseDescriptor *segdbDesc)
+{
+	cdbconn_disconnect(segdbDesc);
+	cdbconn_termSegmentDescriptor(segdbDesc);
+	cdb_component_dbs->busyQEs--;
+}
+
+/*
+ * Find CdbComponentDatabases in the array by segment index.
+ */
+CdbComponentDatabaseInfo *
+getComponentDatabaseInfo(int contentId)
+{
+	CdbComponentDatabaseInfo *cdbInfo = NULL;
+	CdbComponentDatabases *cdbs;
+
+	cdbs = getCdbComponentDatabases();
+
+	/* entry db */
+	if (contentId == -1)
+	{
+		cdbInfo = &cdbs->entry_db_info[0];	
+		return cdbInfo;
+	}
+
+	/* no mirror, segment_db_info is sorted by content id */
+	if (cdbs->total_segment_dbs == cdbs->total_segments)
+	{
+		cdbInfo = &cdbs->segment_db_info[contentId];
+		return cdbInfo;
+	}
+
+	/* with mirror, segment_db_info is sorted by content id */
+	if (cdbs->total_segment_dbs != cdbs->total_segments)
+	{
+		Assert(cdbs->total_segment_dbs == cdbs->total_segments * 2);
+		cdbInfo = &cdbs->segment_db_info[2 * contentId];
+
+		if (!SEGMENT_IS_ACTIVE_PRIMARY(cdbInfo))
+		{
+			cdbInfo = &cdbs->segment_db_info[2 * contentId + 1];
+		}
+
+		return cdbInfo;
+	}
+
+	return cdbInfo;
+}

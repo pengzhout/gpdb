@@ -64,11 +64,6 @@ static Gang *primaryWriterGang = NULL;
 
 CreateGangFunc pCreateGangFunc = NULL;
 
-/*
- * Points to the result of getCdbComponentDatabases()
- */
-static CdbComponentDatabases *cdb_component_dbs = NULL;
-
 static int	largest_gangsize = 0;
 
 static bool NeedResetSession = false;
@@ -85,8 +80,6 @@ static Gang *createGang(GangType type, int gang_id, int size, int content);
 
 static bool cleanupGang(Gang *gp);
 static void resetSessionForPrimaryGangLoss(void);
-static CdbComponentDatabaseInfo *findDatabaseInfoBySegIndex(
-						   CdbComponentDatabases *cdbs, int segIndex);
 
 /*
  * Create a reader gang.
@@ -256,58 +249,6 @@ segment_failure_due_to_recovery(const char *error_message)
 }
 
 /*
- * Read gp_segment_configuration catalog table and build a CdbComponentDatabases.
- *
- * Read the catalog if FTS is reconfigured.
- *
- * We don't want to destroy cdb_component_dbs when one gang get destroyed, so allocate
- * it in GangContext instead of perGangContext.
- */
-CdbComponentDatabases *
-getComponentDatabases(void)
-{
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY);
-
-	uint8		ftsVersion = getFtsVersion();
-
-	if (cdb_component_dbs == NULL)
-	{
-		cdb_component_dbs = getCdbComponentDatabases();
-		cdb_component_dbs->fts_version = ftsVersion;
-	}
-	else if (cdb_component_dbs->fts_version != ftsVersion)
-	{
-		ELOG_DISPATCHER_DEBUG("FTS rescanned, get new component databases info.");
-		freeCdbComponentDatabases(cdb_component_dbs);
-		cdb_component_dbs = getCdbComponentDatabases();
-		cdb_component_dbs->fts_version = ftsVersion;
-	}
-
-	return cdb_component_dbs;
-}
-
-/*
- * Find CdbComponentDatabases in the array by segment index.
- */
-static CdbComponentDatabaseInfo *
-findDatabaseInfoBySegIndex(
-						   CdbComponentDatabases *cdbs, int segIndex)
-{
-	Assert(cdbs != NULL);
-	int			i = 0;
-	CdbComponentDatabaseInfo *cdbInfo = NULL;
-
-	for (i = 0; i < cdbs->total_segment_dbs; i++)
-	{
-		cdbInfo = &cdbs->segment_db_info[i];
-		if (segIndex == cdbInfo->segindex)
-			break;
-	}
-
-	return cdbInfo;
-}
-
-/*
  * Reads the GP catalog tables and build a CdbComponentDatabases structure.
  * It then converts this to a Gang structure and initializes all the non-connection related fields.
  *
@@ -318,7 +259,6 @@ Gang *
 buildGangDefinition(GangType type, int gang_id, int size, int content)
 {
 	Gang	   *newGangDefinition = NULL;
-	CdbComponentDatabaseInfo *cdbinfo = NULL;
 	SegmentDatabaseDescriptor *segdbDesc = NULL;
 
 	int			segCount = 0;
@@ -329,14 +269,6 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 
 	Assert(CurrentMemoryContext == DispatcherContext);
 	Assert(size == 1 || size == getgpsegmentCount());
-
-	/* read gp_segment_configuration and build CdbComponentDatabases */
-	cdb_component_dbs = getComponentDatabases();
-
-	if (cdb_component_dbs == NULL ||
-		cdb_component_dbs->total_segments <= 0 ||
-		cdb_component_dbs->total_segment_dbs <= 0)
-		insist_log(false, "schema not populated while building segworker group");
 
 	/* allocate a gang */
 	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
@@ -354,16 +286,12 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 	switch (type)
 	{
 		case GANGTYPE_ENTRYDB_READER:
-			cdbinfo = &cdb_component_dbs->entry_db_info[0];
-			segdbDesc = getFreeSegFromCdbComponentDatabases(cdb_component_dbs, cdbinfo, false);
-			setQEIdentifier(segdbDesc, -1);
+			segdbDesc = getFreeSegFromCdbComponentDatabases(-1, false);
 			newGangDefinition->db_descriptors[0] = segdbDesc;
 			break;
 
 		case GANGTYPE_SINGLETON_READER:
-			cdbinfo = findDatabaseInfoBySegIndex(cdb_component_dbs, content);
-			segdbDesc = getFreeSegFromCdbComponentDatabases(cdb_component_dbs, cdbinfo, false);
-			setQEIdentifier(segdbDesc, -1);
+			segdbDesc = getFreeSegFromCdbComponentDatabases(content, false);
 			newGangDefinition->db_descriptors[0] = segdbDesc;
 			break;
 
@@ -376,18 +304,12 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 			 * segment_db_info for a given segindex (currently, there can be 1
 			 * or 2)
 			 */
-			for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
+			for (i = 0; i < getgpsegmentCount(); i++)
 			{
-				cdbinfo = &cdb_component_dbs->segment_db_info[i];
-				if (SEGMENT_IS_ACTIVE_PRIMARY(cdbinfo))
-				{
-					segdbDesc = getFreeSegFromCdbComponentDatabases(cdb_component_dbs, cdbinfo,
-										 type == GANGTYPE_PRIMARY_WRITER);
+				segdbDesc = getFreeSegFromCdbComponentDatabases(i, type == GANGTYPE_PRIMARY_WRITER);
 
-					setQEIdentifier(segdbDesc, -1);
-					newGangDefinition->db_descriptors[segCount] = segdbDesc;
-					segCount++;
-				}
+				newGangDefinition->db_descriptors[segCount] = segdbDesc;
+				segCount++;
 			}
 
 			if (size != segCount)
@@ -499,7 +421,7 @@ makeOptions(void)
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
-	qdinfo = &cdb_component_dbs->entry_db_info[0];
+	qdinfo = getComponentDatabaseInfo(-1); 
 	appendStringInfo(&string, " -c gp_qd_hostname=%s", qdinfo->hostip);
 	appendStringInfo(&string, " -c gp_qd_port=%d", qdinfo->port);
 
@@ -628,7 +550,7 @@ List *
 getAllIdleReaderGangs(CdbDispatcherState *ds)
 {
 	/*Temp fix*/
-	DisconnectAndDestroyIdleQEs(false);
+	cleanupComponentsIdleQEs(false);
 	return NULL;
 }
 
@@ -747,14 +669,13 @@ getCdbProcessesForQD(int isPrimary)
 	CdbProcess *proc;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
-	Assert(cdb_component_dbs != NULL);
 
 	if (!isPrimary)
 	{
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for master mirror process");
 	}
 
-	qdinfo = &(cdb_component_dbs->entry_db_info[0]);
+	qdinfo = getComponentDatabaseInfo(-1);
 
 	Assert(qdinfo->segindex == -1);
 	Assert(SEGMENT_IS_ACTIVE_PRIMARY(qdinfo));
@@ -817,9 +738,7 @@ DisconnectAndDestroyGang(Gang *gp)
 
 		Assert(segdbDesc != NULL);
 
-		cdbconn_disconnect(segdbDesc);
-		cdbconn_termSegmentDescriptor(segdbDesc);
-		cdb_component_dbs->busyQEs--;
+		destroySegToCdbComponentDatabases(segdbDesc);
 	}
 
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyGang done");
@@ -851,8 +770,7 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	 * Clean up cdb_component_dbs which will cleanup
 	 * all allocated segdbDescs.
 	 */
-	freeCdbComponentDatabases(cdb_component_dbs);
-	cdb_component_dbs = NULL;
+	freeCdbComponentDatabases();
 
 	if (resetSession)
 		resetSessionForPrimaryGangLoss();
@@ -860,38 +778,7 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyAllGangs done");
 }
 
-void
-DisconnectAndDestroyIdleQEs(bool includeWriter)
-{
-	CdbComponentDatabases *pDBs;
-	int i;
 
-	pDBs = cdb_component_dbs;
-
-	if (pDBs == NULL)		
-		return;
-
-	if (pDBs->segment_db_info != NULL)
-	{
-		for (i = 0; i < pDBs->total_segment_dbs; i++)
-		{
-			CdbComponentDatabaseInfo *cdi = &pDBs->segment_db_info[i];
-			cleanupComponentFreelist(pDBs, cdi, includeWriter);
-		}
-	}
-
-	if (pDBs->entry_db_info != NULL)
-	{
-		for (i = 0; i < pDBs->total_entry_dbs; i++)
-		{
-			CdbComponentDatabaseInfo *cdi = &pDBs->entry_db_info[i];
-			cleanupComponentFreelist(pDBs, cdi, includeWriter);
-		}
-
-	}
-
-	return;
-}
 
 /*
  * Destroy all idle (i.e available) QEs.
@@ -915,7 +802,7 @@ void DisconnectAndDestroyUnusedQEs(void)
 		 *
 		 * Since we are idle, any reader gangs will be available but not allocated.
 		 */
-		DisconnectAndDestroyIdleQEs(false);
+		cleanupComponentsIdleQEs(false);
 	}
 	else
 	{
@@ -929,7 +816,7 @@ void DisconnectAndDestroyUnusedQEs(void)
 		 * in the log.
 		 *
 		 */
-		DisconnectAndDestroyIdleQEs(true);
+		cleanupComponentsIdleQEs(true);
 	}
 }
 
@@ -1019,8 +906,6 @@ CheckForResetSession(void)
 
 	if (!NeedResetSession)
 		return;
-
-	Assert(cdb_component_dbs == NULL);
 
 	oldSessionId = gp_session_id;
 	ProcNewMppSessionId(&newSessionId);
@@ -1267,13 +1152,6 @@ RecycleGang(Gang *gp)
 
 		Assert(segdbDesc != NULL);
 
-		returnSegToCdbComponentDatabases(cdb_component_dbs, segdbDesc);
+		returnSegToCdbComponentDatabases(segdbDesc);
 	}
-}
-
-bool
-CdbComponentDatabasesIsEmpty(void)
-{
-	return !cdb_component_dbs ? true :
-			(cdb_component_dbs->idleQEs == 0 && cdb_component_dbs->busyQEs == 0);
 }

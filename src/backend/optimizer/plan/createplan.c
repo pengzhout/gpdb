@@ -2105,8 +2105,6 @@ create_external_scan_uri_list(ExtTableEntry *ext, bool *ismasteronly)
 		}
 	}
 
-	freeCdbComponentDatabases(db_info);
-
 	return filenames;
 }
 

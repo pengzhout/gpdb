@@ -3167,7 +3167,7 @@ AbortTransaction(void)
 	if (QueryCancelCleanup)
 	{
 		QueryCancelCleanup = false;
-		DisconnectAndDestroyIdleQEs(false);
+		cleanupComponentsIdleQEs(false);
 	}
 
 	/*

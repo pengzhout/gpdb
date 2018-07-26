@@ -494,7 +494,7 @@ hasGangsExist(PG_FUNCTION_ARGS)
 {
 	if (Gp_role != GP_ROLE_DISPATCH)
 		elog(ERROR, "hasGangsExist can only be executed on master");
-	if (CdbComponentDatabasesIsEmpty())
+	if (!CdbComponentDatabasesIsEmpty())
 		PG_RETURN_BOOL(true);
 	PG_RETURN_BOOL(false);
 }

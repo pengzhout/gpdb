@@ -517,7 +517,7 @@ void FtsLoop()
 
 		if (cdbs != NULL)
 		{
-			freeCdbComponentDatabases(cdbs);
+			freeCdbComponentDatabases();
 			cdbs = NULL;
 		}
 

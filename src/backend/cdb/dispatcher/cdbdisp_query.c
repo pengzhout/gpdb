@@ -457,7 +457,7 @@ cdbdisp_buildCommandQueryParms(const char *strCommand, int flags)
 	/*
 	 * sequence server info
 	 */
-	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+	qdinfo = getComponentDatabaseInfo(-1);
 	Assert(qdinfo != NULL && qdinfo->hostip != NULL);
 	pQueryParms->seqServerHost = pstrdup(qdinfo->hostip);
 	pQueryParms->seqServerHostlen = strlen(qdinfo->hostip) + 1;
@@ -545,7 +545,7 @@ cdbdisp_buildUtilityQueryParms(struct Node *stmt,
 	/*
 	 * sequence server info
 	 */
-	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+	qdinfo = getComponentDatabaseInfo(-1);
 	Assert(qdinfo != NULL && qdinfo->hostip != NULL);
 	pQueryParms->seqServerHost = pstrdup(qdinfo->hostip);
 	pQueryParms->seqServerHostlen = strlen(qdinfo->hostip) + 1;
@@ -632,7 +632,7 @@ cdbdisp_buildPlanQueryParms(struct QueryDesc *queryDesc,
 	/*
 	 * sequence server info
 	 */
-	qdinfo = &(getComponentDatabases()->entry_db_info[0]);
+	qdinfo = getComponentDatabaseInfo(-1);
 	Assert(qdinfo != NULL && qdinfo->hostip != NULL);
 	pQueryParms->seqServerHost = pstrdup(qdinfo->hostip);
 	pQueryParms->seqServerHostlen = strlen(qdinfo->hostip) + 1;

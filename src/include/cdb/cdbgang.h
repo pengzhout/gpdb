@@ -91,8 +91,6 @@ extern void CheckForResetSession(void);
 
 extern List *getAllIdleReaderGangs(struct CdbDispatcherState *ds);
 
-extern CdbComponentDatabases *getComponentDatabases(void);
-
 extern struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
 Gang *buildGangDefinition(GangType type, int gang_id, int size, int content);
@@ -119,8 +117,6 @@ extern bool segment_failure_due_to_recovery(const char *error_message);
  *
  * This routine is also called from the sigalarm signal handler (hopefully that is safe to do).
  */
-extern void DisconnectAndDestroyIdleQEs(bool includeWriter);
-
 extern int largestGangsize(void);
 extern void setLargestGangsize(int size);
 
@@ -171,6 +167,5 @@ typedef struct CdbProcess
 typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int content);
 
 extern void cdbgang_setAsync(bool async);
-extern bool CdbComponentDatabasesIsEmpty(void);
 
 #endif   /* _CDBGANG_H_ */
