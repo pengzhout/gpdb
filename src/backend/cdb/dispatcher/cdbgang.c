@@ -138,9 +138,9 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
 	/* let the gang know which portal it is being assigned to */
 	gp->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
 
+	ds->allocatedGangs = lappend(ds->allocatedGangs, gp);
 	MemoryContextSwitchTo(oldContext);
 
-	ds->allocatedGangs = lappend(ds->allocatedGangs, gp);
 
 	return gp;
 }
