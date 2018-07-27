@@ -741,6 +741,9 @@ DisconnectAndDestroyGang(Gang *gp)
 		destroySegToCdbComponentDatabases(segdbDesc);
 	}
 
+	if (gp->type == GANGTYPE_PRIMARY_WRITER)
+		primaryWriterGang = NULL;
+
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyGang done");
 }
 
