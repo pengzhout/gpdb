@@ -66,7 +66,9 @@ typedef struct CdbComponentDatabaseInfo
 
 	char	   *hostaddrs[COMPONENT_DBS_MAX_ADDRS];	/* cached lookup of names */	
 	int16		hostSegs;		/* number of primary segments on the same hosts */
-	List	*freelist;
+	List		*freelist;
+	int			idleQEs;
+	int			busyQEs;
 } CdbComponentDatabaseInfo;
 
 #define SEGMENT_IS_ACTIVE_MIRROR(p) \
@@ -190,8 +192,9 @@ extern bool CdbComponentDatabasesIsEmpty(void);
 extern void returnSegToCdbComponentDatabases(struct SegmentDatabaseDescriptor *segdbDesc);
 extern void destroySegToCdbComponentDatabases(struct SegmentDatabaseDescriptor *segdbDesc);
 extern void cleanupComponentsIdleQEs(bool includeWriter);
-extern struct SegmentDatabaseDescriptor * getFreeSegFromCdbComponentDatabases(int contentId, bool isWriter);
+extern struct SegmentDatabaseDescriptor * getFreeSegFromCdbComponentDatabases(int contentId, bool isExteneded);
 extern CdbComponentDatabaseInfo *getComponentDatabaseInfo(int contentId);
+extern List * getFullComponentList(void);
 
 #define ELOG_DISPATCHER_DEBUG(...) do { \
        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG) elog(LOG, __VA_ARGS__); \

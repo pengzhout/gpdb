@@ -18,5 +18,4 @@
 #include "cdb/cdbgang.h"
 
 extern CreateGangFunc pCreateGangFuncAsync;
-
 #endif

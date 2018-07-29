@@ -1831,7 +1831,7 @@ typedef struct SliceReq
 
 /* Forward declarations */
 static void InitSliceReq(SliceReq * req);
-static void InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
+static void InventorySliceTree(CdbDispatcherState *ds, List * slices, int sliceIndex, bool isExtended);
 static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 static void FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 
@@ -1856,91 +1856,15 @@ static void FinalizeSliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 void
 AssignGangs(CdbDispatcherState *ds, QueryDesc *queryDesc)
 {
-	EState	   *estate = queryDesc->estate;
-	SliceTable *sliceTable = estate->es_sliceTable;
-	ListCell   *cell;
-	Slice	   *slice;
-	int			i,
-				nslices;
-	Slice	  **sliceMap;
-	SliceReq inv;
+	EState *estate;
+	SliceTable *sliceTable;
 	int rootIdx;
 
+	estate = queryDesc->estate;
+	sliceTable = estate->es_sliceTable;
 	rootIdx = RootSliceIndex(queryDesc->estate);
 
-	/* Make a map so we can access slices quickly by index. */
-	nslices = list_length(sliceTable->slices);
-	sliceMap = (Slice **) palloc(nslices * sizeof(Slice *));
-	i = 0;
-	foreach(cell, sliceTable->slices)
-	{
-		slice = (Slice *) lfirst(cell);
-		Assert(i == slice->sliceIndex);
-		sliceMap[i] = slice;
-		i++;
-	}
-
-	/* Initialize gang requirement inventory */
-	InitSliceReq(&inv);
-
-	/* Capture main slice tree requirement. */
-	InventorySliceTree(sliceMap, rootIdx, &inv);
-	FinalizeSliceTree(sliceMap, rootIdx, &inv);
-
-	/*
-	 * Get the gangs we'll use.
-	 *
-	 * As a general rule the first gang is a writer and the rest are readers.
-	 * If this happens to be an extended query protocol then all gangs are readers.
-	 */
-	if (inv.numNgangs > 0)
-	{
-		inv.vecNgangs = (Gang **) palloc(sizeof(Gang *) * inv.numNgangs);
-		for (i = 0; i < inv.numNgangs; i++)
-		{
-			if (i == 0 && !queryDesc->extended_query)
-			{
-				inv.vecNgangs[i] = AllocateWriterGang(ds);
-				Assert(inv.vecNgangs[i] != NULL);
-			}
-			else
-			{
-				inv.vecNgangs[i] = AllocateReaderGang(ds, GANGTYPE_PRIMARY_READER, queryDesc->portal_name);
-			}
-		}
-	}
-	if (inv.num1gangs_primary_reader > 0)
-	{
-		inv.vec1gangs_primary_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_primary_reader);
-		for (i = 0; i < inv.num1gangs_primary_reader; i++)
-		{
-			inv.vec1gangs_primary_reader[i] = AllocateReaderGang(ds, GANGTYPE_SINGLETON_READER, queryDesc->portal_name);
-		}
-	}
-	if (inv.num1gangs_entrydb_reader > 0)
-	{
-		inv.vec1gangs_entrydb_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_entrydb_reader);
-		for (i = 0; i < inv.num1gangs_entrydb_reader; i++)
-		{
-			inv.vec1gangs_entrydb_reader[i] = AllocateReaderGang(ds, GANGTYPE_ENTRYDB_READER, queryDesc->portal_name);
-		}
-	}
-
-	/* Use the gangs to construct the CdbProcess lists in slices. */
-	inv.nxtNgang = 0;
-    inv.nxt1gang_primary_reader = 0;
-    inv.nxt1gang_entrydb_reader = 0;
-	AssociateSlicesToProcesses(sliceMap, rootIdx, &inv);		/* Main tree. */
-
-	/* Clean up */
-	pfree(sliceMap);
-	if (inv.vecNgangs != NULL)
-		pfree(inv.vecNgangs);
-	if (inv.vec1gangs_primary_reader != NULL)
-		pfree(inv.vec1gangs_primary_reader);
-	if (inv.vec1gangs_entrydb_reader != NULL)
-		pfree(inv.vec1gangs_entrydb_reader);
-
+	InventorySliceTree(ds, sliceTable->slices, rootIdx, queryDesc->extended_query);
 }
 
 void
@@ -1961,41 +1885,57 @@ InitSliceReq(SliceReq * req)
  * generally useful.
  */
 void
-InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
+InventorySliceTree(CdbDispatcherState *ds, List *slices, int sliceIndex, bool isExtended)
 {
-	ListCell   *cell;
-	int			childIndex;
-	Slice	   *slice = sliceMap[sliceIndex];
+	ListCell *cell;
+	List *segments;
+	int childIndex;
+	Slice *slice = list_nth(slices, sliceIndex);
 
-	switch (slice->gangType)
+	if (slice->gangType == GANGTYPE_UNALLOCATED)
 	{
-		case GANGTYPE_UNALLOCATED:
-			/* Roots that run on the  QD don't need a gang. */
-			break;
+		slice->primaryGang = NULL;
+		slice->primaryProcesses = getCdbProcessesForQD(true);
+	}
+	else if (slice->gangType == GANGTYPE_PRIMARY_WRITER)
+	{
 
-		case GANGTYPE_ENTRYDB_READER:
-            Assert(slice->gangSize == 1);
-			req->num1gangs_entrydb_reader++;
-			break;
+		Assert(isExtended == false);
 
-		case GANGTYPE_SINGLETON_READER:
-			req->num1gangs_primary_reader++;
-			break;
+		segments = getFullComponentList();
+		slice->primaryGang = AllocateWriterGang(ds, segments);
+		slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+													slice->sliceIndex,
+													&slice->directDispatch);
+	}
+	else
+	{
+		switch(slice->gangType)
+		{
+			case GANGTYPE_PRIMARY_READER:
+				segments = getFullComponentList();
+				break;	
+			case GANGTYPE_SINGLETON_READER:
+				segments = list_make1_int(gp_singleton_segindex);
+				break;
+			case GANGTYPE_ENTRYDB_READER:
+				segments = list_make1_int(-1);
+				break;
+			default:
+				Assert(false);
 
-		case GANGTYPE_PRIMARY_WRITER:
-			req->writer = TRUE;
-			/* fall through */
+		}
 
-		case GANGTYPE_PRIMARY_READER:
-			Assert(slice->gangSize == getgpsegmentCount());
-			req->numNgangs++;
-			break;
+		slice->primaryGang = AllocateReaderGang(ds, slice->gangType, segments, isExtended);
+		slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+													slice->sliceIndex,
+													&slice->directDispatch);
 	}
 
 	foreach(cell, slice->children)
 	{
 		childIndex = lfirst_int(cell);
-		InventorySliceTree(sliceMap, childIndex, req);
+		InventorySliceTree(ds, slices, childIndex, isExtended);
 	}
 }
 

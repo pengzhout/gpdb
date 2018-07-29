@@ -36,6 +36,7 @@ static DistributedTransactionId syncCacheXid = InvalidDistributedTransactionId;
 void
 DtxContextInfo_RewindSegmateSync(void)
 {
+	return;
 	syncCount--;
 }
 
@@ -56,7 +57,7 @@ DtxContextInfo_CreateOnMaster(DtxContextInfo *dtxContextInfo,
 	if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 	{
 		if (syncCacheXid == dtxContextInfo->distributedXid)
-			dtxContextInfo->segmateSync = ++syncCount;
+			dtxContextInfo->segmateSync = syncCount;
 		else
 		{
 			syncCacheXid = dtxContextInfo->distributedXid;

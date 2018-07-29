@@ -72,11 +72,8 @@ static Oid	OldTempNamespace = InvalidOid;
 /*
  * Every gang created must have a unique identifier
  */
-#define PRIMARY_WRITER_GANG_ID 1
-static int	gang_id_counter = 2;
 
-
-static Gang *createGang(GangType type, int gang_id, int size, int content);
+static Gang *createGang(GangType type, List *segments, bool isExtended);
 
 static bool cleanupGang(Gang *gp);
 static void resetSessionForPrimaryGangLoss(void);
@@ -87,12 +84,10 @@ static void resetSessionForPrimaryGangLoss(void);
  * @type can be GANGTYPE_ENTRYDB_READER, GANGTYPE_SINGLETON_READER or GANGTYPE_PRIMARY_READER.
  */
 Gang *
-AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
+AllocateReaderGang(CdbDispatcherState *ds, GangType type, List *segments, bool isExtended)
 {
 	MemoryContext oldContext = NULL;
 	Gang	   *gp = NULL;
-	int			size = 0;
-	int			content = 0;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 	{
@@ -101,46 +96,13 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
 
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
-	switch (type)
-	{
-		case GANGTYPE_ENTRYDB_READER:
-			content = -1;
-			size = 1;
-			break;
+	gp = createGang(type, segments, isExtended);
 
-		case GANGTYPE_SINGLETON_READER:
-			content = gp_singleton_segindex;
-			size = 1;
-			break;
-
-		case GANGTYPE_PRIMARY_READER:
-			content = 0;
-			size = getgpsegmentCount();
-			break;
-
-		default:
-			Assert(false);
-	}
-
-	ELOG_DISPATCHER_DEBUG("Creating a new reader size %d gang for %s",
-						  size, (portal_name ? portal_name : "unnamed portal"));
-
-	gp = createGang(type, gang_id_counter++, size, content);
 	gp->allocated = true;
 
-	/*
-	 * make sure no memory is still allocated for previous portal name that
-	 * this gang belonged to
-	 */
-	if (gp->portal_name)
-		pfree(gp->portal_name);
-
-	/* let the gang know which portal it is being assigned to */
-	gp->portal_name = (portal_name ? pstrdup(portal_name) : (char *) NULL);
-
 	ds->allocatedGangs = lappend(ds->allocatedGangs, gp);
-	MemoryContextSwitchTo(oldContext);
 
+	MemoryContextSwitchTo(oldContext);
 
 	return gp;
 }
@@ -149,12 +111,11 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
  * Create a writer gang.
  */
 Gang *
-AllocateWriterGang(CdbDispatcherState *ds)
+AllocateWriterGang(CdbDispatcherState *ds, List *segments)
 {
 	Gang	   *writerGang = NULL;
 	MemoryContext oldContext = NULL;
 	int			i = 0;
-	int nsegdb = getgpsegmentCount();
 
 	ELOG_DISPATCHER_DEBUG("AllocateWriterGang begin.");
 
@@ -173,13 +134,13 @@ AllocateWriterGang(CdbDispatcherState *ds)
 
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
-	writerGang = createGang(GANGTYPE_PRIMARY_WRITER,
-			PRIMARY_WRITER_GANG_ID, nsegdb, -1);
+	writerGang = createGang(GANGTYPE_PRIMARY_WRITER, segments, false);
 	writerGang->allocated = true;
 
 	/*
 	 * set "whoami" for utility statement. non-utility statement will
 	 * overwrite it in function getCdbProcessList.
+	 * FIXME: 
 	 */
 	for (i = 0; i < writerGang->size; i++)
 		setQEIdentifier(writerGang->db_descriptors[i], -1);
@@ -202,9 +163,9 @@ AllocateWriterGang(CdbDispatcherState *ds)
  * elog ERROR or return a non-NULL gang.
  */
 static Gang *
-createGang(GangType type, int gang_id, int size, int content)
+createGang(GangType type, List *segments, bool isExtended)
 {
-	return pCreateGangFunc(type, gang_id, size, content);
+	return pCreateGangFunc(type, segments, isExtended);
 }
 
 /*
@@ -256,25 +217,25 @@ segment_failure_due_to_recovery(const char *error_message)
  * Returns a not-null pointer.
  */
 Gang *
-buildGangDefinition(GangType type, int gang_id, int size, int content)
+buildGangDefinition(GangType type, List *segments, bool isExtended)
 {
-	Gang	   *newGangDefinition = NULL;
-	SegmentDatabaseDescriptor *segdbDesc = NULL;
+	Gang *newGangDefinition = NULL;
+	ListCell *lc;
+	int	i = 0;
+	int	size;
+	int contentId;
 
-	int			segCount = 0;
-	int			i = 0;
+	size = list_length(segments);
 
 	ELOG_DISPATCHER_DEBUG("buildGangDefinition:Starting %d qExec processes for %s gang",
 						  size, gangTypeToString(type));
 
 	Assert(CurrentMemoryContext == DispatcherContext);
-	Assert(size == 1 || size == getgpsegmentCount());
 
 	/* allocate a gang */
 	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
 	newGangDefinition->type = type;
 	newGangDefinition->size = size;
-	newGangDefinition->gang_id = gang_id;
 	newGangDefinition->allocated = false;
 	newGangDefinition->noReuse = false;
 	newGangDefinition->dispatcherActive = false;
@@ -282,44 +243,11 @@ buildGangDefinition(GangType type, int gang_id, int size, int content)
 	newGangDefinition->db_descriptors =
 		(SegmentDatabaseDescriptor **) palloc0(size * sizeof(SegmentDatabaseDescriptor*));
 
-	/* initialize db_descriptors */
-	switch (type)
+	foreach_with_count (lc, segments , i)
 	{
-		case GANGTYPE_ENTRYDB_READER:
-			segdbDesc = getFreeSegFromCdbComponentDatabases(-1, false);
-			newGangDefinition->db_descriptors[0] = segdbDesc;
-			break;
-
-		case GANGTYPE_SINGLETON_READER:
-			segdbDesc = getFreeSegFromCdbComponentDatabases(content, false);
-			newGangDefinition->db_descriptors[0] = segdbDesc;
-			break;
-
-		case GANGTYPE_PRIMARY_READER:
-		case GANGTYPE_PRIMARY_WRITER:
-
-			/*
-			 * We loop through the segment_db_info.  Each item has a segindex.
-			 * They are sorted by segindex, and there can be > 1
-			 * segment_db_info for a given segindex (currently, there can be 1
-			 * or 2)
-			 */
-			for (i = 0; i < getgpsegmentCount(); i++)
-			{
-				segdbDesc = getFreeSegFromCdbComponentDatabases(i, type == GANGTYPE_PRIMARY_WRITER);
-
-				newGangDefinition->db_descriptors[segCount] = segdbDesc;
-				segCount++;
-			}
-
-			if (size != segCount)
-			{
-				elog(ERROR, "Not all primary segment instances are active and connected");
-			}
-			break;
-
-		default:
-			Assert(false);
+		contentId = lfirst_int(lc);
+		newGangDefinition->db_descriptors[i] =
+					getFreeSegFromCdbComponentDatabases(contentId, isExtended);
 	}
 
 	ELOG_DISPATCHER_DEBUG("buildGangDefinition done");
@@ -1126,8 +1054,10 @@ cdbgang_setAsync(bool async)
 {
 	if (async)
 		pCreateGangFunc = pCreateGangFuncAsync;
+#if 0
 	else
 		pCreateGangFunc = pCreateGangFuncThreaded;
+#endif
 }
 
 void

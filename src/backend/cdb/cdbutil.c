@@ -247,6 +247,8 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		}
 
 		pRow->freelist = NIL;
+		pRow->idleQEs = 0;
+		pRow->busyQEs = 0;
 		pRow->dbid = dbid;
 		pRow->segindex = content;
 		pRow->role = role;
@@ -1316,6 +1318,7 @@ returnSegToCdbComponentDatabases(SegmentDatabaseDescriptor *segdbDesc)
 	{
 		cdbconn_disconnect(segdbDesc);
 		cdbconn_termSegmentDescriptor(segdbDesc);
+		segdbDesc->segment_database_info->busyQEs--;
 		cdb_component_dbs->busyQEs--;
 
 		return;
@@ -1334,14 +1337,16 @@ returnSegToCdbComponentDatabases(SegmentDatabaseDescriptor *segdbDesc)
 			lappend(segdbDesc->segment_database_info->freelist, segdbDesc);
 	}
 
+	segdbDesc->segment_database_info->busyQEs--;
 	cdb_component_dbs->busyQEs--;
+	segdbDesc->segment_database_info->idleQEs++;
 	cdb_component_dbs->idleQEs++;
 
 	MemoryContextSwitchTo(oldContext);
 }
 
 SegmentDatabaseDescriptor *
-getFreeSegFromCdbComponentDatabases(int contentId, bool isWriter)
+getFreeSegFromCdbComponentDatabases(int contentId, bool isExtended)
 {
 	MemoryContext oldContext;
 	CdbComponentDatabaseInfo *cdbinfo;
@@ -1363,7 +1368,8 @@ getFreeSegFromCdbComponentDatabases(int contentId, bool isWriter)
 		nextItem = lnext(curItem);
 		Assert(segdbDesc);
 
-		if (!isWriter && segdbDesc->isWriter)
+		/* For extended query like CURSOR, can't allocate a writer */
+		if (isExtended && segdbDesc->isWriter)
 		{
 			segdbDesc = NULL;
 			prevItem = curItem;
@@ -1379,19 +1385,26 @@ getFreeSegFromCdbComponentDatabases(int contentId, bool isWriter)
 			cdbconn_termSegmentDescriptor(segdbDesc);
 			segdbDesc = NULL;
 			curItem = nextItem;
+			cdbinfo->idleQEs--;
 			dbs->idleQEs--;
 			continue;
 		}
 
+		cdbinfo->idleQEs--;
 		dbs->idleQEs--;
 		break;
 	}
 
 	if (!segdbDesc)
+	{
+		/* entry db should not be a writer */
+		bool isWriter = contentId == -1 ? false : (cdbinfo->busyQEs == 0 && cdbinfo->idleQEs == 0); 
 		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, isWriter);
+	}
 
 	setQEIdentifier(segdbDesc, -1);
 
+	cdbinfo->busyQEs++;
 	dbs->busyQEs++;
 
 	MemoryContextSwitchTo(oldContext);
@@ -1433,6 +1446,7 @@ cleanupComponentFreelist(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 		cdbconn_termSegmentDescriptor(segdbDesc);
 
 		curItem = nextItem;
+		segdbDesc->segment_database_info->idleQEs--;
 		cdb_component_dbs->idleQEs--;
 	}
 
@@ -1484,6 +1498,7 @@ destroySegToCdbComponentDatabases(SegmentDatabaseDescriptor *segdbDesc)
 {
 	cdbconn_disconnect(segdbDesc);
 	cdbconn_termSegmentDescriptor(segdbDesc);
+	segdbDesc->segment_database_info->busyQEs--;
 	cdb_component_dbs->busyQEs--;
 }
 
@@ -1527,4 +1542,18 @@ getComponentDatabaseInfo(int contentId)
 	}
 
 	return cdbInfo;
+}
+
+List *
+getFullComponentList(void)
+{
+	int i;
+	List *segments = NIL;
+
+	for (i = 0; i < getgpsegmentCount(); i++)
+	{
+		segments = lappend_int(segments, i);
+	}
+
+	return segments;
 }

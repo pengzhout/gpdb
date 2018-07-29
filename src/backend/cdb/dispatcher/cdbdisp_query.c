@@ -264,7 +264,7 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 
 	ds = cdbdisp_makeDispatcherState(NULL);
 
-	primaryGang = AllocateWriterGang(ds);
+	primaryGang = AllocateWriterGang(ds, getFullComponentList());
 	Assert(primaryGang);
 
 	idleReaderGangs = getAllIdleReaderGangs(ds);
@@ -353,7 +353,7 @@ CdbDispatchCommand(const char *strCommand,
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = AllocateWriterGang(ds);
+	primaryGang = AllocateWriterGang(ds, getFullComponentList());
 	Assert(primaryGang);
 
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
@@ -405,7 +405,7 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 	 */
 	ds = cdbdisp_makeDispatcherState(NULL); /* * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = AllocateWriterGang(ds);
+	primaryGang = AllocateWriterGang(ds, getFullComponentList());
 	Assert(primaryGang);
 
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
@@ -1517,7 +1517,7 @@ CdbCopyDispatchStart(Node *stmt, int flags)
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = AllocateWriterGang(ds);
+	primaryGang = AllocateWriterGang(ds, getFullComponentList());
 	Assert(primaryGang);
 
 	oldContext = MemoryContextSwitchTo(DispatcherContext);

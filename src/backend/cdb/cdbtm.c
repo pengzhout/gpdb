@@ -594,9 +594,11 @@ doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType)
 	bool		badGangs,
 				succeeded = false;
 
+#if 0
 	if (cmdType == DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL &&
 		currentGxact->state == DTX_STATE_ACTIVE_NOT_DISTRIBUTED)
 		setCurrentGxactState(DTX_STATE_ACTIVE_DISTRIBUTED);
+#endif
 
 	serializedDtxContextInfo = qdSerializeDtxContextInfo(
 														 &serializedDtxContextInfoLen,
