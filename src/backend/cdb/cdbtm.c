@@ -2574,8 +2574,7 @@ verify_shared_snapshot_ready(void)
 	{
 		CdbDispatchCommand("set gp_write_shared_snapshot=true",
 						   DF_CANCEL_ON_ERROR |
-						   DF_WITH_SNAPSHOT |
-						   DF_NEED_TWO_PHASE,
+						   DF_WITH_SNAPSHOT,
 						   NULL);
 
 		dumpSharedLocalSnapshot_forCursor();
@@ -2614,10 +2613,7 @@ assign_gp_write_shared_snapshot(bool newval, void *extra)
 		{
 			PushActiveSnapshot(GetTransactionSnapshot());
 
-			if (Gp_is_writer)
-			{
-				dumpSharedLocalSnapshot_forCursor();
-			}
+			dumpSharedLocalSnapshot_forCursor();
 
 			PopActiveSnapshot();
 		}

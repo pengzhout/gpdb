@@ -146,6 +146,7 @@
  * -------------------------------------------------------------------------
  */
 
+#include <unistd.h>
 #include "postgres.h"
 
 #include "access/distributedlog.h"
@@ -653,7 +654,6 @@ dumpSharedLocalSnapshot_forCursor(void)
 	ResourceOwner oldowner;
 	MemoryContext oldcontext;
 
-	Assert(Gp_role == GP_ROLE_DISPATCH || (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer));
 	Assert(SharedLocalSnapshotSlot != NULL);
 
 	LWLockAcquire(SharedLocalSnapshotSlot->slotLock, LW_SHARED);
@@ -670,7 +670,7 @@ dumpSharedLocalSnapshot_forCursor(void)
 	CurrentResourceOwner = TopTransactionResourceOwner;
 	oldcontext = MemoryContextSwitchTo(TopTransactionContext);
 	f = BufFileCreateNamedTemp(fname,
-							   true, /* delOnClose */
+							   false, /* delOnClose */
 							   false /* interXact */);
 
 	/*
@@ -866,6 +866,9 @@ readSharedLocalSnapshot_forCursor(Snapshot snapshot)
 
 	/* we're done with file. */
 	BufFileClose(f);
+
+	/* now, snapshot file is useless, delete it */
+	unlink(fname);
 
 	SetSharedTransactionId_reader(localXid, snapshot->curcid);
 
