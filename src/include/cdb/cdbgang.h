@@ -74,7 +74,7 @@ extern Gang *AllocateReaderGang(struct CdbDispatcherState *ds, GangType type, Li
 
 extern Gang *AllocateWriterGang(struct CdbDispatcherState *ds, List *segments);
 
-extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
+extern List *getCdbProcessList(Gang *gang, int sliceIndex);
 
 extern bool GangOK(Gang *gp);
 

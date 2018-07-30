@@ -536,7 +536,7 @@ makeCdbProcess(SegmentDatabaseDescriptor *segdbDesc)
  * @directDispatch: might be null
  */
 List *
-getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch)
+getCdbProcessList(Gang *gang, int sliceIndex)
 {
 	List	   *list = NULL;
 	int			i = 0;
@@ -545,38 +545,18 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 						  sliceIndex, gang->type, gang->size);
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
-	Assert((gang->type == GANGTYPE_PRIMARY_WRITER && gang->size == getgpsegmentCount()) ||
-		   (gang->type == GANGTYPE_PRIMARY_READER && gang->size == getgpsegmentCount()) ||
-		   (gang->type == GANGTYPE_ENTRYDB_READER && gang->size == 1) ||
-		   (gang->type == GANGTYPE_SINGLETON_READER && gang->size == 1));
 
-
-	if (directDispatch != NULL && directDispatch->isDirectDispatch)
+	for (i = 0; i < gang->size; i++)
 	{
-		/* Currently, direct dispatch is to one segment db. */
-		Assert(list_length(directDispatch->contentIds) == 1);
-
-		int			directDispatchContentId = linitial_int(directDispatch->contentIds);
-		SegmentDatabaseDescriptor *segdbDesc = gang->db_descriptors[directDispatchContentId];
+		SegmentDatabaseDescriptor *segdbDesc = gang->db_descriptors[i];
 		CdbProcess *process = makeCdbProcess(segdbDesc);
 
 		setQEIdentifier(segdbDesc, sliceIndex);
-		list = lappend(list, (void*)process);
-	}
-	else
-	{
-		for (i = 0; i < gang->size; i++)
-		{
-			SegmentDatabaseDescriptor *segdbDesc = gang->db_descriptors[i];
-			CdbProcess *process = makeCdbProcess(segdbDesc);
+		list = lappend(list, process);
 
-			setQEIdentifier(segdbDesc, sliceIndex);
-			list = lappend(list, process);
-
-			ELOG_DISPATCHER_DEBUG("Gang assignment (gang_id %d): slice%d seg%d %s:%d pid=%d",
-								  gang->gang_id, sliceIndex, process->contentid,
-								  process->listenerAddr, process->listenerPort, process->pid);
-		}
+		ELOG_DISPATCHER_DEBUG("Gang assignment (gang_id %d): slice%d seg%d %s:%d pid=%d",
+							  gang->gang_id, sliceIndex, process->contentid,
+							  process->listenerAddr, process->listenerPort, process->pid);
 	}
 
 	return list;

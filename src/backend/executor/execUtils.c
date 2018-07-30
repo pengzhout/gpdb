@@ -1879,6 +1879,33 @@ InitSliceReq(SliceReq * req)
 	req->vec1gangs_entrydb_reader = NULL;
 }
 
+static List *
+getSliceComponentList(Slice *slice)
+{
+	List *segments;
+
+	switch(slice->gangType)
+	{
+		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_PRIMARY_READER:
+			if (slice->directDispatch.isDirectDispatch)
+				segments = slice->directDispatch.contentIds;
+			else
+				segments = getFullComponentList();
+			break;	
+		case GANGTYPE_SINGLETON_READER:
+			segments = list_make1_int(gp_singleton_segindex);
+			break;
+		case GANGTYPE_ENTRYDB_READER:
+			segments = list_make1_int(-1);
+			break;
+		default:
+			Assert(false);
+	}
+
+	return segments;
+}
+
 /*
  * Helper for AssignGangs takes a simple inventory of the gangs required
  * by a slice tree.  Recursive.  Closely coupled with AssignGangs.	Not
@@ -1902,34 +1929,17 @@ InventorySliceTree(CdbDispatcherState *ds, List *slices, int sliceIndex, bool is
 
 		Assert(isExtended == false);
 
-		segments = getFullComponentList();
+		segments = getSliceComponentList(slice);
 		slice->primaryGang = AllocateWriterGang(ds, segments);
 		slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-													slice->sliceIndex,
-													&slice->directDispatch);
+													slice->sliceIndex);
 	}
 	else
 	{
-		switch(slice->gangType)
-		{
-			case GANGTYPE_PRIMARY_READER:
-				segments = getFullComponentList();
-				break;	
-			case GANGTYPE_SINGLETON_READER:
-				segments = list_make1_int(gp_singleton_segindex);
-				break;
-			case GANGTYPE_ENTRYDB_READER:
-				segments = list_make1_int(-1);
-				break;
-			default:
-				Assert(false);
-
-		}
-
+		segments = getSliceComponentList(slice);
 		slice->primaryGang = AllocateReaderGang(ds, slice->gangType, segments, isExtended);
 		slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-													slice->sliceIndex,
-													&slice->directDispatch);
+													slice->sliceIndex);
 	}
 
 	foreach(cell, slice->children)
@@ -2032,8 +2042,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader++];
 			Assert(slice->primaryGang != NULL);
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex,
-														NULL);
+                                                        slice->sliceIndex);
 			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
 			break;
 
@@ -2045,8 +2054,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			slice->primaryGang = req->vecNgangs[req->nxtNgang++];
 			Assert(slice->primaryGang != NULL);
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-														slice->sliceIndex,
-														&slice->directDispatch);
+														slice->sliceIndex);
 			break;
 
 		case GANGTYPE_SINGLETON_READER:
@@ -2054,8 +2062,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader++];
 			Assert(slice->primaryGang != NULL);
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex,
-                                                        &slice->directDispatch);
+                                                        slice->sliceIndex);
 			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
 			break;
 
@@ -2064,8 +2071,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			slice->primaryGang = req->vecNgangs[req->nxtNgang++];
 			Assert(slice->primaryGang != NULL);
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex,
-                                                        &slice->directDispatch);
+                                                        slice->sliceIndex);
 			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
 			break;
 	}
