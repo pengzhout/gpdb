@@ -2272,7 +2272,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 */
 		if (estate->cancelUnfinished)
 			waitMode = DISPATCH_WAIT_FINISH;
-		CdbCheckDispatchResult(estate->dispatcherState, waitMode);
+		cdbdisp_checkDispatchResult(estate->dispatcherState, waitMode);
 
 		/* If top slice was delegated to QEs, get num of rows processed. */
 		int primaryWriterSliceIndex = PrimaryWriterSliceIndex(estate);
