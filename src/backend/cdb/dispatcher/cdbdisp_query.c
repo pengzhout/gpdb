@@ -115,9 +115,10 @@ static void cdbdisp_dispatchCommandInternal(char *queryText, int queryTextLength
 
 static void cdbdisp_destroyQueryParms(DispatchCommandQueryParms *pQueryParms);
 
-static void cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
-				  struct EState *estate,
-				  bool cancelOnError);
+static void
+cdbdisp_dispatchX(QueryDesc *queryDesc,
+			bool planRequiresTxn,
+			bool cancelOnError);
 
 static int *buildSliceIndexGangIdMap(SliceVec *sliceVec, int numSlices, int numTotalSlices);
 
@@ -169,7 +170,6 @@ CdbDispatchPlan(struct QueryDesc *queryDesc,
 {
 	PlannedStmt *stmt;
 	bool		is_SRI = false;
-	DispatchCommandQueryParms *pQueryParms;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
@@ -237,11 +237,7 @@ CdbDispatchPlan(struct QueryDesc *queryDesc,
 		verify_shared_snapshot_ready();
 	}
 
-	pQueryParms = cdbdisp_buildPlanQueryParms(queryDesc, planRequiresTxn);
-
-	cdbdisp_dispatchX(pQueryParms, queryDesc->estate, cancelOnError);
-
-	cdbdisp_destroyQueryParms(pQueryParms);
+	cdbdisp_dispatchX(queryDesc, planRequiresTxn, cancelOnError);
 }
 
 /*
@@ -1086,27 +1082,30 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
  * This function is used for dispatching sliced plans
  */
 static void
-cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
-				  struct EState *estate,
-				  bool cancelOnError)
+cdbdisp_dispatchX(QueryDesc* queryDesc,
+			bool planRequiresTxn,
+			bool cancelOnError)
 {
-	SliceVec   *sliceVector = NULL;
-	int			nSlices = 1;	/* slices this dispatch cares about */
-	int			nTotalSlices = 1;	/* total slices in sliceTbl */
-
-	int			iSlice;
-	int			rootIdx = pQueryParms->rootIdx;
-	char	   *queryText = NULL;
-	int			queryTextLength = 0;
-	struct SliceTable *sliceTbl;
+	SliceVec *sliceVector = NULL;
+	int nSlices = 1;	/* slices this dispatch cares about */
+	int nTotalSlices = 1;	/* total slices in sliceTbl */
+	int rootIdx = -1;
+	int iSlice;
+	SliceTable *sliceTbl;
+	char *queryText;
+	int queryTextLength;
 	CdbDispatcherState *ds;
 	ErrorData *qeError = NULL;
+	DispatchCommandQueryParms *pQueryParms;
+	MemoryContext oldContext = NULL;
 
 	if (log_dispatch_stats)
 		ResetUsage();
 
-	sliceTbl = estate->es_sliceTable;
+	sliceTbl = queryDesc->estate->es_sliceTable;
 	Assert(sliceTbl != NULL);
+
+	rootIdx = RootSliceIndex(queryDesc->estate);
 	Assert(rootIdx == 0 ||
 		   (rootIdx > sliceTbl->nMotions &&
 			rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
@@ -1117,21 +1116,22 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	 */
 	nTotalSlices = list_length(sliceTbl->slices);
 	sliceVector = palloc0(nTotalSlices * sizeof(SliceVec));
-
 	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, nTotalSlices);
 
+	pQueryParms = cdbdisp_buildPlanQueryParms(queryDesc, planRequiresTxn);
 	pQueryParms->numSlices = nTotalSlices;
 	pQueryParms->sliceIndexGangIdMap = buildSliceIndexGangIdMap(sliceVector, nSlices, nTotalSlices);
+	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
+
+	ds = cdbdisp_makeDispatcherState();
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
 	/*
 	 * Allocate result array with enough slots for QEs of primary gangs.
 	 */
-	ds = cdbdisp_makeDispatcherState();
-	MemoryContext oldContext = NULL;
-	oldContext = MemoryContextSwitchTo(DispatcherContext);
-	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 	ds->primaryResults = cdbdisp_makeDispatchResults(nTotalSlices, cancelOnError);
 	ds->dispatchParams = cdbdisp_makeDispatchParams(nTotalSlices, queryText, queryTextLength);
+
 	MemoryContextSwitchTo(oldContext);
 
 	cdb_total_plans++;
@@ -1287,7 +1287,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		}
 	}
 
-	estate->dispatcherState = ds;
+	queryDesc->estate->dispatcherState = ds;
 }
 
 static int *

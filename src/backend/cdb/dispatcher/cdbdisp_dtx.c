@@ -109,6 +109,8 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	dtxProtocolParms.serializedDtxContextInfo = serializedDtxContextInfo;
 	dtxProtocolParms.serializedDtxContextInfoLen = serializedDtxContextInfoLen;
 
+	queryText = buildGpDtxProtocolCommand(&dtxProtocolParms, &queryTextLen);
+
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
@@ -129,7 +131,6 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	 */
 	ds = cdbdisp_makeDispatcherState();
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
-	queryText = buildGpDtxProtocolCommand(&dtxProtocolParms, &queryTextLen);
 	ds->primaryResults = cdbdisp_makeDispatchResults(1, false);
 	ds->dispatchParams = cdbdisp_makeDispatchParams (1, queryText, queryTextLen);
 	ds->primaryResults->writer_gang = primaryGang;
