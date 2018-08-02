@@ -69,7 +69,9 @@ typedef struct CdbComponentDatabaseInfo
 
 	char	   *hostaddrs[COMPONENT_DBS_MAX_ADDRS];	/* cached lookup of names */	
 	int16		hostSegs;		/* number of primary segments on the same hosts */
-	List	*freelist;
+	List		*freelist;
+	int			numIdleQEs;
+	int			numActiveQEs;
 } CdbComponentDatabaseInfo;
 
 #define SEGMENT_IS_ACTIVE_MIRROR(p) \
@@ -108,7 +110,16 @@ typedef struct CdbComponentDatabases
 	uint8		fts_version;	/* the version of fts */
 	int	numActiveQEs;
 	int	numIdleQEs;
+	List *componentList;
 } CdbComponentDatabases;
+
+//
+typedef enum SegmentType
+{
+	SEGMENTTYPE_EXPLICT_WRITER = 1,
+	SEGMENTTYPE_EXPLICT_READER,
+	SEGMENTTYPE_ANY
+}SegmentType;
 
 /*
  * performs all necessary setup required for initializing Greenplum Database components.
@@ -140,15 +151,19 @@ extern void cdb_cleanup(int code, Datum arg  __attribute__((unused)) );
 CdbComponentDatabases * cdbcomponent_getCdbComponents(bool DNSLookupAsError);
 void cdbcomponent_destroyCdbComponents(void);
 void cdbcomponent_cleanupIdleSegdbsList(bool includeWriter);
+List *cdbcomponent_getIdleSegdbsList(void);
 
 CdbComponentDatabaseInfo * cdbcomponent_getComponentInfo(int contentId);
 
-struct SegmentDatabaseDescriptor * cdbcomponent_allocateIdleSegdb(int contentId, bool writer);
+struct SegmentDatabaseDescriptor * cdbcomponent_allocateIdleSegdb(int contentId, SegmentType segmentType);
 void cdbcomponent_recycleIdleSegdb(struct SegmentDatabaseDescriptor *segdbDesc);
 void cdbcomponent_destroyIdleSegdb(struct SegmentDatabaseDescriptor *segdbDesc);
 
 bool cdbcomponent_segdbsExist(void);
 bool cdbcomponent_activeSegdbsExist(void);
+
+List *cdbcomponent_getCdbComponentsList(void);
+int cdbcomponent_getCdbComponentsSize(void);
 
 /*
  * Given total number of primary segment databases and a number of segments

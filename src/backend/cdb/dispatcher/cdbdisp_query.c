@@ -266,13 +266,10 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 
 	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
-	AllocateWriterGang(ds);
+	cdbdisp_allocateGang(ds, GANGTYPE_PRIMARY_WRITER, cdbcomponent_getCdbComponentsList());
 
-	/* 
-	 * temp fix: it's now not easy to get all idle gang, will fix
-	 * in following commits
-	 */ 
-	cdbcomponent_cleanupIdleSegdbsList(false);
+	/* put all idle segment to a gang so QD can send SET command to them */
+	cdbdisp_allocateGang(ds, GANGTYPE_PRIMARY_READER, cdbcomponent_getIdleSegdbsList());
 	
 	cdbdisp_makeDispatchResults(ds, list_length(ds->allocatedGangs), cancelOnError);
 	cdbdisp_makeDispatchParams (ds, list_length(ds->allocatedGangs), queryText, queryTextLength);
@@ -395,7 +392,8 @@ cdbdisp_dispatchCommandInternal(DispatchCommandQueryParms *pQueryParms,
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = AllocateWriterGang(ds);
+	primaryGang = cdbdisp_allocateGang(ds, GANGTYPE_PRIMARY_WRITER,
+										cdbcomponent_getCdbComponentsList());
 	Assert(primaryGang);
 
 	cdbdisp_makeDispatchResults(ds, 1, flags & DF_CANCEL_ON_ERROR);
@@ -1415,7 +1413,8 @@ CdbDispatchCopyStart(struct CdbCopy *cdbCopy, Node *stmt, int flags)
 	/*
 	 * Allocate a primary QE for every available segDB in the system.
 	 */
-	primaryGang = AllocateWriterGang(ds);
+	primaryGang = cdbdisp_allocateGang(ds, GANGTYPE_PRIMARY_WRITER,
+										cdbcomponent_getCdbComponentsList());
 	Assert(primaryGang);
 
 	cdbdisp_makeDispatchResults(ds, 1, flags & DF_CANCEL_ON_ERROR);

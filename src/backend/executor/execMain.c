@@ -108,6 +108,7 @@
 #include "cdb/cdbllize.h"
 #include "cdb/memquota.h"
 #include "cdb/cdbtargeteddispatch.h"
+#include "cdb/cdbutil.h"
 
 extern bool cdbpathlocus_querysegmentcatalogs;
 
@@ -4787,7 +4788,8 @@ FillSliceTable_walker(Node *node, void *context)
 				Slice	   *currentSlice = (Slice *) list_nth(sliceTable->slices, cxt->currentSliceId);
 
 				currentSlice->gangType = GANGTYPE_PRIMARY_WRITER;
-				currentSlice->gangSize = getgpsegmentCount();
+				currentSlice->gangSize = cdbcomponent_getCdbComponentsSize();
+				currentSlice->segments = cdbcomponent_getCdbComponentsList();
 			}
 		}
 	}
@@ -4806,7 +4808,8 @@ FillSliceTable_walker(Node *node, void *context)
 			Slice	   *currentSlice = (Slice *) list_nth(sliceTable->slices, cxt->currentSliceId);
 
 			currentSlice->gangType = GANGTYPE_PRIMARY_WRITER;
-			currentSlice->gangSize = getgpsegmentCount();
+			currentSlice->gangSize = cdbcomponent_getCdbComponentsSize();
+			currentSlice->segments = cdbcomponent_getCdbComponentsList();
 		}
 	}
 
@@ -4844,8 +4847,9 @@ FillSliceTable_walker(Node *node, void *context)
 
 		if (sendFlow->flotype != FLOW_SINGLETON)
 		{
-			sendSlice->gangSize = getgpsegmentCount();
 			sendSlice->gangType = GANGTYPE_PRIMARY_READER;
+			sendSlice->gangSize = cdbcomponent_getCdbComponentsSize();
+			sendSlice->segments = cdbcomponent_getCdbComponentsList();
 		}
 		else
 		{
@@ -4853,6 +4857,12 @@ FillSliceTable_walker(Node *node, void *context)
 			sendSlice->gangType =
 				sendFlow->segindex == -1 ?
 				GANGTYPE_ENTRYDB_READER : GANGTYPE_SINGLETON_READER;
+
+			if (sendSlice->gangType == GANGTYPE_ENTRYDB_READER)
+				sendSlice->segments = list_make1_int(-1);
+			else
+				sendSlice->segments = list_make1_int(gp_singleton_segindex);
+				
 		}
 
 		sendSlice->numGangMembersToBeActive =
@@ -4910,7 +4920,8 @@ FillSliceTable(EState *estate, PlannedStmt *stmt)
 		Slice	   *currentSlice = (Slice *) linitial(sliceTable->slices);
 
 		currentSlice->gangType = GANGTYPE_PRIMARY_WRITER;
-		currentSlice->gangSize = getgpsegmentCount();
+		currentSlice->gangSize = cdbcomponent_getCdbComponentsSize();
+		currentSlice->segments = cdbcomponent_getCdbComponentsList();
 	}
 
 	/*

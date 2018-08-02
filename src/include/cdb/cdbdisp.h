@@ -25,6 +25,7 @@
 struct CdbDispatchResults; /* #include "cdb/cdbdispatchresult.h" */
 struct CdbPgResults;
 struct Gang; /* #include "cdb/cdbgang.h" */
+enum GangType;
 
 /*
  * Types of message to QE when we wait for it.
@@ -67,6 +68,9 @@ typedef struct DispatcherInternalFuncs
 	void (*waitDispatchFinish)(struct CdbDispatcherState *ds);
 
 }DispatcherInternalFuncs;
+
+struct Gang *
+cdbdisp_allocateGang(CdbDispatcherState *ds, enum GangType type, List *segments);
 
 /*--------------------------------------------------------------------*/
 /*
