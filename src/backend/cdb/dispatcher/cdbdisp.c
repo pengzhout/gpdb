@@ -565,23 +565,30 @@ cdbdisp_cleanupAllDispatcherState(void)
 char *
 cdbdisp_copyAndReplcaceSliceId(char *queryText, int len, int sliceId)
 {
-       /*
-        * DTX command and RM command don't need slice id
-        */
-       if (sliceId < 0)
-               return queryText;
+	MemoryContext oldContext;
 
-       int     tmp = htonl(sliceId);
-       char *newQuery = palloc(len);
+	/*
+	 * DTX command and RM command don't need slice id
+	 */
+	if (sliceId < 0)
+		return queryText;
 
-       memcpy(newQuery, queryText, len);
+	Assert(DispatcherContext);
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
-       /*
-        * the first byte is 'M' and followed by the length, which is an integer.
-        * see function buildGpQueryString.
-        */
-       memcpy(newQuery + 1 + sizeof(int), &tmp, sizeof(tmp));
-       return newQuery;
+	int tmp = htonl(sliceId);
+	char *newQuery = palloc(len);
+
+	memcpy(newQuery, queryText, len);
+
+	/*
+	 * the first byte is 'M' and followed by the length, which is an integer.
+	 * see function buildGpQueryString.
+	 */
+	memcpy(newQuery + 1 + sizeof(int), &tmp, sizeof(tmp));
+
+	MemoryContextSwitchTo(oldContext);
+	return newQuery;
 }
 
 
