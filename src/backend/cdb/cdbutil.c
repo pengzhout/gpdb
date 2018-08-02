@@ -139,6 +139,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 
 	component_databases->numActiveQEs = 0;
 	component_databases->numIdleQEs = 0;
+	component_databases->componentList = NIL;
 
 	component_databases->segment_db_info =
 		(CdbComponentDatabaseInfo *) palloc0(sizeof(CdbComponentDatabaseInfo) * segment_array_size);
@@ -245,6 +246,9 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		}
 
 		pRow->freelist = NIL;
+		pRow->numIdleQEs = 0;
+		pRow->numActiveQEs = 0;
+		pRow->badWriter = false;
 		pRow->dbid = dbid;
 		pRow->segindex = content;
 		pRow->role = role;
@@ -1209,7 +1213,7 @@ cdbcomponent_getCdbComponents(bool DNSLookupAsError)
 		if (cdb_component_dbs->numActiveQEs > 0)
 		{
 			/* report a FATAL error to reset the session */
-			ereport(FATAL,
+			ereport(ERROR,
 					(errcode(ERRCODE_CONNECTION_FAILURE),
 					 errmsg("Detect FTS version changed when some QEs are running")));
 		}
@@ -1250,34 +1254,38 @@ cdbcomponent_destroyCdbComponents(void)
 void
 cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor *segdbDesc)
 {
+	CdbComponentDatabaseInfo *cdbinfo;
 	MemoryContext oldContext;	
 	int maxLen;
-
+	
 	Assert(cdb_component_dbs);
 	Assert(CdbComponentsContext);
 
 	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
+
+	cdbinfo = segdbDesc->segment_database_info;
 
 	maxLen = segdbDesc->segindex == -1 ? 1 : gp_cached_gang_threshold;
 
 	/*
 	 * if freelist length exceed gp_cached_gang_threshold, drop it 
 	 */
-	if (list_length(segdbDesc->segment_database_info->freelist) >= maxLen)
+	if (list_length(cdbinfo->freelist) >= maxLen)
 	{
 		if (segdbDesc->isWriter)
 		{
-			segdbDesc = list_nth_replace(segdbDesc->segment_database_info->freelist,
+			segdbDesc = list_nth_replace(cdbinfo->freelist,
 											0, segdbDesc);
 		}
 
-		cdbconn_disconnect(segdbDesc);
-		cdbconn_termSegmentDescriptor(segdbDesc);
-		cdb_component_dbs->numActiveQEs--;
-
-		return;
+		goto destroy_idle_segdb;
 	}
 
+	/* if writer is no OK, do not recycle */
+	if (cdbinfo->badWriter)
+		goto destroy_idle_segdb;
+
+	/* add segdb to freelist */
 	if (segdbDesc->isWriter)
 	{
 		/* writer is always the header of freelist */
@@ -1291,8 +1299,19 @@ cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor *segdbDesc)
 			lappend(segdbDesc->segment_database_info->freelist, segdbDesc);
 	}
 
+	cdbinfo->numActiveQEs--;
 	cdb_component_dbs->numActiveQEs--;
+	cdbinfo->numIdleQEs++;
 	cdb_component_dbs->numIdleQEs++;
+
+	MemoryContextSwitchTo(oldContext);
+	return;
+
+destroy_idle_segdb:
+	cdbconn_disconnect(segdbDesc);
+	cdbconn_termSegmentDescriptor(segdbDesc);
+	cdbinfo->numActiveQEs--;
+	cdb_component_dbs->numActiveQEs--;
 
 	MemoryContextSwitchTo(oldContext);
 }
@@ -1305,9 +1324,10 @@ cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor *segdbDesc)
  *
  * idle segdbs has an established connection with segment, but new segdb is
  * not setup yet, callers need to establish the connection by themselves.
+ *
  */
 SegmentDatabaseDescriptor *
-cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
+cdbcomponent_allocateIdleSegdb(int contentId, SegmentType segmentType)
 {
 	MemoryContext oldContext;
 	CdbComponentDatabaseInfo *cdbinfo;
@@ -1320,6 +1340,13 @@ cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
 	cdbs = cdbcomponent_getCdbComponents(true);
 	cdbinfo = cdbcomponent_getComponentInfo(contentId);	
 
+	/*
+	 * If it's a explict reader, need to make sure a writer is
+	 * allocated, otherwise this reader can not get a snapshot.
+	 */
+	AssertImply(contentId != -1 && segmentType == SEGMENTTYPE_EXPLICT_READER,
+				(cdbinfo->numActiveQEs > 0 || cdbinfo->numIdleQEs > 0));
+
 	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
 
 	curItem = list_head(cdbinfo->freelist);
@@ -1331,7 +1358,9 @@ cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
 		nextItem = lnext(curItem);
 		Assert(tmp);
 
-		if (!writer && tmp->isWriter)
+		/* For extended query like CURSOR, can't allocate a writer */
+		if (tmp->isWriter &&
+				(segmentType == SEGMENTTYPE_EXPLICT_READER))
 		{
 			prevItem = curItem;
 			curItem = nextItem;
@@ -1347,26 +1376,36 @@ cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
 			cdbconn_termSegmentDescriptor(tmp);
 			curItem = nextItem;
 			/* update numIdleQEs */
+			cdbinfo->numIdleQEs--;
 			cdbs->numIdleQEs--;
 			continue;
 		}
 
 		/* update numIdleQEs */
+		cdbinfo->numIdleQEs--;
 		cdbs->numIdleQEs--;
 		segdbDesc = tmp;
+
+		/* sanity check */
+		AssertImply(segmentType == SEGMENTTYPE_EXPLICT_WRITER, segdbDesc->isWriter);
+		AssertImply(contentId != -1 && segmentType == SEGMENTTYPE_EXPLICT_READER, !segdbDesc->isWriter);
 		break;
 	}
 
-	AssertImply(segdbDesc, segdbDesc->isWriter == writer);
-
 	if (!segdbDesc)
 	{
-		/* for entrydb, it's never be writer */
-		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, contentId == -1 ? false: writer);
+		/* entry db should never be a writer */
+		bool isWriter = contentId == -1 ? false :
+					 (cdbinfo->numActiveQEs == 0 && cdbinfo->numIdleQEs == 0); 
+		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, isWriter);
+
+		if (isWriter)
+			cdbinfo->badWriter = false;
 	}
 
 	cdbconn_setQEIdentifier(segdbDesc, -1);
 
+	cdbinfo->numActiveQEs++;
 	cdbs->numActiveQEs++;
 
 	MemoryContextSwitchTo(oldContext);
@@ -1440,6 +1479,7 @@ cleanupComponentFreelist(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 		cdbconn_termSegmentDescriptor(segdbDesc);
 
 		curItem = nextItem;
+		cdi->numIdleQEs--;
 		cdb_component_dbs->numIdleQEs--;
 	}
 
@@ -1462,9 +1502,20 @@ cdbcomponent_activeSegdbsExist(void)
 void 
 cdbcomponent_destroyIdleSegdb(SegmentDatabaseDescriptor *segdbDesc)
 {
+	CdbComponentDatabaseInfo *cdbinfo;
+
+	Assert(cdb_component_dbs);
+	cdbinfo = segdbDesc->segment_database_info;
 	cdbconn_disconnect(segdbDesc);
 	cdbconn_termSegmentDescriptor(segdbDesc);
+	cdbinfo->numActiveQEs--;
 	cdb_component_dbs->numActiveQEs--;
+
+	if (segdbDesc->isWriter)
+	{
+		cleanupComponentFreelist(cdbinfo, false);
+		segdbDesc->segment_database_info->badWriter = true;
+	}
 }
 
 /*
@@ -1507,4 +1558,50 @@ cdbcomponent_getComponentInfo(int contentId)
 	}
 
 	return cdbInfo;
+}
+
+List *
+cdbcomponent_getCdbComponentsList(void)
+{
+	CdbComponentDatabases *cdbs;
+	List *segments = NIL;
+	int i;
+
+	cdbs = cdbcomponent_getCdbComponents(true);
+
+	for (i = 0; i < cdbs->total_segments; i++)
+	{
+		segments = lappend_int(segments, i);
+	}
+
+	return segments;
+}
+
+int
+cdbcomponent_getCdbComponentsSize(void)
+{
+	return cdbcomponent_getCdbComponents(true)->total_segments;	
+}
+
+
+List *
+cdbcomponent_getIdleSegdbsList(void)
+{
+	CdbComponentDatabases *cdbs;
+	List *segments = NIL;
+	int i, j;
+
+	cdbs = cdbcomponent_getCdbComponents(true);
+
+	if (cdbs->segment_db_info != NULL)
+	{
+		for (i = 0; i < cdbs->total_segment_dbs; i++)
+		{
+			CdbComponentDatabaseInfo *cdi = &cdbs->segment_db_info[i];
+			for (j = 0; j < cdi->numIdleQEs; j++)
+				segments = lappend_int(segments, cdi->segindex);
+		}
+	}
+
+	return segments;
 }

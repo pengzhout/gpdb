@@ -115,7 +115,9 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	 */
 	ds = cdbdisp_makeDispatcherState(false);
 
-	primaryGang = AllocateWriterGang(ds);
+	primaryGang = cdbdisp_allocateGang(ds, GANGTYPE_PRIMARY_WRITER,
+											cdbcomponent_getCdbComponentsList());
+
 	Assert(primaryGang);
 
 	cdbdisp_makeDispatchResults(ds, 1, false);

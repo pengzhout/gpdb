@@ -67,12 +67,6 @@ extern Gang *CurrentGangCreating;
 
 extern const char *gangTypeToString(GangType type);
 
-extern Gang *AllocateReaderGang(struct CdbDispatcherState *ds, GangType type, char *portal_name);
-
-extern Gang *AllocateWriterGang(struct CdbDispatcherState *ds);
-
-extern void AllocateAllIdleReaderGangs(struct CdbDispatcherState *ds);
-
 extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
 
 extern bool GangOK(Gang *gp);
@@ -92,7 +86,7 @@ extern List *getAllIdleReaderGangs(struct CdbDispatcherState *ds);
 
 extern struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
-Gang *buildGangDefinition(GangType type, int gang_id, int size, int content);
+Gang *buildGangDefinition(List *segments, SegmentType segmentType);
 bool build_gpqeid_param(char *buf, int bufsz, bool is_writer, int hostSegs);
 char *makeOptions(void);
 extern bool segment_failure_due_to_recovery(const char *error_message);
@@ -163,7 +157,7 @@ typedef struct CdbProcess
 	int contentid;
 } CdbProcess;
 
-typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int content);
+typedef Gang *(*CreateGangFunc)(List *segments, SegmentType segmentType);
 
 extern void cdbgang_setAsync(bool async);
 

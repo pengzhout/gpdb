@@ -512,6 +512,12 @@ void FtsLoop()
 
 		probe_start_time = time(NULL);
 
+		if (cdbs)
+		{
+			cdbcomponent_destroyCdbComponents();
+			cdbs = NULL;
+		}
+
 		/* Need a transaction to access the catalogs */
 		StartTransactionCommand();
 
@@ -557,7 +563,6 @@ void FtsLoop()
 
 			/* free any pallocs we made inside probeSegments() */
 			MemoryContextReset(probeContext);
-			cdbs = NULL;
 
 			/* Bump the version if configuration was updated. */
 			if (updated_probe_state)

@@ -86,6 +86,9 @@ typedef struct Slice
 	 */
 	int			gangSize;
 
+	/* a list of segment id that this slice run on */
+	List		*segments;
+
 	/*
 	 * How many of the gang members will actually be used? This takes into
 	 * account directDispatch information.
