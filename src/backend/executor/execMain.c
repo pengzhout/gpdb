@@ -435,7 +435,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Handling of the Slice table depends on context.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH && queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
+	if (Gp_role == GP_ROLE_DISPATCH &&
+		(queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL ||
+		queryDesc->plannedstmt->nMotionNodes > 0))
 	{
 		ddesc = makeNode(QueryDispatchDesc);
 		queryDesc->ddesc = ddesc;
@@ -641,7 +643,8 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 * a QD and the plan is a parallel plan.
 		 */
 		if (Gp_role == GP_ROLE_DISPATCH &&
-			queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL &&
+			(queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL ||
+			queryDesc->plannedstmt->nMotionNodes > 0) &&
 			!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 		{
 			shouldDispatch = true;
@@ -715,7 +718,8 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 * finish unless an error is detected before all slices have been
 			 * dispatched.
 			 */
-			CdbDispatchPlan(queryDesc, needDtxTwoPhase, true);
+			if (queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
+				CdbDispatchPlan(queryDesc, needDtxTwoPhase, true);
 		}
 
 		/*

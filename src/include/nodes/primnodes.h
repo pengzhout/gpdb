@@ -719,6 +719,7 @@ typedef struct SubPlan
 	/* Estimated execution costs: */
 	Cost		startup_cost;	/* one-time setup cost */
 	Cost		per_call_cost;	/* cost for each subplan evaluation */
+	bool		dispatchParellel;
 } SubPlan;
 
 /*

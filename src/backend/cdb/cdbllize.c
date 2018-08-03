@@ -66,7 +66,9 @@ typedef struct PlanProfile
 	 */
 	bool		resultSegments;
 
-	bool		dispatchParallel;
+	bool		mainPlanParallel;
+
+	bool		initPlanParallel;
 
 	Flow	   *currentPlanFlow;	/* what is the flow of the current plan
 									 * node */
@@ -253,7 +255,8 @@ cdbparallelize(PlannerInfo *root,
 	 * We need to keep track of whether any part of the plan needs to be
 	 * dispatched in parallel.
 	 */
-	context->dispatchParallel = context->resultSegments;
+	context->mainPlanParallel = context->resultSegments;
+	context->initPlanParallel = false;
 	context->currentPlanFlow = NULL;
 
 	/*
@@ -263,7 +266,7 @@ cdbparallelize(PlannerInfo *root,
 	 */
 	prescan(plan, context);
 
-	if (context->dispatchParallel)
+	if (context->mainPlanParallel || context->initPlanParallel)
 	{
 		/*
 		 * Implement the parallelizing directions in the Flow nodes attached
@@ -276,7 +279,8 @@ cdbparallelize(PlannerInfo *root,
 		 * From this point on, since part of plan is parallel, we have to
 		 * regard the whole plan as parallel.
 		 */
-		plan->dispatch = DISPATCH_PARALLEL;
+		if (context->mainPlanParallel)
+			plan->dispatch = DISPATCH_PARALLEL;
 	}
 
 	if (gp_enable_motion_deadlock_sanity)
@@ -860,6 +864,8 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 static bool
 prescan_walker(Node *node, PlanProfile *context)
 {
+	bool savedMainPlanParallel = false;
+
 	if (node == NULL)
 		return false;
 
@@ -870,12 +876,12 @@ prescan_walker(Node *node, PlanProfile *context)
 		Plan	   *plan = (Plan *) node;
 
 		if (plan->dispatch == DISPATCH_PARALLEL)
-			context->dispatchParallel = true;
+			context->mainPlanParallel = true;
 
 		if (plan->flow &&
 			(plan->flow->flotype == FLOW_PARTITIONED
 			 || plan->flow->flotype == FLOW_REPLICATED))
-			context->dispatchParallel = true;
+			context->mainPlanParallel = true;
 
 		context->currentPlanFlow = plan->flow;
 		if (context->currentPlanFlow
@@ -899,8 +905,7 @@ prescan_walker(Node *node, PlanProfile *context)
 
 			{
 				/*
-				 * SubPlans establish a local state for the contained plan,
-				 * notably the range table.
+				 * SubPlans establish a local state for the contained plan, * notably the range table.
 				 */
 				SubPlan    *subplan = (SubPlan *) node;
 
@@ -908,12 +913,19 @@ prescan_walker(Node *node, PlanProfile *context)
 				{
 					ParallelizeSubplan(subplan, context);
 				}
+
+				if (subplan->is_initplan)
+				{
+					savedMainPlanParallel = context->mainPlanParallel;
+					context->mainPlanParallel = false;
+				}
+					
 				break;
 			}
 
 		case T_Motion:
 			{
-				context->dispatchParallel = true;
+				context->mainPlanParallel = true;
 				break;
 			}
 
@@ -923,6 +935,27 @@ prescan_walker(Node *node, PlanProfile *context)
 	}
 
 	bool		result = plan_tree_walker(node, prescan_walker, context);
+
+	if (IsA(node, SubPlan))
+	{
+		SubPlan    *subplan = (SubPlan *) node;
+
+		/*
+		 * Init plan and main plan are dispatched seperately,
+		 * so we need to set DISPATCH_PARALLEL flag seperately
+		 * for them.  
+		 */
+		if (subplan->is_initplan)
+		{
+			if (context->mainPlanParallel)
+			{
+				context->initPlanParallel = true;
+				subplan->dispatchParellel = true;
+			}
+
+			context->mainPlanParallel = savedMainPlanParallel;
+		}
+	}
 
 	/**
 	 * Replace saved flow

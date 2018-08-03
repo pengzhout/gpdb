@@ -700,6 +700,7 @@ build_subplan(PlannerInfo *root, Plan *plan, List *rtable, List *rowmarks,
 	splan->is_initplan = false;
 	splan->is_multirow = false;
 	splan->is_parallelized = false;
+	splan->dispatchParellel = false;
 	splan->setParam = NIL;
 	splan->parParam = NIL;
 	splan->args = NIL;

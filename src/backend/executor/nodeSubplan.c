@@ -959,7 +959,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *queryDesc
 	if (Gp_role == GP_ROLE_DISPATCH &&
 		planstate != NULL &&
 		planstate->plan != NULL &&
-		planstate->plan->dispatch == DISPATCH_PARALLEL)
+		subplan->dispatchParellel)
 		shouldDispatch = true;
 
 	planstate->state->currentSubplanLevel++;

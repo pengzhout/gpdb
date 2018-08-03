@@ -1595,6 +1595,7 @@ _outSubPlan(StringInfo str, SubPlan *node)
 	WRITE_NODE_FIELD(extParam);
 	WRITE_FLOAT_FIELD(startup_cost, "%.2f");
 	WRITE_FLOAT_FIELD(per_call_cost, "%.2f");
+	WRITE_BOOL_FIELD(dispatchParellel); /*CDB*/
 }
 
 static void

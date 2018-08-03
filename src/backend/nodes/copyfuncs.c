@@ -1848,6 +1848,7 @@ _copySubPlan(SubPlan *from)
 	COPY_NODE_FIELD(extParam);
 	COPY_SCALAR_FIELD(startup_cost);
 	COPY_SCALAR_FIELD(per_call_cost);
+	COPY_SCALAR_FIELD(dispatchParellel);
 
 	return newnode;
 }
