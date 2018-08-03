@@ -32,6 +32,8 @@
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
 
+static int nonExtendedDispatcherStack = 0;
+
 typedef struct dispatcher_handle_t
 {
 	struct CdbDispatcherState *dispatcherState;
@@ -292,10 +294,28 @@ CdbDispatchHandleError(struct CdbDispatcherState *ds)
 CdbDispatcherState *
 cdbdisp_makeDispatcherState(bool isExtendedQuery)
 {
-	dispatcher_handle_t *handle = allocate_dispatcher_handle();
+	dispatcher_handle_t *handle;
+
+	if (!isExtendedQuery)
+	{
+		if (nonExtendedDispatcherStack == 1)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("query plan with multiple segworker groups is not supported"),
+					 errhint("likely caused by a function that reads or modifies data in a distributed table")));
+
+
+		}
+
+		nonExtendedDispatcherStack++;	
+	}
+
+	handle = allocate_dispatcher_handle();
 	handle->dispatcherState->recycleGang = true;
 	handle->dispatcherState->isExtendedQuery = isExtendedQuery;
 	handle->dispatcherState->allocatedGangs = NIL;
+
 	return handle->dispatcherState;
 }
 
@@ -327,12 +347,17 @@ void
 cdbdisp_destroyDispatcherState(CdbDispatcherState *ds)
 {
 	ListCell *lc;
+	CdbDispatchResults *results;
+	dispatcher_handle_t *h;
 
 	if (!ds)
 		return;
 
-	CdbDispatchResults *results = ds->primaryResults;
-	dispatcher_handle_t *h = find_dispatcher_handle(ds);
+	if (!ds->isExtendedQuery)
+		nonExtendedDispatcherStack--;	
+
+	results = ds->primaryResults;
+	h = find_dispatcher_handle(ds);
 
 	if (results != NULL && results->resultArray != NULL)
 	{

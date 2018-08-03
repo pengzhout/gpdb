@@ -1011,10 +1011,8 @@ cdbgang_setAsync(bool async)
 {
 	if (async)
 		pCreateGangFunc = pCreateGangFuncAsync;
-#if 0
 	else
 		pCreateGangFunc = pCreateGangFuncThreaded;
-#endif
 }
 
 void

@@ -368,7 +368,7 @@ cdbdisp_checkDispatchResult_async(struct CdbDispatcherState *ds,
 static void *
 cdbdisp_makeDispatchParams_async(int maxSlices, char *queryText, int len)
 {
-	int			maxResults = maxSlices * getgpsegmentCount();
+	int			maxResults = maxSlices * largestGangsize();
 	int			size = 0;
 
 	CdbDispatchCmdAsync *pParms = palloc0(sizeof(CdbDispatchCmdAsync));
