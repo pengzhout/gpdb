@@ -1871,8 +1871,7 @@ InventorySliceTree(CdbDispatcherState *ds, List *slices, int sliceIndex)
 		Assert(slice->segments != NIL);
 		slice->primaryGang = cdbdisp_allocateGang(ds, slice->gangType, slice->segments);
 		slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-													slice->sliceIndex,
-													&slice->directDispatch);
+													slice->sliceIndex);
 	}
 
 	foreach(cell, slice->children)

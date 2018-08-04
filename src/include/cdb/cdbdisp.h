@@ -44,9 +44,6 @@ typedef struct CdbDispatchDirectDesc
 	uint16 content[1];
 } CdbDispatchDirectDesc;
 
-extern CdbDispatchDirectDesc default_dispatch_direct_desc;
-#define DEFAULT_DISP_DIRECT (&default_dispatch_direct_desc)
-
 typedef struct CdbDispatcherState
 {
 	bool isExtendedQuery;
@@ -63,8 +60,7 @@ typedef struct DispatcherInternalFuncs
 	int (*getWaitSocketFd)(struct CdbDispatcherState *ds);
 	void* (*makeDispatchParams)(int maxSlices, char *queryText, int queryTextLen);
 	void (*checkResults)(struct CdbDispatcherState *ds, DispatchWaitMode waitMode);
-	void (*dispatchToGang)(struct CdbDispatcherState *ds, struct Gang *gp,
-			int sliceIndex, CdbDispatchDirectDesc *direct);
+	void (*dispatchToGang)(struct CdbDispatcherState *ds, struct Gang *gp, int sliceIndex);
 	void (*waitDispatchFinish)(struct CdbDispatcherState *ds);
 
 }DispatcherInternalFuncs;
@@ -105,8 +101,7 @@ cdbdisp_allocateGang(CdbDispatcherState *ds, enum GangType type, List *segments)
 void
 cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 					   struct Gang *gp,
-					   int sliceIndex,
-					   CdbDispatchDirectDesc *direct);
+					   int sliceIndex);
 
 /*
  * cdbdisp_waitDispatchFinish:

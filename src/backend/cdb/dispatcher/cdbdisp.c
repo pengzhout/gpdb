@@ -94,8 +94,7 @@ static DispatcherInternalFuncs *pDispatchFuncs = NULL;
 void
 cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 					   struct Gang *gp,
-					   int sliceIndex,
-					   CdbDispatchDirectDesc *disp_direct)
+					   int sliceIndex)
 {
 	struct CdbDispatchResults *dispatchResults = ds->primaryResults;
 
@@ -108,7 +107,13 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 	 * just use an internal function to move dispatch thread related code into
 	 * a separate file.
 	 */
-	(pDispatchFuncs->dispatchToGang) (ds, gp, sliceIndex, disp_direct);
+	(pDispatchFuncs->dispatchToGang) (ds, gp, sliceIndex);
+
+	/*
+	 * If dtmPreCommand says we need two phase commit, record those segments
+	 * who actually get involved in current global transaction
+	 */
+	addToGxactTwophaseSegments(gp);
 }
 
 /*

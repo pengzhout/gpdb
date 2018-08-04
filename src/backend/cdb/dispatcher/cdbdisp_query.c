@@ -278,7 +278,7 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 	{
 		Gang	   *rg = lfirst(le);
 
-		cdbdisp_dispatchToGang(ds, rg, -1, DEFAULT_DISP_DIRECT);
+		cdbdisp_dispatchToGang(ds, rg, -1);
 	}
 
 	cdbdisp_waitDispatchFinish(ds);
@@ -399,7 +399,7 @@ cdbdisp_dispatchCommandInternal(DispatchCommandQueryParms *pQueryParms,
 	cdbdisp_makeDispatchResults(ds, 1, flags & DF_CANCEL_ON_ERROR);
 	cdbdisp_makeDispatchParams (ds, 1, queryText, queryTextLength);
 
-	cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
+	cdbdisp_dispatchToGang(ds, primaryGang, -1);
 
 	cdbdisp_waitDispatchFinish(ds);
 
@@ -1074,7 +1074,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 
 	for (iSlice = 0; iSlice < nSlices; iSlice++)
 	{
-		CdbDispatchDirectDesc direct;
 		Gang	   *primaryGang = NULL;
 		Slice	   *slice = NULL;
 		int			si = -1;
@@ -1103,17 +1102,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 
 		if (slice->directDispatch.isDirectDispatch)
 		{
-			direct.directed_dispatch = true;
-			Assert(list_length(slice->directDispatch.contentIds) == 1);
-			direct.count = 1;
-
-			/*
-			 * We only support single content right now. If this changes then
-			 * we need to change from a list to another structure to avoid n^2
-			 * cases
-			 */
-			direct.content[0] = linitial_int(slice->directDispatch.contentIds);
-
 			if (Test_print_direct_dispatch_info)
 			{
 				elog(INFO, "Dispatch command to SINGLE content");
@@ -1121,9 +1109,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 		}
 		else
 		{
-			direct.directed_dispatch = false;
-			direct.count = 0;
-
 			if (Test_print_direct_dispatch_info)
 			{
 				elog(INFO, "Dispatch command to ALL contents");
@@ -1141,7 +1126,7 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 				break;
 		}
 
-		cdbdisp_dispatchToGang(ds, primaryGang, si, &direct);
+		cdbdisp_dispatchToGang(ds, primaryGang, si);
 
 		SIMPLE_FAULT_INJECTOR(AfterOneSliceDispatched);
 	}
@@ -1426,7 +1411,7 @@ CdbDispatchCopyStart(struct CdbCopy *cdbCopy, Node *stmt, int flags)
 	cdbdisp_makeDispatchResults(ds, 1, flags & DF_CANCEL_ON_ERROR);
 	cdbdisp_makeDispatchParams (ds, 1, queryText, queryTextLength);
 
-	cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
+	cdbdisp_dispatchToGang(ds, primaryGang, -1);
 
 	cdbdisp_waitDispatchFinish(ds);
 

@@ -67,7 +67,7 @@ extern Gang *CurrentGangCreating;
 
 extern const char *gangTypeToString(GangType type);
 
-extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
+extern List *getCdbProcessList(Gang *gang, int sliceIndex);
 
 extern bool GangOK(Gang *gp);
 
