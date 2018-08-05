@@ -188,6 +188,4 @@ void cdbdisp_markNamedPortalGangsDestroy(void);
 
 void cdbdisp_cleanupAllDispatcherState(void);
 
-char *cdbdisp_copyAndReplcaceSliceId(char *queryText, int len, int sliceId);
-
 #endif   /* CDBDISP_H */

@@ -251,9 +251,6 @@ cdbdisp_dispatchToGang_internal(struct CdbDispatcherState *ds,
 		int			pthread_err = 0;
 		DispatchCommandParms *pParms = pThreads->dispatchCommandParmsAr + threadStartIndex + i;
 
-		/* replace slice id if needed */
-		pParms->query_text = cdbdisp_copyAndReplcaceSliceId(pParms->query_text, pParms->query_text_len, sliceIndex); 
-
 		Assert(pParms != NULL);
 
 		pParms->thread_valid = true;

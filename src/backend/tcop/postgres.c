@@ -1036,7 +1036,6 @@ pg_plan_queries(List *querytrees, int cursorOptions, ParamListInfo boundParams)
  * serializedPlantree[len] -- PlannedStmt node, or (NULL,0) if query provided.
  * serializedParams[len] -- optional parameters
  * serializedQueryDispatchDesc[len] -- QueryDispatchDesc node, or (NULL,0) if query provided.
- * localSlice -- slice table index
  *
  * Caller may supply either a Query (representing utility command) or
  * a PlannedStmt (representing a planned DML command), but not both.
@@ -1046,8 +1045,7 @@ exec_mpp_query(const char *query_string,
 			   const char * serializedQuerytree, int serializedQuerytreelen,
 			   const char * serializedPlantree, int serializedPlantreelen,
 			   const char * serializedParams, int serializedParamslen,
-			   const char * serializedQueryDispatchDesc, int serializedQueryDispatchDesclen,
-			   int localSlice)
+			   const char * serializedQueryDispatchDesc, int serializedQueryDispatchDesclen)
 {
 	CommandDest dest = whereToSendOutput;
 	MemoryContext oldcontext;
@@ -1143,14 +1141,23 @@ exec_mpp_query(const char *query_string,
 
 		if (sliceTable)
 		{
+			ListCell *lc;
+
 			if (!IsA(sliceTable, SliceTable) ||
 				sliceTable->localSlice < 0 ||
 				sliceTable->localSlice >= list_length(sliceTable->slices))
-				elog(ERROR, "MPPEXEC: received invalid slice table: %d", localSlice);
+				elog(ERROR, "MPPEXEC: received invalid slice table: %d", sliceTable->localSlice);
 
-			sliceTable->localSlice = localSlice;
+			/* Identify slice to execute */
+			foreach(lc, sliceTable->slices)
+			{
+				slice = (Slice *)lfirst(lc);
+				if (bms_is_member(qe_identifier, slice->processesMap))
+					break;
+			}
 
-			slice = (Slice *)list_nth(sliceTable->slices, sliceTable->localSlice);
+			sliceTable->localSlice = slice->sliceIndex;
+
 			Assert(IsA(slice, Slice));
 
 			/* Set global sliceid variable for elog. */
@@ -5227,7 +5234,6 @@ PostgresMain(int argc, char *argv[],
 					int serializedParamslen = 0;
 					int serializedQueryDispatchDesclen = 0;
 					int resgroupInfoLen = 0;
-					int localSlice = -1;
 					int rootIdx;
 					TimestampTz statementStart;
 					Oid suid;
@@ -5243,8 +5249,6 @@ PostgresMain(int argc, char *argv[],
 
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
-
-					localSlice = pq_getmsgint(&input_message, 4);
 
 					/* get the client command serial# */
 					gp_command_count = pq_getmsgint(&input_message, 4);
@@ -5353,8 +5357,7 @@ PostgresMain(int argc, char *argv[],
 									   serializedQuerytree, serializedQuerytreelen,
 									   serializedPlantree, serializedPlantreelen,
 									   serializedParams, serializedParamslen,
-									   serializedQueryDispatchDesc, serializedQueryDispatchDesclen,
-									   localSlice);
+									   serializedQueryDispatchDesc, serializedQueryDispatchDesclen);
 
 					SetUserIdAndContext(GetOuterUserId(), false);
 

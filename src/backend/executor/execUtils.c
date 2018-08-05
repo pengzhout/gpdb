@@ -1840,11 +1840,19 @@ AssignGangs(CdbDispatcherState *ds, QueryDesc *queryDesc)
 {
 	EState *estate;
 	SliceTable *sliceTable;
+	ListCell *lc;
 	int rootIdx;
 
 	estate = queryDesc->estate;
 	sliceTable = estate->es_sliceTable;
 	rootIdx = RootSliceIndex(queryDesc->estate);
+
+	/* cleanup processMap because initPlan and main Plan share the same slice table */
+	foreach(lc, sliceTable->slices)	
+	{
+		Slice *slice = (Slice *)lfirst(lc);
+		slice->processesMap = NULL;
+	}
 
 	InventorySliceTree(ds, sliceTable->slices, rootIdx);
 }
@@ -1870,8 +1878,7 @@ InventorySliceTree(CdbDispatcherState *ds, List *slices, int sliceIndex)
 	{
 		Assert(slice->segments != NIL);
 		slice->primaryGang = cdbdisp_allocateGang(ds, slice->gangType, slice->segments);
-		slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-													slice->sliceIndex);
+		setupCdbProcessList(slice);
 	}
 
 	foreach(cell, slice->children)

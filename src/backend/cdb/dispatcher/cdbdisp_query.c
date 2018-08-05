@@ -815,8 +815,6 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	char	   *shared_query,
 			   *pos;
 
-	int localSlice = -1;
-
 	Assert(DispatcherContext);
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
@@ -826,7 +824,6 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 
 	total_query_len = 1 /* 'M' */ +
 		sizeof(len) /* message length */ +
-		sizeof(localSlice) /* slice id */ +
 		sizeof(gp_command_count) +
 		sizeof(sessionUserId) /* sessionUserIsSuper */ +
 		sizeof(outerUserId) /* outerUserIsSuper */ +
@@ -857,11 +854,6 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	*pos++ = 'M';
 
 	pos += 4;					/* placeholder for message length */
-
-	/* for sliced plan, this field will be replaced accordingly */
-	tmp = htonl(localSlice);
-	memcpy(pos, &tmp, sizeof(localSlice));
-	pos += sizeof(localSlice);
 
 	tmp = htonl(gp_command_count);
 	memcpy(pos, &tmp, sizeof(gp_command_count));

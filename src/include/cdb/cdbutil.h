@@ -109,9 +109,10 @@ typedef struct CdbComponentDatabases
 	int			my_segindex;	/* the content of this database */
 	bool		my_isprimary;	/* the isprimary flag of this database */
 	uint8		fts_version;	/* the version of fts */
-	int	numActiveQEs;
-	int	numIdleQEs;
-	List *componentList;
+	int			numActiveQEs;
+	int			numIdleQEs;
+	List		*componentList;
+	int			qeCounter;
 } CdbComponentDatabases;
 
 //
