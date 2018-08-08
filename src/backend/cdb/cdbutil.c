@@ -256,6 +256,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		Assert(!isNull);
 		pRow->port = DatumGetInt32(attr);
 
+		pRow->hostip = NULL;
 		getAddressesForDBid(pRow, DNSLookupAsError ? ERROR : LOG);
 
 		/*
@@ -264,12 +265,13 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		 */
 		if (pRow->hostaddrs[0] == NULL &&
 			pRow->role == GP_SEGMENT_CONFIGURATION_ROLE_PRIMARY)
-			elog(ERROR, "Cannot resolve network address for dbid=%d", dbid);
+			elog(DNSLookupAsError ? ERROR : LOG, "Cannot resolve network address for dbid=%d", dbid);
+
 		if (pRow->hostaddrs[0] != NULL)
 			pRow->hostip = pstrdup(pRow->hostaddrs[0]);
-		Assert(strlen(pRow->hostip) <= INET6_ADDRSTRLEN);
+		AssertImply(pRow->hostip, strlen(pRow->hostip) <= INET6_ADDRSTRLEN);
 
-		if (pRow->role != GP_SEGMENT_CONFIGURATION_ROLE_PRIMARY)
+		if (pRow->role != GP_SEGMENT_CONFIGURATION_ROLE_PRIMARY || pRow->hostip == NULL)
 			continue;
 
 		hsEntry = (HostSegsEntry *) hash_search(hostSegsHash, pRow->hostip, HASH_ENTER, &found);
@@ -396,7 +398,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 	{
 		cdbInfo = &component_databases->segment_db_info[i];
 
-		if (cdbInfo->role != GP_SEGMENT_CONFIGURATION_ROLE_PRIMARY)
+		if (cdbInfo->role != GP_SEGMENT_CONFIGURATION_ROLE_PRIMARY || cdbInfo->hostip == NULL)
 			continue;
 
 		hsEntry = (HostSegsEntry *) hash_search(hostSegsHash, cdbInfo->hostip, HASH_FIND, &found);
@@ -408,7 +410,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 	{
 		cdbInfo = &component_databases->entry_db_info[i];
 
-		if (cdbInfo->role != GP_SEGMENT_CONFIGURATION_ROLE_PRIMARY)
+		if (cdbInfo->role != GP_SEGMENT_CONFIGURATION_ROLE_PRIMARY || cdbInfo->hostip == NULL)
 			continue;
 
 		hsEntry = (HostSegsEntry *) hash_search(hostSegsHash, cdbInfo->hostip, HASH_FIND, &found);
