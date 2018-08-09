@@ -466,6 +466,9 @@ freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 	if (pDBs == NULL)
 		return;
 
+	hash_destroy(segment_ip_cache_htab);
+	segment_ip_cache_htab = NULL;
+
 	if (pDBs->segment_db_info != NULL)
 	{
 		for (i = 0; i < pDBs->total_segment_dbs; i++)
