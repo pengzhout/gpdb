@@ -41,6 +41,7 @@
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "libpq/ip.h"
+#include "cdb/cdbfts.h"
 
 /*
  * Helper Functions
@@ -433,7 +434,21 @@ getCdbComponentInfo(bool DNSLookupAsError)
 CdbComponentDatabases *
 getCdbComponentDatabases(void)
 {
-	return getCdbComponentInfo(true);
+	CdbComponentDatabases *cdbs;
+
+	PG_TRY();
+	{
+		cdbs = getCdbComponentInfo(true);
+	}
+	PG_CATCH();
+	{
+		FtsNotifyProber();
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return cdbs;
 }
 
 
