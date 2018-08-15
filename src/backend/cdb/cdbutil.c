@@ -442,6 +442,15 @@ getCdbComponentDatabases(void)
 	}
 	PG_CATCH();
 	{
+#ifdef FAULT_INJECTOR
+		const char *dbname = NULL;
+		if (MyProcPort)
+			dbname = MyProcPort->database_name;
+
+		FaultInjector_InjectFaultIfSet(BeforeFtsNotify, DDLNotSpecified,
+								   dbname?dbname: "", "");
+#endif
+
 		FtsNotifyProber();
 
 		PG_RE_THROW();
@@ -866,6 +875,19 @@ getAddressesForDBid(CdbComponentDatabaseInfo *c, int elevel)
 
 	/* Use hostname */
 	memset(c->hostaddrs, 0, COMPONENT_DBS_MAX_ADDRS * sizeof(char *));
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR(GetDnsCachedAddress) == FaultInjectorTypeSkip)
+	{
+		/* inject a dns error for primary of segment 0 */
+		if (c->segindex == 0 &&
+				c->preferred_role == GP_SEGMENT_CONFIGURATION_ROLE_PRIMARY)
+		{
+			c->address = pstrdup("dnserrordummyaddress"); 
+			c->hostname = pstrdup("dnserrordummyaddress"); 
+		}
+	}
+#endif
 
 	/*
 	 * add an entry, using the first the "address" and then the "hostname" as
