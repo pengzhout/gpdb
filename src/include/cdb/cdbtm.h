@@ -351,4 +351,6 @@ extern bool doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType);
 
 extern void addToGxactTwophaseSegments(struct Gang* gp);
 
+extern List* getGxactTwophaseSegments(void);
+
 #endif   /* CDBTM_H */

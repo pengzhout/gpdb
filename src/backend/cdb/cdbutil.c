@@ -1211,6 +1211,16 @@ cdbcomponent_getCdbComponents(bool DNSLookupAsError)
 	}
 	else if (cdb_component_dbs->fts_version != ftsVersion)
 	{
+		/*
+		 * Don't destroy cdb_component_dbs if some segments have
+		 * got involved in two phase commit, let dispatcher find
+		 * the connection error by itself
+		 */
+		if (getGxactTwophaseSegments() != NIL)
+		{
+			return cdb_component_dbs;
+		}
+
 		if (cdb_component_dbs->numActiveQEs > 0)
 		{
 			/* report a FATAL error to reset the session */

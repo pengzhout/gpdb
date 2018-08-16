@@ -3262,3 +3262,9 @@ addToGxactTwophaseSegments(Gang *gang)
 		MemoryContextSwitchTo(oldContext);
 	}
 }
+
+List*
+getGxactTwophaseSegments(void)
+{
+	return currentGxact ? currentGxact->twophaseSegments : NIL;
+}
