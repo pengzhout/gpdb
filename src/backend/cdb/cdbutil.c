@@ -43,6 +43,7 @@
 #include "libpq/ip.h"
 #include "cdb/cdbconn.h"
 #include "cdb/cdbfts.h"
+#include "catalog/namespace.h"
 
 MemoryContext CdbComponentsContext = NULL;
 static CdbComponentDatabases *cdb_component_dbs = NULL;
@@ -1212,14 +1213,21 @@ cdbcomponent_getCdbComponents(bool DNSLookupAsError)
 	else if (cdb_component_dbs->fts_version != ftsVersion)
 	{
 		/*
+		 * fts version change don't always means a segment is down.
+		 * like a mirror InSync status change also change fts
+		 * version, so we need to be careful of destroying exist
+		 * cdb_component_dbs.
+		 *
 		 * Don't destroy cdb_component_dbs if some segments have
 		 * got involved in two phase commit, let dispatcher find
 		 * the connection error by itself
 		 */
 		if (getGxactTwophaseSegments() != NIL)
-		{
 			return cdb_component_dbs;
-		}
+
+		/* Same, when temp files exists, don't destroy cdb_component_dbs*/
+		if (TempNamespaceOidIsValid())
+			return cdb_component_dbs;
 
 		if (cdb_component_dbs->numActiveQEs > 0)
 		{
@@ -1616,4 +1624,27 @@ cdbcomponent_getIdleSegdbsList(void)
 	}
 
 	return segments;
+}
+
+bool
+cdbcomponent_hasBadWriter(void)
+{
+	CdbComponentDatabases *cdbs;
+	CdbComponentDatabaseInfo *cdi; 
+	int i;
+
+	cdbs = cdbcomponent_getCdbComponents(true);
+
+	if (cdbs->segment_db_info != NULL)
+	{
+		for (i = 0; i < cdbs->total_segment_dbs; i++)
+		{
+			cdi = &cdbs->segment_db_info[i];
+
+			if (cdi->badWriter)	
+				return true;
+		}
+	}
+
+	return false;
 }

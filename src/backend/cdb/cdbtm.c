@@ -151,7 +151,6 @@ static void RemoveRedoUtilityModeFile(void);
 static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound);
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
 
-extern void resetSessionForPrimaryGangLoss(bool resetSession);
 extern void CheckForResetSession(void);
 
 /**

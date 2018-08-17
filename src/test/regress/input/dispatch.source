@@ -8,6 +8,8 @@ CREATE EXTENSION IF NOT EXISTS gp_inject_fault;
 -- s/^ \(seg\d .*:\d+\)//
 -- m/^DETAIL:  Internal error: No motion listener port \(seg\d.*:.*\)/
 -- s/^DETAIL:  Internal error: No motion listener port \(seg\d.*:.*\)/DETAIL:  Internal error: No motion listener port/
+-- m/WARNING:.*Any temporary tables for this session have been dropped because the gang was disconnected/
+-- s/session id \=\s*\d+/session id \= DUMMY/gm
 -- end_matchsubs
 
 -- skip FTS probes always
@@ -368,3 +370,26 @@ end;
 select gp_inject_fault('fts_probe', 'reset', 1);
 -- resume GDD scan 
 select gp_inject_fault('gdd_probe', 'reset', 1);
+
+-- Test session reset if writer segment is gone.
+create temp table tmp_session_reset (c1 int, c2 int);
+select * from tmp_session_reset;
+
+-- let writer segment gone
+select gp_inject_fault_infinite('build_gang_definition', 'error', 1);
+
+-- let mppExecutorCleanup() failed too to test AtAbort_DispatcherState
+select gp_inject_fault_infinite('mpp_executor_cleanup', 'error', 1);
+
+-- query should failed
+create table session_reset_test (c1 int, c2 int);
+
+-- reset faults
+select gp_inject_fault_infinite('build_gang_definition', 'reset', 1);
+select gp_inject_fault_infinite('mpp_executor_cleanup', 'reset', 1);
+
+-- tmp_session_reset should be gone due to a session reset
+select * from tmp_session_reset;
+
+-- following query should success
+create temp table tmp_session_reset (c1 int, c2 int);

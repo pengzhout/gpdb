@@ -6,6 +6,8 @@ CREATE EXTENSION IF NOT EXISTS gp_inject_fault;
 -- s/^ \(seg\d .*:\d+\)//
 -- m/^DETAIL:  Internal error: No motion listener port \(seg\d.*:.*\)/
 -- s/^DETAIL:  Internal error: No motion listener port \(seg\d.*:.*\)/DETAIL:  Internal error: No motion listener port/
+-- m/WARNING:.*Any temporary tables for this session have been dropped because the gang was disconnected/
+-- s/session id \=\s*\d+/session id \= DUMMY/gm
 -- end_matchsubs
 -- skip FTS probes always
 select gp_inject_fault_infinite('fts_probe', 'skip', 1);
@@ -666,3 +668,58 @@ NOTICE:  Success:
  t
 (1 row)
 
+-- Test session reset if writer segment is gone.
+create temp table tmp_session_reset (c1 int, c2 int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+select * from tmp_session_reset;
+ c1 | c2 
+----+----
+(0 rows)
+
+-- let writer segment gone
+select gp_inject_fault_infinite('build_gang_definition', 'error', 1);
+NOTICE:  Success:
+ gp_inject_fault_infinite 
+--------------------------
+ t
+(1 row)
+
+-- let mppExecutorCleanup() failed too to test AtAbort_DispatcherState
+select gp_inject_fault_infinite('mpp_executor_cleanup', 'error', 1);
+NOTICE:  Success:
+ gp_inject_fault_infinite 
+--------------------------
+ t
+(1 row)
+
+-- query should failed
+create table session_reset_test (c1 int, c2 int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 42)
+ERROR:  fault triggered, fault name:'build_gang_definition' fault type:'error'
+-- reset faults
+select gp_inject_fault_infinite('build_gang_definition', 'reset', 1);
+NOTICE:  Success:
+ gp_inject_fault_infinite 
+--------------------------
+ t
+(1 row)
+
+select gp_inject_fault_infinite('mpp_executor_cleanup', 'reset', 1);
+NOTICE:  Success:
+ gp_inject_fault_infinite 
+--------------------------
+ t
+(1 row)
+
+-- tmp_session_reset should be gone due to a session reset
+select * from tmp_session_reset;
+ERROR:  relation "tmp_session_reset" does not exist
+LINE 1: select * from tmp_session_reset;
+                      ^
+-- following query should success
+create temp table tmp_session_reset (c1 int, c2 int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.

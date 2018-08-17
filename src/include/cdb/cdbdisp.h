@@ -188,4 +188,7 @@ void cdbdisp_markNamedPortalGangsDestroy(void);
 
 void cdbdisp_cleanupAllDispatcherState(void);
 
+void AtAbort_DispatcherState(void);
+
+void AtSubAbort_DispatcherState(void);
 #endif   /* CDBDISP_H */

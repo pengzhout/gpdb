@@ -153,7 +153,7 @@ test__resetSessionForPrimaryGangLoss(void **state)
 	will_return(ResetTempNamespace, 9999);
 	OldTempNamespace = InvalidOid;
 
-	resetSessionForPrimaryGangLoss();
+	ResetSessionForPrimaryGangLoss();
 	assert_int_equal(OldTempNamespace, 9999);
 }
 

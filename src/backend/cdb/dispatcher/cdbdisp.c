@@ -31,6 +31,8 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
+#include "catalog/namespace.h"
+#include "utils/resowner.h"
 
 static int nonExtendedDispatcherStack = 0;
 
@@ -44,16 +46,12 @@ typedef struct dispatcher_handle_t
 } dispatcher_handle_t;
 
 static dispatcher_handle_t *open_dispatcher_handles;
-static bool dispatcher_resowner_callback_registered;
-static void dispatcher_abort_callback(ResourceReleasePhase phase,
-								   bool isCommit,
-								   bool isTopLevel,
-								   void *arg);
 static void cleanup_dispatcher_handle(dispatcher_handle_t *h);
 
 static dispatcher_handle_t *find_dispatcher_handle(CdbDispatcherState *ds);
 static dispatcher_handle_t *allocate_dispatcher_handle(void);
 static void destroy_dispatcher_handle(dispatcher_handle_t *h);
+static void cleanupDispatcherHandle(ResourceOwner owner);
 
 /*
  * default directed-dispatch parameters: don't direct anything.
@@ -469,11 +467,6 @@ allocate_dispatcher_handle(void)
 		open_dispatcher_handles->prev = h;
 	open_dispatcher_handles = h;
 
-	if (!dispatcher_resowner_callback_registered)
-	{
-		RegisterResourceReleaseCallback(dispatcher_abort_callback, NULL);
-		dispatcher_resowner_callback_registered = true;
-	}
 	return h;
 }
 
@@ -522,34 +515,6 @@ cleanup_dispatcher_handle(dispatcher_handle_t *h)
 	cdbdisp_destroyDispatcherState(h->dispatcherState);
 }
 
-static void
-dispatcher_abort_callback(ResourceReleasePhase phase,
-					   bool isCommit,
-					   bool isTopLevel,
-					   void *arg)
-{
-	dispatcher_handle_t *curr;
-	dispatcher_handle_t *next;
-
-	if (phase != RESOURCE_RELEASE_AFTER_LOCKS)
-		return;
-
-	next = open_dispatcher_handles;
-	while (next)
-	{
-		curr = next;
-		next = curr->next;
-
-		if (curr->owner == CurrentResourceOwner)
-		{
-			if (isCommit)
-				elog(WARNING, "dispatcher reference leak: %p still referenced", curr);
-
-			cleanup_dispatcher_handle(curr);
-		}
-	}
-}
-
 /*
  * Called by CdbDispatchSetCommand(), SET command can not be dispatched
  * to named portal (like CURSOR). On the one hand, it might be in a busy
@@ -573,7 +538,7 @@ cdbdisp_markNamedPortalGangsDestroy(void)
 }
 
 /*
- * Unlike dispatcher_abort_callback(), this function will
+ * this function will
  * force destroy active dispatcher states
  */
 void
@@ -592,3 +557,51 @@ cdbdisp_cleanupAllDispatcherState(void)
 	}
 }
 
+/*
+ * Cleanup all dispatcher state that belong to
+ * current resource owner and it's childrens
+ */
+void
+AtAbort_DispatcherState(void)
+{
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	CdbResourceOwnerWalker(CurrentResourceOwner, cleanupDispatcherHandle);
+
+	Assert(open_dispatcher_handles == NULL);
+
+	if (TempNamespaceOidIsValid() && cdbcomponent_hasBadWriter())
+	{
+		ResetSessionForPrimaryGangLoss();	
+		CheckForResetSession();
+	}
+}
+
+void
+AtSubAbort_DispatcherState(void)
+{
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	CdbResourceOwnerWalker(CurrentResourceOwner, cleanupDispatcherHandle);
+}
+
+static void
+cleanupDispatcherHandle(const ResourceOwner owner)
+{
+	dispatcher_handle_t *curr;
+	dispatcher_handle_t *next;
+
+	next = open_dispatcher_handles;
+	while (next)
+	{
+		curr = next;
+		next = curr->next;
+
+		if (curr->owner == owner)
+		{
+			cleanup_dispatcher_handle(curr);
+		}
+	}
+}

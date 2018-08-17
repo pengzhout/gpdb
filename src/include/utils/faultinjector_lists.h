@@ -241,6 +241,10 @@ FI_IDENT(CollateLocaleOsLookup, "collate_locale_os_lookup")
 FI_IDENT(CreateResourceGroupFail, "create_resource_group_fail")
 /* inject fault before auto vacuum worker calls do_autovacuum */
 FI_IDENT(AutoVacWorkerBeforeDoAutovacuum, "auto_vac_worker_before_do_autovacuum")
+/* inject fault when build a new gang definition */
+FI_IDENT(BuildGangDefinition, "build_gang_definition")
+/* inject fault when clean up mpp executor */
+FI_IDENT(MppExecutorCleanup, "mpp_executor_cleanup")
 #endif
 
 /*

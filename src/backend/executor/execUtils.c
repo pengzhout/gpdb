@@ -2110,6 +2110,8 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	if (query_info_collect_hook && QueryCancelCleanup)
 		(*query_info_collect_hook)(METRICS_QUERY_CANCELING, queryDesc);
 
+	SIMPLE_FAULT_INJECTOR(MppExecutorCleanup);
+
 	/*
 	 * If this query is being canceled, record that when the gpperfmon
 	 * is enabled.

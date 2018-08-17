@@ -80,6 +80,7 @@ extern void DisconnectAndDestroyGang(Gang *gp);
 extern void DisconnectAndDestroyAllGangs(bool resetSession);
 extern void DisconnectAndDestroyUnusedQEs(void);
 
+extern void ResetSessionForPrimaryGangLoss(void);
 extern void CheckForResetSession(void);
 
 extern List *getAllIdleReaderGangs(struct CdbDispatcherState *ds);

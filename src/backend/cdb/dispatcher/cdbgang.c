@@ -77,7 +77,6 @@ static Oid	OldTempNamespace = InvalidOid;
 static Gang *primaryWriterGang = NULL;
 
 static bool cleanupGang(Gang *gp);
-static void resetSessionForPrimaryGangLoss(void);
 
 static int getGangMaxVmem(Gang *gp);
 
@@ -230,6 +229,8 @@ buildGangDefinition(List *segments, SegmentType segmentType)
 			newGangDefinition->db_descriptors[i] =
 						cdbcomponent_allocateIdleSegdb(contentId, segmentType);
 		}
+
+		SIMPLE_FAULT_INJECTOR(BuildGangDefinition);	
 	}
 	PG_CATCH();
 	{
@@ -658,7 +659,7 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	cdbcomponent_destroyCdbComponents();
 
 	if (resetSession)
-		resetSessionForPrimaryGangLoss();
+		ResetSessionForPrimaryGangLoss();
 
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyAllGangs done");
 }
@@ -861,8 +862,8 @@ CheckForResetSession(void)
 	}
 }
 
-static void
-resetSessionForPrimaryGangLoss(void)
+void
+ResetSessionForPrimaryGangLoss(void)
 {
 	if (ProcCanSetMppSessionId())
 	{

@@ -167,6 +167,7 @@ bool cdbcomponent_activeSegdbsExist(void);
 List *cdbcomponent_getCdbComponentsList(void);
 int cdbcomponent_getCdbComponentsSize(void);
 
+bool cdbcomponent_hasBadWriter(void);
 /*
  * Given total number of primary segment databases and a number of segments
  * to "skip" - this routine creates a boolean map (array) the size of total
