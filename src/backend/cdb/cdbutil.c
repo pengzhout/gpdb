@@ -1276,6 +1276,7 @@ cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor *segdbDesc)
 	CdbComponentDatabaseInfo *cdbinfo;
 	MemoryContext oldContext;	
 	int maxLen;
+	int64 maxmop;
 	
 	Assert(cdb_component_dbs);
 	Assert(CdbComponentsContext);
@@ -1300,8 +1301,18 @@ cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor *segdbDesc)
 		goto destroy_idle_segdb;
 	}
 
-	/* if writer is no OK, do not recycle */
+	/* if writer is not OK, do not recycle */
 	if (cdbinfo->badWriter)
+		goto destroy_idle_segdb;
+
+	/*
+	 * if it's a reader and it exceeded the memory cache limit, do not
+	 * recycle.
+	 *
+	 * Note: ReadyForQuery() will set mop_high_watermark
+	 */
+	maxmop = (segdbDesc->conn->mop_high_watermark >> 20);
+	if (!segdbDesc->isWriter && maxmop > gp_vmem_protect_gang_cache_limit)
 		goto destroy_idle_segdb;
 
 	/* add segdb to freelist */

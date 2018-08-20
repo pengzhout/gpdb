@@ -78,8 +78,6 @@ static Gang *primaryWriterGang = NULL;
 
 static bool cleanupGang(Gang *gp);
 
-static int getGangMaxVmem(Gang *gp);
-
 /*
  * Creates a new gang by logging on a session to each segDB involved.
  *
@@ -765,31 +763,8 @@ cleanupGang(Gang *gp)
 
 	gp->allocated = false;
 
-	/* check if current gang exceed max allowed cache memory */
-	if (getGangMaxVmem(gp) > gp_vmem_protect_gang_cache_limit)
-		return false;
-
 	ELOG_DISPATCHER_DEBUG("cleanupGang done");
 	return true;
-}
-
-static int
-getGangMaxVmem(Gang *gp)
-{
-       int64           maxmop = 0;
-       int                     i = 0;
-
-       for (i = 0; i < gp->size; ++i)
-       {
-               SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
-
-               Assert(segdbDesc != NULL);
-
-               if (!cdbconn_isBadConnection(segdbDesc))
-                       maxmop = Max(maxmop, segdbDesc->conn->mop_high_watermark);
-       }
-
-       return (maxmop >> 20);
 }
 
 /*
