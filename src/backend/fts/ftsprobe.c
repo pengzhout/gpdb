@@ -366,6 +366,14 @@ probeGetIpAddr(ProbeConnectionInfo *probeInfo)
 	probeInfo->addrs = NULL;
 
 	/*
+	 * cdbcomponentdatabases get a DNS error to resolve the hostname,
+	 * return false otherwise following pg_getaddrinfo_all will treat
+	 * it as a local host.
+	 */
+	if (probeInfo->hostIp == NULL)
+		return false;
+
+	/*
 	 * Get an sockaddr that has the right address and port in it.
 	 * We get passed in the IP address (IPv4 or IPv6), not the name, so
 	 * we don't need to worry about name resolution.

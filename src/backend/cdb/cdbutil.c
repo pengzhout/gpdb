@@ -40,6 +40,7 @@
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "libpq/ip.h"
+#include "cdb/cdbfts.h"
 
 /*
  * Helper Functions
@@ -257,6 +258,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		else
 			pRow->filerep_port = -1;
 
+		pRow->hostip = NULL;
 		getAddressesForDBid(pRow, DNSLookupAsError ? ERROR : LOG);
 
 		/*
@@ -264,12 +266,13 @@ getCdbComponentInfo(bool DNSLookupAsError)
 		 * if hostip for mirrors can not be get, ignore the error.
 		 */
 		if (pRow->hostaddrs[0] == NULL && pRow->role == SEGMENT_ROLE_PRIMARY)
-			elog(ERROR, "Cannot resolve network address for dbid=%d", dbid);
+			elog(DNSLookupAsError ? ERROR : LOG, "Cannot resolve network address for dbid=%d", dbid);
+
 		if (pRow->hostaddrs[0] != NULL)
 			pRow->hostip = pstrdup(pRow->hostaddrs[0]);
-		Assert(strlen(pRow->hostip) <= INET6_ADDRSTRLEN);
+		AssertImply(pRow->hostip, strlen(pRow->hostip) <= INET6_ADDRSTRLEN);
 
-		if (pRow->role != SEGMENT_ROLE_PRIMARY)
+		if (pRow->role != SEGMENT_ROLE_PRIMARY || pRow->hostip == NULL)
 			continue;
 
 		hsEntry = (HostSegsEntry*)hash_search(hostSegsHash, pRow->hostip, HASH_ENTER, &found);
@@ -396,7 +399,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 	{
 		cdbInfo = &component_databases->segment_db_info[i];
 
-		if (cdbInfo->role != SEGMENT_ROLE_PRIMARY)
+		if (cdbInfo->role != SEGMENT_ROLE_PRIMARY || cdbInfo->hostip == NULL)
 			continue;
 
 		hsEntry = (HostSegsEntry*)hash_search(hostSegsHash, cdbInfo->hostip, HASH_FIND, &found);
@@ -408,7 +411,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 	{
 		cdbInfo = &component_databases->entry_db_info[i];
 
-		if (cdbInfo->role != SEGMENT_ROLE_PRIMARY)
+		if (cdbInfo->role != SEGMENT_ROLE_PRIMARY || cdbInfo->hostip == NULL)
 			continue;
 
 		hsEntry = (HostSegsEntry*)hash_search(hostSegsHash, cdbInfo->hostip, HASH_FIND, &found);
@@ -431,7 +434,21 @@ getCdbComponentInfo(bool DNSLookupAsError)
 CdbComponentDatabases *
 getCdbComponentDatabases(void)
 {
-	return getCdbComponentInfo(true);
+	CdbComponentDatabases *cdbs;
+
+	PG_TRY();
+	{
+		cdbs = getCdbComponentInfo(true);
+	}
+	PG_CATCH();
+	{
+		FtsNotifyProber();
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	return cdbs;
 }
 
 
@@ -448,6 +465,9 @@ freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 
 	if (pDBs == NULL)
 		return;
+
+	hash_destroy(segment_ip_cache_htab);
+	segment_ip_cache_htab = NULL;
 
 	if (pDBs->segment_db_info != NULL)
 	{
