@@ -46,6 +46,7 @@
 #include "cdb/cdbdisp_dtx.h"	/* for qdSerializeDtxContextInfo() */
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbcopy.h"
+#include "executor/execUtils.h"
 
 extern bool Test_print_direct_dispatch_info;
 
@@ -113,11 +114,10 @@ static DispatchCommandQueryParms *cdbdisp_buildCommandQueryParms(const char *str
 static void cdbdisp_dispatchCommandInternal(char *queryText, int queryTextLength,
 											int flags, CdbPgResults *cdb_pgresults);
 
-static void cdbdisp_destroyQueryParms(DispatchCommandQueryParms *pQueryParms);
-
-static void cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
-				  struct EState *estate,
-				  bool cancelOnError);
+static void
+cdbdisp_dispatchX(QueryDesc *queryDesc,
+			bool planRequiresTxn,
+			bool cancelOnError);
 
 static int *buildSliceIndexGangIdMap(SliceVec *sliceVec, int numSlices, int numTotalSlices);
 
@@ -169,7 +169,6 @@ CdbDispatchPlan(struct QueryDesc *queryDesc,
 {
 	PlannedStmt *stmt;
 	bool		is_SRI = false;
-	DispatchCommandQueryParms *pQueryParms;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
@@ -237,11 +236,7 @@ CdbDispatchPlan(struct QueryDesc *queryDesc,
 		verify_shared_snapshot_ready();
 	}
 
-	pQueryParms = cdbdisp_buildPlanQueryParms(queryDesc, planRequiresTxn);
-
-	cdbdisp_dispatchX(pQueryParms, queryDesc->estate, cancelOnError);
-
-	cdbdisp_destroyQueryParms(pQueryParms);
+	cdbdisp_dispatchX(queryDesc, planRequiresTxn, cancelOnError);
 }
 
 /*
@@ -291,7 +286,6 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 	ds->dispatchParams = cdbdisp_makeDispatchParams (gangCount, queryText, queryTextLength);
 	ds->primaryResults->writer_gang = primaryGang;
 	MemoryContextSwitchTo(oldContext);
-	cdbdisp_destroyQueryParms(pQueryParms);
 
 	cdbdisp_dispatchToGang(ds, primaryGang, -1, DEFAULT_DISP_DIRECT);
 
@@ -646,57 +640,6 @@ cdbdisp_buildPlanQueryParms(struct QueryDesc *queryDesc,
 								  "cdbdisp_buildPlanQueryParms");
 
 	return pQueryParms;
-}
-
-/*
- * Free memory allocated in DispatchCommandQueryParms
- */
-static void
-cdbdisp_destroyQueryParms(DispatchCommandQueryParms *pQueryParms)
-{
-	if (pQueryParms == NULL)
-		return;
-
-	Assert(pQueryParms->strCommand != NULL);
-
-	if (pQueryParms->serializedQuerytree != NULL)
-	{
-		pfree(pQueryParms->serializedQuerytree);
-		pQueryParms->serializedQuerytree = NULL;
-	}
-
-	if (pQueryParms->serializedPlantree != NULL)
-	{
-		pfree(pQueryParms->serializedPlantree);
-		pQueryParms->serializedPlantree = NULL;
-	}
-
-	if (pQueryParms->serializedParams != NULL)
-	{
-		pfree(pQueryParms->serializedParams);
-		pQueryParms->serializedParams = NULL;
-	}
-
-	if (pQueryParms->serializedQueryDispatchDesc != NULL)
-	{
-		pfree(pQueryParms->serializedQueryDispatchDesc);
-		pQueryParms->serializedQueryDispatchDesc = NULL;
-	}
-
-	if (pQueryParms->serializedDtxContextInfo != NULL)
-	{
-		pfree(pQueryParms->serializedDtxContextInfo);
-		pQueryParms->serializedDtxContextInfo = NULL;
-	}
-
-
-	if (pQueryParms->sliceIndexGangIdMap != NULL)
-	{
-		pfree(pQueryParms->sliceIndexGangIdMap);
-		pQueryParms->sliceIndexGangIdMap = NULL;
-	}
-
-	pfree(pQueryParms);
 }
 
 /*
@@ -1086,30 +1029,51 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
  * This function is used for dispatching sliced plans
  */
 static void
-cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
-				  struct EState *estate,
-				  bool cancelOnError)
+cdbdisp_dispatchX(QueryDesc* queryDesc,
+					bool planRequiresTxn,
+					bool cancelOnError)
 {
 	SliceVec   *sliceVector = NULL;
 	int			nSlices = 1;	/* slices this dispatch cares about */
 	int			nTotalSlices = 1;	/* total slices in sliceTbl */
 
 	int			iSlice;
-	int			rootIdx = pQueryParms->rootIdx;
+	int			rootIdx;
 	char	   *queryText = NULL;
 	int			queryTextLength = 0;
 	struct SliceTable *sliceTbl;
+	struct EState *estate;
 	CdbDispatcherState *ds;
 	ErrorData *qeError = NULL;
+	DispatchCommandQueryParms *pQueryParms;
 
 	if (log_dispatch_stats)
 		ResetUsage();
 
+	estate = queryDesc->estate;
 	sliceTbl = estate->es_sliceTable;
 	Assert(sliceTbl != NULL);
+
+	rootIdx = RootSliceIndex(estate);
 	Assert(rootIdx == 0 ||
 		   (rootIdx > sliceTbl->nMotions &&
 			rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
+
+	/*
+	 * Since we intend to execute the plan, inventory the slice tree,
+	 * allocate gangs, and associate them with slices.
+	 *
+	 * For now, always use segment 'gp_singleton_segindex' for
+	 * singleton gangs.
+	 *
+	 * On return, gangs have been allocated and CDBProcess lists have
+	 * been filled in in the slice table.)
+	 *
+	 * Notice: This must be done before cdbdisp_buildPlanQueryParms
+	 */
+	AssignGangs(queryDesc);
+
+	pQueryParms = cdbdisp_buildPlanQueryParms(queryDesc, planRequiresTxn);
 
 	/*
 	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
