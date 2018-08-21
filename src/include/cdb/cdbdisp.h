@@ -48,6 +48,9 @@ extern CdbDispatchDirectDesc default_dispatch_direct_desc;
 
 typedef struct CdbDispatcherState
 {
+	bool isExtendedQuery;
+	List *allocatedGangs;
+	bool recycleGang;
 	struct CdbDispatchResults *primaryResults;
 	void *dispatchParams;
 } CdbDispatcherState;
@@ -159,7 +162,7 @@ cdbdisp_cancelDispatch(CdbDispatcherState *ds);
  *
  * Call cdbdisp_destroyDispatcherState to free it.
  */
-CdbDispatcherState * cdbdisp_makeDispatcherState(void);
+CdbDispatcherState * cdbdisp_makeDispatcherState(bool isExtendedQuery);
 
 /*
  * Free memory in CdbDispatcherState
@@ -169,10 +172,11 @@ CdbDispatcherState * cdbdisp_makeDispatcherState(void);
  */
 void cdbdisp_destroyDispatcherState(CdbDispatcherState *ds);
 
-void *
-cdbdisp_makeDispatchParams(int maxSlices,
-						  char *queryText,
-						  int queryTextLen);
+void
+cdbdisp_makeDispatchParams(CdbDispatcherState *ds,
+						   int maxSlices,
+						   char *queryText,
+						   int queryTextLen);
 
 bool cdbdisp_checkForCancel(CdbDispatcherState * ds);
 int cdbdisp_getWaitSocketFd(CdbDispatcherState *ds);
@@ -180,5 +184,9 @@ int cdbdisp_getWaitSocketFd(CdbDispatcherState *ds);
 void cdbdisp_onProcExit(void);
 
 void cdbdisp_setAsync(bool async);
+
+void cdbdisp_markNamedPortalGangsDestroy(void);
+
+void cdbdisp_cleanupAllDispatcherState(void);
 
 #endif   /* CDBDISP_H */

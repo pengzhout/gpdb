@@ -1230,14 +1230,6 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	WorkfileQueryspace_ReleaseEntry();
 
 	/*
-	 * Release any gangs we may have assigned.
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH && 
-		(queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL ||
-		 queryDesc->plannedstmt->nMotionNodes > 0))
-		ReleaseGangs(queryDesc);
-
-	/*
 	 * Remove our own query's motion layer.
 	 */
 	RemoveMotionLayer(estate->motionlayer_context, true);
