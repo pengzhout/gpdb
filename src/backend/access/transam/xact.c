@@ -72,6 +72,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h" /* Gp_role, Gp_is_writer, interconnect_setup_timeout */
 #include "utils/vmem_tracker.h"
+#include "cdb/cdbdisp.h"
 
 /*
  *	User-tweakable parameters
@@ -3124,7 +3125,7 @@ AbortTransaction(void)
 	 */
 	AfterTriggerEndXact(false); /* 'false' means it's abort */
 	AtAbort_Portals();
-
+	AtAbort_DispatcherState();
 	AtEOXact_SharedSnapshot();
 
 	/* Perform any Resource Scheduler abort procesing. */
@@ -4940,7 +4941,7 @@ RollbackAndReleaseCurrentSubTransaction(void)
 				DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL))
 		{
 			elog(ERROR,
-				 "Could not RollbackAndReleaseCurrentSubTransaction dispatch failed");
+				 "DTX RollbackAndReleaseCurrentSubTransaction dispatch failed");
 		}
 	}
 }
@@ -5348,6 +5349,7 @@ AbortSubTransaction(void)
 		AtSubAbort_Portals(s->subTransactionId,
 						   s->parent->subTransactionId,
 						   s->parent->curTransactionOwner);
+		AtSubAbort_DispatcherState();
 		AtEOXact_DispatchOids(false);
 		AtEOSubXact_LargeObject(false, s->subTransactionId,
 								s->parent->subTransactionId);
