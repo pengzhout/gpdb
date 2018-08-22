@@ -1249,3 +1249,18 @@ PrintFileLeakWarning(File file)
 		 "temporary file leak: File %d still referenced",
 		 file);
 }
+
+/*
+ * Cdb: walk through a resource owner and it's childrens
+ */
+void
+CdbResourceOwnerWalker(ResourceOwner owner, ResourceWalkerCallback callback)
+{
+	ResourceOwner child;
+
+	(*callback)(owner);
+
+	/* Recurse to handle descendants */
+	for (child = owner->firstchild; child != NULL; child = child->nextchild)
+		CdbResourceOwnerWalker(child, callback);
+}

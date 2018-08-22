@@ -1077,8 +1077,7 @@ DisconnectAndDestroyGang(Gang *gp)
 
 	if (gp->type == GANGTYPE_PRIMARY_WRITER)
 	{
-		disconnectAndDestroyAllReaderGangs(false);
-		Assert(!readerGangsExist());
+		markGxactWriterGangLost();
 	}
 
 	MemoryContextDelete(gp->perGangContext);
@@ -1238,6 +1237,11 @@ cleanupGang(Gang *gp)
 						  "was used for portal: %s",
 						  gp->gang_id, gp->type, gp->size,
 						  (gp->portal_name ? gp->portal_name : "(unnamed)"));
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR(CleanupGang) == FaultInjectorTypeSkip)
+		return false;
+#endif
 
 	if (gp->noReuse)
 		return false;
