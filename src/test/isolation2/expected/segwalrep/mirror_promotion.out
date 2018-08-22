@@ -109,6 +109,16 @@ dbid
 (1 row)
 -- end_ignore
 
+-- primary writer gang should be invalid now, use a sql
+-- to recycle it.
+-- start_ignore
+begin; end;
+ERROR:  Error on receive from seg0 127.0.0.1:25432 pid=28733: server closed the connection unexpectedly
+DETAIL:  
+	This probably means the server terminated abnormally
+	before or while processing the request.
+-- end_ignore
+
 select gp_inject_fault_infinite('fts_handle_message', 'infinite_loop', dbid) from gp_segment_configuration where content = 0 and role = 'p';
 gp_inject_fault_infinite
 ------------------------
