@@ -252,7 +252,7 @@ FI_IDENT(BeforeAcquireLockDuringCreateAoBlkdirTable, "before_acquire_lock_during
 /* inject fault during gang creation, before check for interrupts */
 FI_IDENT(CreateGangInProgress, "create_gang_in_progress")
 /* inject fault to let cleanupGang return false */
-FI_IDENT(CleanupGang, "cleanup_gang")
+FI_IDENT(CleanupSegdb, "cleanup_segdb")
 #endif
 
 /*

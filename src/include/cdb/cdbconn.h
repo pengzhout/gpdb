@@ -62,14 +62,11 @@ typedef struct SegmentDatabaseDescriptor
     uint32		            motionListener; /* interconnect listener port */
     int4					backendPid;
     char                   *whoami;         /* QE identifier for msgs */
-
+    bool		isWriter;
 } SegmentDatabaseDescriptor;
 
-
-/* Initialize a segment descriptor in storage provided by the caller. */
 SegmentDatabaseDescriptor *
-cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo  *cdbinfo);
-
+cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo  *cdbinfo, bool isWriter);
 
 /* Free all memory owned by a segment descriptor. */
 void
@@ -88,10 +85,6 @@ cdbconn_doConnectStart(SegmentDatabaseDescriptor *segdbDesc,
 					   const char *options);
 void
 cdbconn_doConnectComplete(SegmentDatabaseDescriptor *segdbDesc);
-
-
-/* Disconnect from QE */
-void cdbconn_disconnect(SegmentDatabaseDescriptor *segdbDesc);
 
 /*
  * Read result from connection and discard it.
@@ -113,7 +106,7 @@ bool cdbconn_isConnectionOk(SegmentDatabaseDescriptor *segdbDesc);
 void cdbconn_resetQEErrorMessage(SegmentDatabaseDescriptor *segdbDesc);
 
 /* Set the slice index for error messages related to this QE. */
-void setQEIdentifier(SegmentDatabaseDescriptor *segdbDesc, int sliceIndex, MemoryContext mcxt);
+void cdbconn_setQEIdentifier(SegmentDatabaseDescriptor *segdbDesc, int sliceIndex);
 
 /*
  * Send cancel/finish signal to still-running QE through libpq.

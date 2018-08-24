@@ -2713,7 +2713,7 @@ gpdb::GetComponentDatabases(void)
 	GP_WRAP_START;
 	{
 		/* catalog tables: gp_segment_config */
-		return getCdbComponentDatabases();
+		return cdbcomponent_getCdbComponents(true);
 	}
 	GP_WRAP_END;
 	return NULL;

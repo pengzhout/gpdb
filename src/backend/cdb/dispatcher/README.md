@@ -21,12 +21,10 @@ For a query/plan, QD would build one `GANGTYPE_PRIMARY_WRITER` Gang, and several
 * Gang creation and tear down:
 	* `AllocateReaderGang`: create Gang of type `GANGTYPE_ENTRYDB_READER`, `GANGTYPE_SINGLETON_READER`, `GANGTYPE_PRIMARY_READER` by specification. Gang reuage logic is included.
 	* `AllocateWriterGang`: create Gang of type `GANGTYPE_PRIMARY_WRITER`
-	* `DisconnectAndDestroyGang`: tear down a Gang of any type, but make sure no reader Gang exist before calling this routine for writer Gang
-	* `RecycleGang`: put a gang to reusable gang list if gang can be cleanup correctly including discarding results, connection status check.
+	* `RecycleGang`: put each member of gang back to segment pool if gang can be cleanup correctly including discarding results, connection status check (see cdbcomponent_recycleIdleSegdb), otherwise, destroy it.
 	* `DisconnectAndDestroyAllGangs`: tear down all existing Gangs of this session
 * Gang status check:
 	* `GangOK`: check if a created Gang is healthy
-	* `GangsExist`: check if any Gang exists for this session
 * Dispatch:
 	* `CdbDispatchPlan`: send PlannedStmt to Gangs specified in `queryDesc` argument. Once finishes work on QD, call `CdbCheckDispatchResult` to wait results or `CdbDispatchHandleError` to cancel query on error
 	* `CdbDispatchUtilityStatement`: send parsed utility statement to the writer Gang, and block to get results or error
@@ -48,3 +46,24 @@ All dispatcher routines contains few standard steps:
 	* `cdbdisp_checkDispatchResult`: block until QEs report a command OK response or an error etc
 	* `cdbdisp_getDispatchResults`: fetch results from dispatcher state or error data if an error occurs
 	* `cdbdisp_destroyDispatcherState`: destroy current dispatcher state and recycle gangs allocated by it.
+
+### CdbComponentDatabases
+CdbComponentDatabases is a snapshot of current cluster components based on catalog gp_segment_configuration.
+It provides information about each segment component include dbid, contentid, hostname, ip address, current role etc.
+It also maintains a pool of idle segment dbs (SegmentDatabaseDescriptor), dispatcher can reuse those segment dbs
+between statements within a session.
+
+CdbComponentDatabases has a memory context named CdbComponentsContext associated.
+
+#### CdbComponentDatabases routines:
+There are a few functions to manipulate CdbComponentDatabases, Dispatcher can use those functions to make up/clean up a gang.
+
+* cdbcomponent_getCdbComponents(): get a snapshot of current cluster components from gp_segment_configuration. When FTS version changed since last time, destroy current components snapshot and get a new one if 1) session has no temp tables 2) current gxact need two-phase commit but gxid has not been dispatched to segments yet or current gxact don't need two phase commit.
+
+* cdbcomponent_destroyCdbComponents(): destroy a snapshot of current cluster components include the MemoryContext and pool of idle segment dbs.
+
+* cdbcomponent_allocateIdleSegdb(contentId, isWriter): allocate a free segment db by 1) reuse a segment db from pool of idle segment dbs. 2) create a brand new segment db. For case2, the connection is not actually established inside this function, the caller should establish the connections in a batch to gain performance. isWriter tells allocating a writer or not, each segment in a session can have only one writer.
+
+* cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor): recycle/destroy a segment db. a segment db will be destroyed if 1) caller specify forceDestroy to true. 2)connection to segment db is already bad. 3) FTS detect the segment is already down. 4) exceeded the pool size of idle segment dbs. 5) cached memory exceeded the limitation. otherwise, the segment db will be put into a pool for reusing later.
+
+* cdbcomponent_cleanupIdleSegdbs(includeWriter): disconnect and destroy idle segment dbs of all components. includeWriter tells cleanup idle writers or not.
