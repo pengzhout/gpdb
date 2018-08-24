@@ -101,8 +101,6 @@ createGang_thread(GangType type, int gang_id, int size, int content)
 
 	Assert(CurrentGangCreating == NULL);
 
-create_gang_retry:
-
 	/*
 	 * If we're in a retry, we may need to reset our initial state a bit. We
 	 * also want to ensure that all resources have been released.
@@ -117,6 +115,7 @@ create_gang_retry:
 	newGangDefinition = buildGangDefinition(type, gang_id, size, content);
 	CurrentGangCreating = newGangDefinition;
 
+create_gang_retry:
 	Assert(newGangDefinition != NULL);
 	Assert(newGangDefinition->size == size);
 
@@ -229,14 +228,6 @@ create_gang_retry:
 			create_gang_retry_counter++ < gp_gang_creation_retry_count &&
 			type == GANGTYPE_PRIMARY_WRITER)
 		{
-			/*
-			 * Retry for non-writer gangs is meaningless because writer gang
-			 * must be gone when QE is in recovery mode
-			 */
-			DisconnectAndDestroyGang(newGangDefinition);
-			newGangDefinition = NULL;
-			CurrentGangCreating = NULL;
-
 			ELOG_DISPATCHER_DEBUG("createGang: gang creation failed, but retryable.");
 
 			CHECK_FOR_INTERRUPTS();
@@ -250,17 +241,6 @@ create_gang_retry:
 	}
 
 exit:
-	if (newGangDefinition != NULL)
-		DisconnectAndDestroyGang(newGangDefinition);
-
-	if (type == GANGTYPE_PRIMARY_WRITER)
-	{
-		DisconnectAndDestroyAllGangs(true);
-		CheckForResetSession();
-	}
-
-	CurrentGangCreating = NULL;
-
 	ereport(ERROR,
 			(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 			 errmsg("failed to acquire resources on one or more segments"),
