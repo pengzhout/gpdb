@@ -25,6 +25,7 @@
 struct CdbDispatchResults; /* #include "cdb/cdbdispatchresult.h" */
 struct CdbPgResults;
 struct Gang; /* #include "cdb/cdbgang.h" */
+struct ResourceOwnerData;
 
 /*
  * Types of message to QE when we wait for it.
@@ -50,7 +51,7 @@ typedef struct CdbDispatcherState
 {
 	bool isExtendedQuery;
 	List *allocatedGangs;
-	bool recycleGang;
+	bool destroyGang;
 	struct CdbDispatchResults *primaryResults;
 	void *dispatchParams;
 } CdbDispatcherState;
@@ -187,7 +188,7 @@ void cdbdisp_setAsync(bool async);
 
 void cdbdisp_markNamedPortalGangsDestroyed(void);
 
-void cdbdisp_cleanupAllDispatcherState(void);
+void cdbdisp_cleanupDispatcherHandle(const struct ResourceOwnerData * owner);
 
 void AtAbort_DispatcherState(void);
 

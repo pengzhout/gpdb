@@ -3228,7 +3228,7 @@ AbortTransaction(void)
 	if (QueryCancelCleanup)
 	{
 		QueryCancelCleanup = false;
-		disconnectAndDestroyIdleReaderGangs();
+		cdbcomponent_cleanupIdleSegdbs(false);
 	}
 
 	/*

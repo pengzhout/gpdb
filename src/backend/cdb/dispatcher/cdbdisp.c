@@ -33,6 +33,8 @@
 #include "cdb/cdbvars.h"
 #include "utils/resowner.h"
 
+static int numNonExtendedDispatcherState = 0;
+
 typedef struct dispatcher_handle_t
 {
 	struct CdbDispatcherState *dispatcherState;
@@ -48,7 +50,6 @@ static void cleanup_dispatcher_handle(dispatcher_handle_t *h);
 static dispatcher_handle_t *find_dispatcher_handle(CdbDispatcherState *ds);
 static dispatcher_handle_t *allocate_dispatcher_handle(void);
 static void destroy_dispatcher_handle(dispatcher_handle_t *h);
-static void cleanupDispatcherHandle(ResourceOwner owner);
 
 /*
  * default directed-dispatch parameters: don't direct anything.
@@ -295,10 +296,28 @@ CdbDispatchHandleError(struct CdbDispatcherState *ds)
 CdbDispatcherState *
 cdbdisp_makeDispatcherState(bool isExtendedQuery)
 {
-	dispatcher_handle_t *handle = allocate_dispatcher_handle();
-	handle->dispatcherState->recycleGang = true;
+	dispatcher_handle_t *handle;
+
+	if (!isExtendedQuery)
+	{
+		if (numNonExtendedDispatcherState == 1)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("query plan with multiple segworker groups is not supported"),
+					 errhint("likely caused by a function that reads or modifies data in a distributed table")));
+
+
+		}
+
+		numNonExtendedDispatcherState++;	
+	}
+
+	handle = allocate_dispatcher_handle();
+	handle->dispatcherState->destroyGang = false;
 	handle->dispatcherState->isExtendedQuery = isExtendedQuery;
 	handle->dispatcherState->allocatedGangs = NIL;
+
 	return handle->dispatcherState;
 }
 
@@ -330,12 +349,20 @@ void
 cdbdisp_destroyDispatcherState(CdbDispatcherState *ds)
 {
 	ListCell *lc;
+	CdbDispatchResults *results;
+	dispatcher_handle_t *h;
 
 	if (!ds)
 		return;
 
-	CdbDispatchResults *results = ds->primaryResults;
-	dispatcher_handle_t *h = find_dispatcher_handle(ds);
+	if (!ds->isExtendedQuery)
+	{
+		numNonExtendedDispatcherState--;	
+		Assert(numNonExtendedDispatcherState == 0);
+	}
+
+	results = ds->primaryResults;
+	h = find_dispatcher_handle(ds);
 
 	if (results != NULL && results->resultArray != NULL)
 	{
@@ -353,15 +380,7 @@ cdbdisp_destroyDispatcherState(CdbDispatcherState *ds)
 	{
 		Gang *gp = lfirst(lc);
 
-		if (gp->type == GANGTYPE_PRIMARY_WRITER)
-			cdbgang_resetPrimaryWriterGang();
-		else
-			cdbgang_decreaseNumReaderGang();
-
-		if (ds->recycleGang)
-			RecycleGang(gp);
-		else
-			DisconnectAndDestroyGang(gp);
+		RecycleGang(gp, ds->destroyGang);
 	}
 
 	ds->allocatedGangs = NIL;
@@ -507,7 +526,7 @@ AtAbort_DispatcherState(void)
 
 	if (CurrentGangCreating != NULL)
 	{
-		DisconnectAndDestroyGang(CurrentGangCreating);
+		RecycleGang(CurrentGangCreating, true);
 		CurrentGangCreating = NULL;
 	}
 
@@ -515,7 +534,7 @@ AtAbort_DispatcherState(void)
 	 * Cleanup all outbound dispatcher states belong to
 	 * current resource owner and its children
 	 */
-	CdbResourceOwnerWalker(CurrentResourceOwner, cleanupDispatcherHandle);
+	CdbResourceOwnerWalker(CurrentResourceOwner, cdbdisp_cleanupDispatcherHandle);
 
 	Assert(open_dispatcher_handles == NULL);
 
@@ -538,15 +557,15 @@ AtSubAbort_DispatcherState(void)
 
 	if (CurrentGangCreating != NULL)
 	{
-		DisconnectAndDestroyGang(CurrentGangCreating);
+		RecycleGang(CurrentGangCreating, true);
 		CurrentGangCreating = NULL;
 	}
 
-	CdbResourceOwnerWalker(CurrentResourceOwner, cleanupDispatcherHandle);
+	CdbResourceOwnerWalker(CurrentResourceOwner, cdbdisp_cleanupDispatcherHandle);
 }
 
-static void
-cleanupDispatcherHandle(const ResourceOwner owner)
+void
+cdbdisp_cleanupDispatcherHandle(const struct ResourceOwnerData *owner)
 {
 	dispatcher_handle_t *curr;
 	dispatcher_handle_t *next;
@@ -581,27 +600,7 @@ cdbdisp_markNamedPortalGangsDestroyed(void)
 	while (head != NULL)
 	{
 		if (!head->dispatcherState->isExtendedQuery)
-			head->dispatcherState->recycleGang = false;
+			head->dispatcherState->destroyGang = true;
 		head = head->next;
-	}
-}
-
-/*
- * Unlike dispatcher_abort_callback(), this function will
- * force destroy active dispatcher states
- */
-void
-cdbdisp_cleanupAllDispatcherState(void)
-{
-	dispatcher_handle_t *curr;
-	dispatcher_handle_t *next;
-
-	next = open_dispatcher_handles;
-	while (next)
-	{
-		curr = next;
-		next = curr->next;
-
-		cleanup_dispatcher_handle(curr);
 	}
 }

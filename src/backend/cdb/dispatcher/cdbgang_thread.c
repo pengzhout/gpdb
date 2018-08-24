@@ -95,12 +95,7 @@ createGang_thread(GangType type, int gang_id, int size, int content)
 	/* check arguments */
 	Assert(size == 1 || size == getgpsegmentCount());
 	Assert(CurrentResourceOwner != NULL);
-	Assert(CurrentMemoryContext == GangContext);
 	Assert(gp_connections_per_thread > 0);
-
-	/* Writer gang is created before reader gangs. */
-	if (type == GANGTYPE_PRIMARY_WRITER)
-		Insist(!GangsExist());
 
 	initPQExpBuffer(&create_gang_error);
 
@@ -124,8 +119,6 @@ create_gang_retry:
 
 	Assert(newGangDefinition != NULL);
 	Assert(newGangDefinition->size == size);
-	Assert(newGangDefinition->perGangContext != NULL);
-	MemoryContextSwitchTo(newGangDefinition->perGangContext);
 
 	resetPQExpBuffer(&create_gang_error);
 
@@ -210,14 +203,12 @@ create_gang_retry:
 	ELOG_DISPATCHER_DEBUG("createGang: %d processes requested; %d successful connections %d in recovery",
 						  size, successful_connections, in_recovery_mode_count);
 
-	MemoryContextSwitchTo(GangContext);
-
 	if (size == successful_connections)
 	{
 		setLargestGangsize(size);
 		termPQExpBuffer(&create_gang_error);
-		CurrentGangCreating = NULL;
 
+		CurrentGangCreating = NULL;
 		return newGangDefinition;
 	}
 
@@ -309,6 +300,10 @@ thread_DoConnect(void *arg)
 			write_log("thread_DoConnect: bad segment definition during gang creation %d/%d\n", i, db_count);
 			continue;
 		}
+
+		/* if it's a cached QE, skip */
+		if (segdbDesc->conn != NULL && !cdbconn_isBadConnection(segdbDesc))
+			continue;
 
 		/*
 		 * Build the connection string.  Writer-ness needs to be processed

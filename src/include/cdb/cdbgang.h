@@ -56,12 +56,6 @@ typedef struct Gang
 
 	/* For debugging purposes only. These do not add any actual functionality. */
 	bool allocated;
-
-	/* should be destroyed if set */
-	bool noReuse;
-
-	/* memory context */
-	MemoryContext perGangContext;
 } Gang;
 
 extern int qe_gang_id;
@@ -87,18 +81,14 @@ extern List *getCdbProcessesForQD(int isPrimary);
 
 extern void freeGangsForPortal(char *portal_name);
 
-extern void RecycleGang(Gang *gp);
+extern void RecycleGang(Gang *gp, bool forceDestroy);
 extern void DisconnectAndDestroyGang(Gang *gp);
 extern void DisconnectAndDestroyAllGangs(bool resetSession);
-extern void DisconnectAndDestroyUnusedGangs(void);
+extern void DisconnectAndDestroyUnusedQEs(void);
 
 extern void CheckForResetSession(void);
 
 extern List *getAllIdleReaderGangs(struct CdbDispatcherState *ds);
-
-extern CdbComponentDatabases *getComponentDatabases(void);
-
-extern bool GangsExist(void);
 
 extern struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
@@ -108,7 +98,7 @@ char *makeOptions(void);
 extern bool segment_failure_due_to_recovery(const char *error_message);
 
 /*
- * disconnectAndDestroyIdleReaderGangs()
+ * DisconnectAndDestroyIdleQEs()
  *
  * This routine is used when a session has been idle for a while (waiting for the
  * client to send us SQL to execute). The idea is to consume less resources while sitting idle.
@@ -118,18 +108,14 @@ extern bool segment_failure_due_to_recovery(const char *error_message);
  * other end of the connection, and that person has walked away from their terminal, or just hasn't
  * decided what to do next. We could be idle for a very long time (many hours).
  *
- * Of course, freeing gangs means that the next time the user does send in an SQL statement,
- * we need to allocate gangs (at least the writer gang) to do anything. This entails extra work,
+ * Of course, freeing QEs means that the next time the user does send in an SQL statement,
+ * we need to allocate QEs (at least the writer QEs) to do anything. This entails extra work,
  * so we don't want to do this if we don't think the session has gone idle.
  *
  * Only call these routines from an idle session.
  *
  * This routine is also called from the sigalarm signal handler (hopefully that is safe to do).
  */
-extern void disconnectAndDestroyIdleReaderGangs(void);
-
-extern void cleanupPortalGangs(Portal portal);
-
 extern int largestGangsize(void);
 extern void setLargestGangsize(int size);
 

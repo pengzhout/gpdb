@@ -267,15 +267,19 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 		 strCommand);
 
 	pQueryParms = cdbdisp_buildCommandQueryParms(strCommand, DF_NONE);
+
 	ds = cdbdisp_makeDispatcherState(false);
 
 	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
 	AllocateWriterGang(ds);
 
-	/* In case there are idle gangs */
-	AllocateAllIdleReaderGangs(ds);
-
+	/* 
+	 * FIXME: it's now not easy to get all idle gang, will fix
+	 * in following commits
+	 */ 
+	cdbcomponent_cleanupIdleSegdbs(false);
+	
 	cdbdisp_makeDispatchResults(ds, list_length(ds->allocatedGangs), cancelOnError);
 	cdbdisp_makeDispatchParams (ds, list_length(ds->allocatedGangs), queryText, queryTextLength);
 
@@ -816,6 +820,9 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	char	   *shared_query,
 			   *pos;
 	MemoryContext oldContext;
+
+	Assert(DispatcherContext);
+	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
 	initStringInfo(&resgroupInfo);
 	if (IsResGroupActivated())

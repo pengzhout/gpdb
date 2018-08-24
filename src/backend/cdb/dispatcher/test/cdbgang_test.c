@@ -149,7 +149,7 @@ test__createWriterGang(void **state)
 	ds.allocatedGangs = NIL;
 
 	will_return(IsTransactionOrTransactionBlock, true);
-	will_return(getCdbComponentDatabases, s_cdb);
+	will_return(cdbcomponent_getCdbComponents, s_cdb);
 	will_return_count(getgpsegmentCount, segmentCount, -1);
 	will_return_count(getFtsVersion, ftsVersion, 1);
 
