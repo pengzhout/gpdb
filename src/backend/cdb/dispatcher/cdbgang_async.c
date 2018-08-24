@@ -73,19 +73,18 @@ createGang_async(GangType type, int gang_id, int size, int content)
 
 	Assert(CurrentGangCreating == NULL);
 
-create_gang_retry:
 	/* If we're in a retry, we may need to reset our initial state, a bit */
 	newGangDefinition = NULL;
-	successful_connections = 0;
-	in_recovery_mode_count = 0;
-	retry = false;
-
 	/* allocate and initialize a gang structure */
 	newGangDefinition = buildGangDefinition(type, gang_id, size, content);
 	CurrentGangCreating = newGangDefinition;
 
+create_gang_retry:
 	Assert(newGangDefinition != NULL);
 	Assert(newGangDefinition->size == size);
+	successful_connections = 0;
+	in_recovery_mode_count = 0;
+	retry = false;
 
 	/*
 	 * allocate memory within perGangContext and will be freed automatically
@@ -294,9 +293,6 @@ create_gang_retry:
 
 			ELOG_DISPATCHER_DEBUG("createGang: gang creation failed, but retryable.");
 
-			DisconnectAndDestroyGang(newGangDefinition);
-			newGangDefinition = NULL;
-			CurrentGangCreating = NULL;
 			retry = true;
 		}
 	}
@@ -306,26 +302,10 @@ create_gang_retry:
 		/* FTS shows some segment DBs are down */
 		if (FtsTestSegmentDBIsDown(newGangDefinition->db_descriptors, size))
 		{
-
-			DisconnectAndDestroyGang(newGangDefinition);
-			newGangDefinition = NULL;
-			CurrentGangCreating = NULL;
-			DisconnectAndDestroyAllGangs(true);
-			CheckForResetSession();
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("failed to acquire resources on one or more segments"),
 							errdetail("FTS detected one or more segments are down")));
 
-		}
-
-		DisconnectAndDestroyGang(newGangDefinition);
-		newGangDefinition = NULL;
-		CurrentGangCreating = NULL;
-
-		if (type == GANGTYPE_PRIMARY_WRITER)
-		{
-			DisconnectAndDestroyAllGangs(true);
-			CheckForResetSession();
 		}
 
 		PG_RE_THROW();
