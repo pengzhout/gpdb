@@ -22,7 +22,7 @@ For a query/plan, QD would build one `GANGTYPE_PRIMARY_WRITER` Gang, and several
 	* `AllocateReaderGang`: create Gang of type `GANGTYPE_ENTRYDB_READER`, `GANGTYPE_SINGLETON_READER`, `GANGTYPE_PRIMARY_READER` by specification. Gang reuage logic is included.
 	* `AllocateWriterGang`: create Gang of type `GANGTYPE_PRIMARY_WRITER`
 	* `DisconnectAndDestroyGang`: tear down a Gang of any type, but make sure no reader Gang exist before calling this routine for writer Gang
-	* `RecycleGang`: recycle a gang of any type to available list
+	* `RecycleGang`: put a gang to reusable gang list if gang can be cleanup correctly including discarding results, connection status check.
 	* `DisconnectAndDestroyAllGangs`: tear down all existing Gangs of this session
 * Gang status check:
 	* `GangOK`: check if a created Gang is healthy

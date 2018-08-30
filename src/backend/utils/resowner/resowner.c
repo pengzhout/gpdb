@@ -1258,6 +1258,9 @@ CdbResourceOwnerWalker(ResourceOwner owner, ResourceWalkerCallback callback)
 {
 	ResourceOwner child;
 
+	if (!owner)
+		return;
+
 	(*callback)(owner);
 
 	/* Recurse to handle descendants */

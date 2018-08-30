@@ -348,7 +348,7 @@ extern void UtilityModeCloseDtmRedoFile(void);
 
 extern bool doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType);
 
-extern void markGxactWriterGangLost(void);
+extern void markCurrentGxactWriterGangLost(void);
 
-extern bool gxactWriterGangLost(void);
+extern bool currentGxactWriterGangLost(void);
 #endif   /* CDBTM_H */

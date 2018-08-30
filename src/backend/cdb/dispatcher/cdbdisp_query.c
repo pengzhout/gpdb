@@ -299,7 +299,7 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 	 * dispatched. Meanwhile such gang should not be reused because
 	 * it's guc was not set.
 	 */
-	cdbdisp_markNamedPortalGangsDestroy();
+	cdbdisp_markNamedPortalGangsDestroyed();
 
 	if (qeError)
 	{
