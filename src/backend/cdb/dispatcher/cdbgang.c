@@ -770,18 +770,18 @@ AllocateAllIdleReaderGangs(CdbDispatcherState *ds)
 	/*
 	 * Do not use list_concat() here, it would destructively modify the lists!
 	 */
-    foreach(le, availableReaderGangsN)
-    {
-        ds->allocatedGangs = lappend(ds->allocatedGangs, lfirst(le));
+	foreach(le, availableReaderGangsN)
+	{
+		ds->allocatedGangs = lappend(ds->allocatedGangs, lfirst(le));
 		numAllocatedReaderGangs++;
-    }
+	}
 	availableReaderGangsN = NIL;
 
-    foreach(le, availableReaderGangs1)
-    {
-        ds->allocatedGangs = lappend(ds->allocatedGangs, lfirst(le));
+	foreach(le, availableReaderGangs1)
+	{
+		ds->allocatedGangs = lappend(ds->allocatedGangs, lfirst(le));
 		numAllocatedReaderGangs++;
-    }
+	}
 	availableReaderGangs1 = NIL;
 
 	MemoryContextSwitchTo(oldContext);
@@ -1076,9 +1076,7 @@ DisconnectAndDestroyGang(Gang *gp)
 	}
 
 	if (gp->type == GANGTYPE_PRIMARY_WRITER)
-	{
-		markGxactWriterGangLost();
-	}
+		markCurrentGxactWriterGangLost();
 
 	MemoryContextDelete(gp->perGangContext);
 
