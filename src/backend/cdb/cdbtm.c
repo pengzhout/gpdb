@@ -594,7 +594,7 @@ doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType)
 	bool		badGangs,
 				succeeded = false;
 
-	if (gxactWriterGangLost())
+	if (currentGxactWriterGangLost())
 	{
 		ereport(WARNING, (errmsg("Writer gang of current global transaction is lost")));
 		return false;
@@ -2092,7 +2092,7 @@ dispatchDtxCommand(const char *cmd)
 
 	elog(DTM_DEBUG5, "dispatchDtxCommand: '%s'", cmd);
 
-	if (gxactWriterGangLost())
+	if (currentGxactWriterGangLost())
 	{
 		ereport(WARNING, (errmsg("Writer gang of current global transaction is lost")));
 		return false;
@@ -3414,14 +3414,14 @@ performDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 }
 
 void
-markGxactWriterGangLost(void)
+markCurrentGxactWriterGangLost(void)
 {
 	if (currentGxact)
 		currentGxact->writerGangLost = true;
 }
 
 bool
-gxactWriterGangLost(void)
+currentGxactWriterGangLost(void)
 {
 	return currentGxact == NULL ? false : currentGxact->writerGangLost;
 }

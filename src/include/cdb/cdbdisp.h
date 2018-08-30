@@ -185,7 +185,7 @@ void cdbdisp_onProcExit(void);
 
 void cdbdisp_setAsync(bool async);
 
-void cdbdisp_markNamedPortalGangsDestroy(void);
+void cdbdisp_markNamedPortalGangsDestroyed(void);
 
 void cdbdisp_cleanupAllDispatcherState(void);
 

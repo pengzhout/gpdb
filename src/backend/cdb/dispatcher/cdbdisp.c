@@ -497,7 +497,7 @@ cleanup_dispatcher_handle(dispatcher_handle_t *h)
 
 /*
  * Cleanup all dispatcher state that belong to
- * current resource owner and it's childrens
+ * current resource owner and its childrens
  */
 void
 AtAbort_DispatcherState(void)
@@ -523,7 +523,7 @@ AtAbort_DispatcherState(void)
 	 * If primary writer gang is destroyed in current Gxact
 	 * reset session and drop temp files
 	 */
-	if (gxactWriterGangLost())
+	if (currentGxactWriterGangLost())
 	{
 		DisconnectAndDestroyAllGangs(true);
 		CheckForResetSession();
@@ -570,12 +570,12 @@ cleanupDispatcherHandle(const ResourceOwner owner)
  * status, on the other hand, SET command should not affect running CURSOR
  * like 'search_path' etc; 
  *
- * Meanwhile when a dispatcher state of named portal is destroyed, it's
- * gang should not be recycled because it's guc was not set, so need to
+ * Meanwhile when a dispatcher state of named portal is destroyed, its
+ * gang should not be recycled because its guc was not set, so need to
  * mark those gangs destroyed when dispatcher state is destroyed.
  */
 void
-cdbdisp_markNamedPortalGangsDestroy(void)
+cdbdisp_markNamedPortalGangsDestroyed(void)
 {
 	dispatcher_handle_t *head = open_dispatcher_handles;
 	while (head != NULL)
