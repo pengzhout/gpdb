@@ -168,5 +168,4 @@ typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int conten
 extern void cdbgang_setAsync(bool async);
 extern void cdbgang_resetPrimaryWriterGang(void);
 extern void cdbgang_decreaseNumReaderGang(void);
-extern void AvailableWriterGangValidation(void);
 #endif   /* _CDBGANG_H_ */

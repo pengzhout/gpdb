@@ -194,6 +194,8 @@ FI_IDENT(ProcessStartupPacketFault, "process_startup_packet")
 FI_IDENT(QuickDie, "quickdie")
 /* inject fault in cdbdisp_dispatchX*/
 FI_IDENT(AfterOneSliceDispatched, "after_one_slice_dispatched")
+/* inject fault in cdbdisp_dispatchX*/
+FI_IDENT(BeforeOneSliceDispatched, "before_one_slice_dispatched")
 /* inject fault in interconnect to skip sending the stop ack */
 FI_IDENT(InterconnectStopAckIsLost, "interconnect_stop_ack_is_lost")
 /* inject fault in interconnect to make palloc0 fail in setup */

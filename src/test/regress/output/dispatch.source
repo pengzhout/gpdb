@@ -546,6 +546,27 @@ NOTICE:  Success:
  t
 (1 row)
 
+-- Case 1.6
+-- For a query need two phase commit, if error happens before commands are actually
+-- dispatched, the query can be cancelled correctly.
+-- 
+select gp_inject_fault('before_one_slice_dispatched', 'error', 1);
+NOTICE:  Success:
+ gp_inject_fault 
+-----------------
+ t
+(1 row)
+
+update dispatch_test_t1 set c2 = 3 from dispatch_test_t2, dispatch_test_t3
+where dispatch_test_t1.c2 = dispatch_test_t2.c2 and dispatch_test_t2.c3 = dispatch_test_t3.c3;
+ERROR:  fault triggered, fault name:'before_one_slice_dispatched' fault type:'error'
+select gp_inject_fault('before_one_slice_dispatched', 'reset', 1);
+NOTICE:  Success:
+ gp_inject_fault 
+-----------------
+ t
+(1 row)
+
 -- test logging of gang management
 SET gp_log_gang = 'debug';
 -- test INFO raised from segments with various kinds of fields
