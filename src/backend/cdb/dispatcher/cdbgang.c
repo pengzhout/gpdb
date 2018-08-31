@@ -1700,3 +1700,12 @@ cdbgang_decreaseNumReaderGang(void)
 {
 	numAllocatedReaderGangs--;
 }
+
+void
+AvailableWriterGangValidation(void)
+{
+	if (availablePrimaryWriterGang && !GangOK(availablePrimaryWriterGang))
+	{
+		DisconnectAndDestroyAllGangs(true);
+	}
+}
