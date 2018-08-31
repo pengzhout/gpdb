@@ -97,7 +97,7 @@ SET
 DROP TABLE IF EXISTS employees;
 DROP
 select test_protocol_allseg(1, 2,'f');
-ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed (SOMEFILE:SOMEFUNC)
+ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 19 during exception cleanup
 -- make sure segment recovery is complete after panic.
 0U: select 1;
@@ -125,7 +125,7 @@ SET
 DROP TABLE IF EXISTS employees;
 DROP
 select test_protocol_allseg(1, 2,'f');
-ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed (SOMEFILE:SOMEFUNC)
+ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 19 during exception cleanup
 -- make sure segment recovery is complete after panic.
 0U: select 1;
@@ -153,7 +153,7 @@ SET
 DROP TABLE IF EXISTS employees;
 DROP
 select test_protocol_allseg(1, 2,'f');
-ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed (SOMEFILE:SOMEFUNC)
+ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
 -- make sure segment recovery is complete after panic.
 0U: select 1;
@@ -181,7 +181,7 @@ SET
 DROP TABLE IF EXISTS employees;
 DROP
 select test_protocol_allseg(1, 2,'f');
-ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed (SOMEFILE:SOMEFUNC)
+ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
 -- make sure segment recovery is complete after panic.
 0U: select 1;
@@ -209,7 +209,7 @@ SET
 DROP TABLE IF EXISTS employees;
 DROP
 select test_protocol_allseg(1, 2,'f');
-ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed (SOMEFILE:SOMEFUNC)
+ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
 -- make sure segment recovery is complete after panic.
 0U: select 1;
