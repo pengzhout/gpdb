@@ -1018,12 +1018,3 @@ RecycleGang(Gang *gp, bool forceDestroy)
 		cdbcomponent_recycleIdleSegdb(segdbDesc, forceDestroy);
 	}
 }
-
-void
-AvailableWriterGangValidation(void)
-{
-	if (availablePrimaryWriterGang && !GangOK(availablePrimaryWriterGang))
-	{
-		DisconnectAndDestroyAllGangs(true);
-	}
-}

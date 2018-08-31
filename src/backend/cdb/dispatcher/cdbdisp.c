@@ -105,6 +105,8 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 	 * a separate file.
 	 */
 	(pDispatchFuncs->dispatchToGang) (ds, gp, sliceIndex, disp_direct);
+
+	markCurrentGxactDispatched();
 }
 
 /*

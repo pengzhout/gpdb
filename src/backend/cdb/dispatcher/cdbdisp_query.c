@@ -1165,6 +1165,7 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 			if (InterruptPending)
 				break;
 		}
+		SIMPLE_FAULT_INJECTOR(BeforeOneSliceDispatched);
 
 		cdbdisp_dispatchToGang(ds, primaryGang, si, &direct);
 

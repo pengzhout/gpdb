@@ -564,8 +564,10 @@ cdbcomponent_getCdbComponents(bool DNSLookupAsError)
 			 *
 			 * * A query should has a unique cdb_component_dbs between
 			 * 	 slices and inside slices. 
+			 * * If it's not safe to recycle current writer, use current
+			 *   cdb_component_dbs.
 			 */
-			if (cdb_component_dbs->numActiveQEs == 0)
+			if (cdb_component_dbs->numActiveQEs == 0 && isSafeToRecreateWriter())
 			{
 				ELOG_DISPATCHER_DEBUG("FTS rescanned, get new component databases info.");
 				cdbcomponent_destroyCdbComponents();
