@@ -151,6 +151,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
 
 	component_databases->numActiveQEs = 0;
 	component_databases->numIdleQEs = 0;
+	component_databases->qeCounter = 0;
 
 	component_databases->segment_db_info =
 		(CdbComponentDatabaseInfo *) palloc0(sizeof(CdbComponentDatabaseInfo) * segment_array_size);
@@ -674,7 +675,7 @@ cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
 	if (!segdbDesc)
 	{
 		/* for entrydb, it's never be writer */
-		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, contentId == -1 ? false: writer);
+		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, cdbinfo->cdbs->qeCounter++, contentId == -1 ? false: writer);
 	}
 
 	cdbconn_setQEIdentifier(segdbDesc, -1);

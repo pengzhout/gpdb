@@ -240,7 +240,7 @@ MPPnoticeReceiver(void *arg, const PGresult *res)
 
 /* Initialize a QE connection descriptor in CdbComponentsContext */
 SegmentDatabaseDescriptor *
-cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool isWriter)
+cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, int identifier, bool isWriter)
 {
 	MemoryContext oldContext;
 	SegmentDatabaseDescriptor *segdbDesc = NULL;
@@ -261,6 +261,7 @@ cdbconn_createSegmentDescriptor(struct CdbComponentDatabaseInfo *cdbinfo, bool i
 
 	/* whoami */
 	segdbDesc->whoami = NULL;
+	segdbDesc->identifier = identifier;
 	segdbDesc->isWriter = isWriter;
 
 	/* Connection error info */

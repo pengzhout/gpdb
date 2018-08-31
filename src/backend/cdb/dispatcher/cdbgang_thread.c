@@ -311,8 +311,8 @@ thread_DoConnect(void *arg)
 		 * are recognized.
 		 */
 		ret = build_gpqeid_param(gpqeid, sizeof(gpqeid),
-								 pParms->type == GANGTYPE_PRIMARY_WRITER,
-								 pParms->gangId,
+						   		 pParms->type == GANGTYPE_PRIMARY_WRITER,
+								 segdbDesc->identifier,
 								 segdbDesc->segment_database_info->hostSegs);
 
 		if (!ret)

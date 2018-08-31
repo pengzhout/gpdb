@@ -58,7 +58,7 @@ typedef struct Gang
 	bool allocated;
 } Gang;
 
-extern int qe_gang_id;
+extern int qe_identifier;
 
 extern int host_segments;
 
@@ -73,7 +73,7 @@ extern Gang *AllocateWriterGang(struct CdbDispatcherState *ds);
 
 extern void AllocateAllIdleReaderGangs(struct CdbDispatcherState *ds);
 
-extern List *getCdbProcessList(Gang *gang, int sliceIndex, struct DirectDispatchInfo *directDispatch);
+extern void setupCdbProcessList(Slice *slice);
 
 extern bool GangOK(Gang *gp);
 
@@ -93,7 +93,7 @@ extern List *getAllIdleReaderGangs(struct CdbDispatcherState *ds);
 extern struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
 Gang *buildGangDefinition(GangType type, int gang_id, int size, int content);
-bool build_gpqeid_param(char *buf, int bufsz, bool is_writer, int gangId, int hostSegs);
+bool build_gpqeid_param(char *buf, int bufsz, bool is_writer, int identifier, int hostSegs);
 char *makeOptions(void);
 extern bool segment_failure_due_to_recovery(const char *error_message);
 

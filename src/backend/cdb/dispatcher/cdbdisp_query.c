@@ -93,10 +93,6 @@ typedef struct DispatchCommandQueryParms
 	int			serializedDtxContextInfolen;
 
 	int			rootIdx;
-
-	/* the map from sliceIndex to gang_id, in array form */
-	int			numSlices;
-	int		   *sliceIndexGangIdMap;
 } DispatchCommandQueryParms;
 
 static int fillSliceVector(SliceTable *sliceTable,
@@ -118,8 +114,6 @@ static void
 cdbdisp_dispatchX(QueryDesc *queryDesc,
 			bool planRequiresTxn,
 			bool cancelOnError);
-
-static int *buildSliceIndexGangIdMap(SliceVec *sliceVec, int numSlices, int numTotalSlices);
 
 static char *serializeParamListInfo(ParamListInfo paramLI, int *len_p);
 
@@ -804,8 +798,6 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	int			dtxContextInfo_len = pQueryParms->serializedDtxContextInfolen;
 	int			flags = 0;		/* unused flags */
 	int			rootIdx = pQueryParms->rootIdx;
-	int			numSlices = pQueryParms->numSlices;
-	int		   *sliceIndexGangIdMap = pQueryParms->sliceIndexGangIdMap;
 	int64		currentStatementStartTimestamp = GetCurrentStatementStartTimestamp();
 	Oid			sessionUserId = GetSessionUserId();
 	Oid			outerUserId = GetOuterUserId();
@@ -813,14 +805,16 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	StringInfoData resgroupInfo;
 
 	int			tmp,
-				len,
-				i;
+				len;
 	uint32		n32;
 	int			total_query_len;
 	char	   *shared_query,
 			   *pos;
 	MemoryContext oldContext;
 
+	/*
+	 * Must allocate query text within DispatcherContext,
+	 */
 	Assert(DispatcherContext);
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
@@ -849,16 +843,8 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 		plantree_len +
 		params_len +
 		sddesc_len +
-		sizeof(numSlices) +
-		sizeof(int) * numSlices +
 		sizeof(resgroupInfo.len) +
 		resgroupInfo.len;
-
-	/*
-	 * Must allocate query text within DispatcherContext,
-	 */
-	Assert(DispatcherContext);
-	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
 	shared_query = palloc0(total_query_len);
 
@@ -965,20 +951,6 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 		pos += sddesc_len;
 	}
 
-	tmp = htonl(numSlices);
-	memcpy(pos, &tmp, sizeof(tmp));
-	pos += sizeof(tmp);
-
-	if (numSlices > 0)
-	{
-		for (i = 0; i < numSlices; ++i)
-		{
-			tmp = htonl(sliceIndexGangIdMap[i]);
-			memcpy(pos, &tmp, sizeof(tmp));
-			pos += sizeof(tmp);
-		}
-	}
-
 	tmp = htonl(resgroupInfo.len);
 	memcpy(pos, &tmp, sizeof(resgroupInfo.len));
 	pos += sizeof(resgroupInfo.len);
@@ -1067,8 +1039,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, nTotalSlices);
 
 	pQueryParms = cdbdisp_buildPlanQueryParms(queryDesc, planRequiresTxn);
-	pQueryParms->numSlices = nTotalSlices;
-	pQueryParms->sliceIndexGangIdMap = buildSliceIndexGangIdMap(sliceVector, nSlices, nTotalSlices);
 	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
 	/*
@@ -1229,30 +1199,6 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 	}
 
 	estate->dispatcherState = ds;
-}
-
-static int *
-buildSliceIndexGangIdMap(SliceVec *sliceVec, int numSlices, int numTotalSlices)
-{
-	Assert(sliceVec != NULL && numSlices > 0 && numTotalSlices > 0);
-
-	/* would be freed in buildGpQueryString */
-	int		   *sliceIndexGangIdMap = palloc0(numTotalSlices * sizeof(int));
-
-	Slice	   *slice = NULL;
-	int			index;
-
-	for (index = 0; index < numSlices; ++index)
-	{
-		slice = sliceVec[index].slice;
-
-		if (slice->primaryGang == NULL)
-			continue;
-
-		sliceIndexGangIdMap[slice->sliceIndex] = slice->primaryGang->gang_id;
-	}
-
-	return sliceIndexGangIdMap;
 }
 
 /*

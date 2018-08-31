@@ -1877,6 +1877,8 @@ AssignGangs(CdbDispatcherState *ds, QueryDesc *queryDesc)
 		slice = (Slice *) lfirst(cell);
 		Assert(i == slice->sliceIndex);
 		sliceMap[i] = slice;
+		/* cleanup processMap because initPlan and main Plan share the same slice table */
+		slice->processesMap = NULL;
 		i++;
 	}
 
@@ -2094,9 +2096,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			Assert(slice->gangSize == 1);
 			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader++];
 			Assert(slice->primaryGang != NULL);
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex,
-														NULL);
+			setupCdbProcessList(slice);
 			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
 			break;
 
@@ -2107,18 +2107,14 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 
 			slice->primaryGang = req->vecNgangs[req->nxtNgang++];
 			Assert(slice->primaryGang != NULL);
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-														slice->sliceIndex,
-														&slice->directDispatch);
+			setupCdbProcessList(slice);
 			break;
 
 		case GANGTYPE_SINGLETON_READER:
 			Assert(slice->gangSize == 1);
 			slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader++];
 			Assert(slice->primaryGang != NULL);
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex,
-                                                        &slice->directDispatch);
+			setupCdbProcessList(slice);
 			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
 			break;
 
@@ -2126,9 +2122,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			Assert(slice->gangSize == getgpsegmentCount());
 			slice->primaryGang = req->vecNgangs[req->nxtNgang++];
 			Assert(slice->primaryGang != NULL);
-			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
-                                                        slice->sliceIndex,
-                                                        &slice->directDispatch);
+			setupCdbProcessList(slice);
 			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
 			break;
 	}

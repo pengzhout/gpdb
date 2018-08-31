@@ -108,6 +108,9 @@ typedef struct Slice
 	 * implemented.
 	 */
 	List	   *primaryProcesses;
+
+	/* A bitmap to identify which QE should execute this slice */
+	Bitmapset  *processesMap;
 } Slice;
 
 /*
