@@ -115,6 +115,7 @@ struct CdbComponentDatabases
 	uint8		fts_version;	/* the version of fts */
 	int			numActiveQEs;
 	int			numIdleQEs;
+	int			qeCounter;
 };
 
 /*

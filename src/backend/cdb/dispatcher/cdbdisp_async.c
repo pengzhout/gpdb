@@ -282,6 +282,7 @@ cdbdisp_dispatchToGang_async(struct CdbDispatcherState *ds,
 							 CdbDispatchDirectDesc *dispDirect)
 {
 	int			i;
+
 	CdbDispatchCmdAsync *pParms = (CdbDispatchCmdAsync *) ds->dispatchParams;
 
 	/*

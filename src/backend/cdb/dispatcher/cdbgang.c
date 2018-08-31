@@ -56,10 +56,11 @@
 #include "utils/guc_tables.h"
 
 /*
- * Which gang this QE belongs to; this would be used in PostgresMain to find out
- * the slice this QE should execute
+ * Unique QE identifier, it's set when the QE is started up, it
+ * will be use to go through slice table to find which slice
+ * this QE should execute.
  */
-int			qe_gang_id = 0;
+int			qe_identifier = 0;
 
 /*
  * number of primary segments on this host
@@ -74,13 +75,6 @@ static int	largest_gangsize = 0;
 
 static bool NeedResetSession = false;
 static Oid	OldTempNamespace = InvalidOid;
-
-/*
- * Every gang created must have a unique identifier
- */
-#define PRIMARY_WRITER_GANG_ID 1
-static int	gang_id_counter = 2;
-
 
 static Gang *createGang(GangType type, int gang_id, int size, int content);
 
@@ -130,7 +124,7 @@ AllocateReaderGang(CdbDispatcherState *ds, GangType type, char *portal_name)
 
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
-	gp = createGang(type, gang_id_counter++, size, content);
+	gp = createGang(type, 0, size, content);
 	gp->allocated = true;
 	ds->allocatedGangs = lcons(gp, ds->allocatedGangs);
 
@@ -169,7 +163,7 @@ AllocateWriterGang(CdbDispatcherState *ds)
 
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
-	writerGang = createGang(GANGTYPE_PRIMARY_WRITER, PRIMARY_WRITER_GANG_ID, nsegdb, -1);
+	writerGang = createGang(GANGTYPE_PRIMARY_WRITER, 0, nsegdb, -1);
 	writerGang->allocated = true;
 
 	/*
@@ -446,7 +440,7 @@ makeOptions(void)
  */
 bool
 build_gpqeid_param(char *buf, int bufsz,
-				   bool is_writer, int gangId, int hostSegs)
+				   bool is_writer, int identifier, int hostSegs)
 {
 	int		len;
 #ifdef HAVE_INT64_TIMESTAMP
@@ -461,7 +455,7 @@ build_gpqeid_param(char *buf, int bufsz,
 
 	len = snprintf(buf, bufsz, "%d;" TIMESTAMP_FORMAT ";%s;%d;%d",
 				   gp_session_id, PgStartTime,
-				   (is_writer ? "true" : "false"), gangId, hostSegs);
+				   (is_writer ? "true" : "false"), identifier, hostSegs);
 
 	return (len > 0 && len < bufsz);
 }
@@ -522,9 +516,10 @@ cdbgang_parse_gpqeid_params(struct Port *port __attribute__((unused)),
 	if (gpqeid_next_param(&cp, &np))
 		SetConfigOption("gp_is_writer", cp, PGC_POSTMASTER, PGC_S_OVERRIDE);
 
+	/* qe_identifier */
 	if (gpqeid_next_param(&cp, &np))
 	{
-		qe_gang_id = (int) strtol(cp, NULL, 10);
+		qe_identifier = (int) strtol(cp, NULL, 10);
 	}
 
 	if (gpqeid_next_param(&cp, &np))
@@ -536,7 +531,7 @@ cdbgang_parse_gpqeid_params(struct Port *port __attribute__((unused)),
 	if (!cp || np)
 		goto bad;
 
-	if (gp_session_id <= 0 || PgStartTime <= 0 || qe_gang_id <= 0 || host_segments <= 0)
+	if (gp_session_id <= 0 || PgStartTime <= 0 || qe_identifier < 0 || host_segments <= 0)
 		goto bad;
 
 	pfree(gpqeid);
@@ -599,15 +594,16 @@ makeCdbProcess(SegmentDatabaseDescriptor *segdbDesc)
  *
  * @directDispatch: might be null
  */
-List *
-getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch)
+void
+setupCdbProcessList(Slice *slice )
 {
-	List	   *list = NULL;
 	int			i = 0;
+	Gang		*gang = slice->primaryGang;
+	DirectDispatchInfo *directDispatch = &slice->directDispatch;
 
 	ELOG_DISPATCHER_DEBUG("getCdbProcessList slice%d gangtype=%d gangsize=%d",
-						  sliceIndex, gang->type, gang->size);
-
+						  slice->sliceIndex, gang->type, gang->size);
+	Assert(gang);
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert((gang->type == GANGTYPE_PRIMARY_WRITER && gang->size == getgpsegmentCount()) ||
 		   (gang->type == GANGTYPE_PRIMARY_READER && gang->size == getgpsegmentCount()) ||
@@ -624,8 +620,10 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 		SegmentDatabaseDescriptor *segdbDesc = gang->db_descriptors[directDispatchContentId];
 		CdbProcess *process = makeCdbProcess(segdbDesc);
 
-		cdbconn_setQEIdentifier(segdbDesc, sliceIndex);
-		list = lappend(list, (void*)process);
+		cdbconn_setQEIdentifier(segdbDesc, slice->sliceIndex);
+
+		slice->primaryProcesses = lappend(slice->primaryProcesses, process);
+		slice->processesMap = bms_add_member(slice->processesMap, segdbDesc->identifier);
 	}
 	else
 	{
@@ -634,16 +632,15 @@ getCdbProcessList(Gang *gang, int sliceIndex, DirectDispatchInfo *directDispatch
 			SegmentDatabaseDescriptor *segdbDesc = gang->db_descriptors[i];
 			CdbProcess *process = makeCdbProcess(segdbDesc);
 
-			cdbconn_setQEIdentifier(segdbDesc, sliceIndex);
-			list = lappend(list, process);
+			cdbconn_setQEIdentifier(segdbDesc, slice->sliceIndex);
 
+			slice->primaryProcesses = lappend(slice->primaryProcesses, process);
+			slice->processesMap = bms_add_member(slice->processesMap, segdbDesc->identifier);
 			ELOG_DISPATCHER_DEBUG("Gang assignment (gang_id %d): slice%d seg%d %s:%d pid=%d",
-								  gang->gang_id, sliceIndex, process->contentid,
+								  gang->gang_id, slice->sliceIndex, process->contentid,
 								  process->listenerAddr, process->listenerPort, process->pid);
 		}
 	}
-
-	return list;
 }
 
 /*
