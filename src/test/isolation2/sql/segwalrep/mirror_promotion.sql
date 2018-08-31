@@ -77,12 +77,6 @@ where content = 0;
 select dbid from gp_segment_configuration where content = 0 and role = 'p';
 -- end_ignore
 
--- primary writer gang should be invalid now, use a sql
--- to recycle it.
--- start_ignore
-begin; end;
--- end_ignore
-
 select gp_inject_fault_infinite('fts_handle_message', 'infinite_loop', dbid)
 from gp_segment_configuration
 where content = 0 and role = 'p';
