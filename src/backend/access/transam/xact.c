@@ -4778,7 +4778,8 @@ DispatchRollbackToSavepoint(char *name)
 	 * either exit via elog()/ereport() or return false
 	 */
 	if (!dispatchDtxCommand(cmd))
-		elog(ERROR, "Could not rollback to savepoint (%s)", cmd);
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Could not rollback to savepoint (%s)", cmd)));
 
 	pfree(cmd);
 }
@@ -4942,8 +4943,8 @@ RollbackAndReleaseCurrentSubTransaction(void)
 		if (!doDispatchSubtransactionInternalCmd(
 				DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL))
 		{
-			elog(ERROR,
-				 "DTX RollbackAndReleaseCurrentSubTransaction dispatch failed");
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("DTX RollbackAndReleaseCurrentSubTransaction dispatch failed")));
 		}
 	}
 }
