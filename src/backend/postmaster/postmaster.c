@@ -2192,6 +2192,10 @@ retry1:
 		case CAC_MIRROR_READY:
 			if (am_ftshandler)
 			{
+				while(!am_mirror)
+				{
+					pg_usleep(1000 * 1000);
+				}
 				Assert(am_mirror);
 				break;
 			}
