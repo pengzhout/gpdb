@@ -633,7 +633,7 @@ cdbcomponent_destroyCdbComponents(void)
  * not setup yet, callers need to establish the connection by themselves.
  */
 SegmentDatabaseDescriptor *
-cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
+cdbcomponent_allocateIdleSegdb(int contentId, SegmentType segmentType)
 {
 	SegmentDatabaseDescriptor	*segdbDesc = NULL;
 	CdbComponentDatabaseInfo	*cdbinfo;
@@ -641,6 +641,7 @@ cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
 	ListCell 					*nextItem = NULL;
 	ListCell					*prevItem = NULL;
 	MemoryContext 				oldContext;
+	bool						isWriter;
 
 	cdbinfo = cdbcomponent_getComponentInfo(contentId);	
 
@@ -655,7 +656,8 @@ cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
 		nextItem = lnext(curItem);
 		Assert(tmp);
 
-		if (writer != tmp->isWriter)
+		if ((segmentType == SEGMENTTYPE_EXPLICT_WRITER && !tmp->isWriter) ||
+			(segmentType == SEGMENTTYPE_EXPLICT_READER && tmp->isWriter))
 		{
 			prevItem = curItem;
 			curItem = nextItem;
@@ -670,12 +672,14 @@ cdbcomponent_allocateIdleSegdb(int contentId, bool writer)
 		break;
 	}
 
-	AssertImply(segdbDesc, segdbDesc->isWriter == writer);
-
 	if (!segdbDesc)
 	{
-		/* for entrydb, it's never be writer */
-		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, cdbinfo->cdbs->qeCounter++, contentId == -1 ? false: writer);
+		/*
+		 * 1. for entrydb, it's never be writer.
+		 * 2. for first QE, it must be a writer.
+		 */
+		isWriter = contentId == -1 ? false: (cdbinfo->numIdleQEs == 0 && cdbinfo->numActiveQEs == 0);
+		segdbDesc = cdbconn_createSegmentDescriptor(cdbinfo, cdbinfo->cdbs->qeCounter++, isWriter);
 	}
 
 	cdbconn_setQEIdentifier(segdbDesc, -1);
@@ -1556,3 +1560,21 @@ getgpsegmentCount(void)
 	Assert(GpIdentity.numsegments > 0);
 	return GpIdentity.numsegments;
 }
+
+List *
+cdbcomponent_getCdbComponentsList(void)
+{
+	CdbComponentDatabases *cdbs;
+	List *segments = NIL;
+	int i;
+
+	cdbs = cdbcomponent_getCdbComponents(true);
+
+	for (i = 0; i < cdbs->total_segments; i++)
+	{
+		segments = lappend_int(segments, i);
+	}
+
+	return segments;
+}
+

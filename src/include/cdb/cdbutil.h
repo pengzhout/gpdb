@@ -118,6 +118,14 @@ typedef struct CdbComponentDatabases
 	int			qeCounter;
 } CdbComponentDatabases;
 
+//
+typedef enum SegmentType
+{
+	SEGMENTTYPE_EXPLICT_WRITER = 1,
+	SEGMENTTYPE_EXPLICT_READER,
+	SEGMENTTYPE_ANY
+}SegmentType;
+
 /*
  * performs all necessary setup required for initializing Greenplum Database components.
  *
@@ -147,16 +155,19 @@ extern void cdb_cleanup(int code, Datum arg  __attribute__((unused)) );
  */
 CdbComponentDatabases * cdbcomponent_getCdbComponents(bool DNSLookupAsError);
 void cdbcomponent_destroyCdbComponents(void);
+
 void cdbcomponent_cleanupIdleSegdbs(bool includeWriter);
 
 CdbComponentDatabaseInfo * cdbcomponent_getComponentInfo(int contentId);
 
-struct SegmentDatabaseDescriptor * cdbcomponent_allocateIdleSegdb(int contentId, bool writer);
+struct SegmentDatabaseDescriptor * cdbcomponent_allocateIdleSegdb(int contentId, SegmentType segmentType);
+
 void cdbcomponent_recycleIdleSegdb(struct SegmentDatabaseDescriptor *segdbDesc, bool forceDestroy);
 
 bool cdbcomponent_segdbsExist(void);
 bool cdbcomponent_activeSegdbsExist(void);
 
+List *cdbcomponent_getCdbComponentsList(void);
 /*
  * Given total number of primary segment databases and a number of segments
  * to "skip" - this routine creates a boolean map (array) the size of total

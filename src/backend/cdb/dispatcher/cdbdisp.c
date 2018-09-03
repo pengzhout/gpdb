@@ -90,8 +90,7 @@ static DispatcherInternalFuncs *pDispatchFuncs = NULL;
 void
 cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 					   struct Gang *gp,
-					   int sliceIndex,
-					   CdbDispatchDirectDesc *disp_direct)
+					   int sliceIndex)
 {
 	struct CdbDispatchResults *dispatchResults = ds->primaryResults;
 
@@ -104,7 +103,7 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 	 * just use an internal function to move dispatch thread related code into
 	 * a separate file.
 	 */
-	(pDispatchFuncs->dispatchToGang) (ds, gp, sliceIndex, disp_direct);
+	(pDispatchFuncs->dispatchToGang) (ds, gp, sliceIndex);
 
 	markCurrentGxactDispatched();
 }
@@ -319,6 +318,7 @@ cdbdisp_makeDispatcherState(bool isExtendedQuery)
 	handle->dispatcherState->destroyGang = false;
 	handle->dispatcherState->isExtendedQuery = isExtendedQuery;
 	handle->dispatcherState->allocatedGangs = NIL;
+	handle->dispatcherState->largestGangSize = 0;
 
 	return handle->dispatcherState;
 }
@@ -335,7 +335,7 @@ cdbdisp_makeDispatchParams(CdbDispatcherState *ds,
 	Assert(DispatcherContext);
 	oldContext = MemoryContextSwitchTo(DispatcherContext);
 
-	dispatchParams = (pDispatchFuncs->makeDispatchParams) (maxSlices, queryText, queryTextLen);
+	dispatchParams = (pDispatchFuncs->makeDispatchParams) (maxSlices, ds->largestGangSize, queryText, queryTextLen);
 
 	ds->dispatchParams = dispatchParams;
 
@@ -388,6 +388,7 @@ cdbdisp_destroyDispatcherState(CdbDispatcherState *ds)
 	ds->allocatedGangs = NIL;
 	ds->dispatchParams = NULL;
 	ds->primaryResults = NULL;
+	ds->largestGangSize= 0;
 
 	if (h != NULL)
 		destroy_dispatcher_handle(h);

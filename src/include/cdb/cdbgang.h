@@ -67,12 +67,6 @@ extern Gang *CurrentGangCreating;
 
 extern const char *gangTypeToString(GangType type);
 
-extern Gang *AllocateReaderGang(struct CdbDispatcherState *ds, GangType type, char *portal_name);
-
-extern Gang *AllocateWriterGang(struct CdbDispatcherState *ds);
-
-extern void AllocateAllIdleReaderGangs(struct CdbDispatcherState *ds);
-
 extern void setupCdbProcessList(Slice *slice);
 
 extern bool GangOK(Gang *gp);
@@ -81,6 +75,7 @@ extern List *getCdbProcessesForQD(int isPrimary);
 
 extern void freeGangsForPortal(char *portal_name);
 
+extern Gang *AllocateGang(struct CdbDispatcherState *ds, enum GangType type, List *segments);
 extern void RecycleGang(Gang *gp, bool forceDestroy);
 extern void DisconnectAndDestroyGang(Gang *gp);
 extern void DisconnectAndDestroyAllGangs(bool resetSession);
@@ -92,8 +87,9 @@ extern List *getAllIdleReaderGangs(struct CdbDispatcherState *ds);
 
 extern struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
-Gang *buildGangDefinition(GangType type, int gang_id, int size, int content);
+Gang *buildGangDefinition(List *segments, SegmentType segmentType);
 bool build_gpqeid_param(char *buf, int bufsz, bool is_writer, int identifier, int hostSegs);
+
 char *makeOptions(void);
 extern bool segment_failure_due_to_recovery(const char *error_message);
 
@@ -116,9 +112,6 @@ extern bool segment_failure_due_to_recovery(const char *error_message);
  *
  * This routine is also called from the sigalarm signal handler (hopefully that is safe to do).
  */
-extern int largestGangsize(void);
-extern void setLargestGangsize(int size);
-
 #ifdef WIN32
 extern int gp_pthread_create(DWORD *thread, void *(*start_routine)(void *), void *arg, const char *caller);
 #else
@@ -163,7 +156,7 @@ typedef struct CdbProcess
 	int contentid;
 } CdbProcess;
 
-typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int content);
+typedef Gang *(*CreateGangFunc)(List *segments, SegmentType segmentType);
 
 extern void cdbgang_setAsync(bool async);
 extern void cdbgang_resetPrimaryWriterGang(void);
