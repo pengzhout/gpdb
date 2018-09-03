@@ -19,8 +19,7 @@ For a query/plan, QD would build one `GANGTYPE_PRIMARY_WRITER` Gang, and several
 
 ### Interface Routines:
 * Gang creation and tear down:
-	* `AllocateReaderGang`: create Gang of type `GANGTYPE_ENTRYDB_READER`, `GANGTYPE_SINGLETON_READER`, `GANGTYPE_PRIMARY_READER` by specification. Gang reuage logic is included.
-	* `AllocateWriterGang`: create Gang of type `GANGTYPE_PRIMARY_WRITER`
+	* `AllocateGang`: allocate a gang with specified type on specified segments, the gang is made up of idle segment dbs got from CdbComponentDatabases (see cdbcomponent_allocateIdleSegdb).
 	* `RecycleGang`: put each member of gang back to segment pool if gang can be cleanup correctly including discarding results, connection status check (see cdbcomponent_recycleIdleSegdb), otherwise, destroy it.
 	* `DisconnectAndDestroyAllGangs`: tear down all existing Gangs of this session
 * Gang status check:
@@ -62,7 +61,10 @@ There are a few functions to manipulate CdbComponentDatabases, Dispatcher can us
 
 * cdbcomponent_destroyCdbComponents(): destroy a snapshot of current cluster components include the MemoryContext and pool of idle segment dbs.
 
-* cdbcomponent_allocateIdleSegdb(contentId, isWriter): allocate a free segment db by 1) reuse a segment db from pool of idle segment dbs. 2) create a brand new segment db. For case2, the connection is not actually established inside this function, the caller should establish the connections in a batch to gain performance. isWriter tells allocating a writer or not, each segment in a session can have only one writer.
+* cdbcomponent_allocateIdleSegdb(contentId, SegmentType): allocate a free segment db by 1) reuse a segment db from pool of idle segment dbs. 2) create a brand new segment db. For case2, the connection is not actually established inside this function, the caller should establish the connections in a batch to gain performance. This function guarantees each segment in a session have only one writer. SegmentType can be:
+	* SEGMENTTYPE_EXPLICT_WRITER : must be writer, for DTX commands and DDL commands and DML commands need two-phase commit.
+	* SEGMENTTYPE_EXPLICT_READER : must be reader, only be used by cursor.
+	* SEGMENTTYPE_ANY: any type is ok, for most of queries which don't need two-phase commit.
 
 * cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor): recycle/destroy a segment db. a segment db will be destroyed if 1) caller specify forceDestroy to true. 2)connection to segment db is already bad. 3) FTS detect the segment is already down. 4) exceeded the pool size of idle segment dbs. 5) cached memory exceeded the limitation. otherwise, the segment db will be put into a pool for reusing later.
 

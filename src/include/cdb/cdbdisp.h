@@ -26,6 +26,7 @@ struct CdbDispatchResults; /* #include "cdb/cdbdispatchresult.h" */
 struct CdbPgResults;
 struct Gang; /* #include "cdb/cdbgang.h" */
 struct ResourceOwnerData;
+enum GangType;
 
 /*
  * Types of message to QE when we wait for it.
@@ -54,6 +55,7 @@ typedef struct CdbDispatcherState
 	bool destroyGang;
 	struct CdbDispatchResults *primaryResults;
 	void *dispatchParams;
+	int	largestGangSize;
 } CdbDispatcherState;
 
 typedef struct DispatcherInternalFuncs
@@ -61,10 +63,9 @@ typedef struct DispatcherInternalFuncs
 	void (*procExitCallBack)(void);
 	bool (*checkForCancel)(struct CdbDispatcherState *ds);
 	int (*getWaitSocketFd)(struct CdbDispatcherState *ds);
-	void* (*makeDispatchParams)(int maxSlices, char *queryText, int queryTextLen);
+	void* (*makeDispatchParams)(int maxSlices, int largestGangSize, char *queryText, int queryTextLen);
 	void (*checkResults)(struct CdbDispatcherState *ds, DispatchWaitMode waitMode);
-	void (*dispatchToGang)(struct CdbDispatcherState *ds, struct Gang *gp,
-			int sliceIndex, CdbDispatchDirectDesc *direct);
+	void (*dispatchToGang)(struct CdbDispatcherState *ds, struct Gang *gp, int sliceIndex);
 	void (*waitDispatchFinish)(struct CdbDispatcherState *ds);
 
 }DispatcherInternalFuncs;
@@ -102,8 +103,7 @@ typedef struct DispatcherInternalFuncs
 void
 cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 					   struct Gang *gp,
-					   int sliceIndex,
-					   CdbDispatchDirectDesc *direct);
+					   int sliceIndex);
 
 /*
  * cdbdisp_waitDispatchFinish:

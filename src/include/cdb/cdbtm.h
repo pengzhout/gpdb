@@ -17,6 +17,8 @@
 #include "nodes/plannodes.h"
 #include "storage/s_lock.h"
 
+struct Gang;
+
 /**
  * DTX states, used to track the state of the distributed transaction
  *   from the QD's point of view.

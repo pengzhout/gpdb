@@ -35,7 +35,7 @@
 #include "utils/resowner.h"
 
 static int	getPollTimeout(const struct timeval *startTS);
-static Gang *createGang_async(GangType type, int gang_id, int size, int content);
+static Gang *createGang_async(List *segments, SegmentType segmentType);
 
 CreateGangFunc pCreateGangFuncAsync = createGang_async;
 
@@ -46,18 +46,19 @@ CreateGangFunc pCreateGangFuncAsync = createGang_async;
  * elog ERROR or return a non-NULL gang.
  */
 static Gang *
-createGang_async(GangType type, int gang_id, int size, int content)
+createGang_async(List *segments, SegmentType segmentType)
 {
-	Gang	   *newGangDefinition;
-	SegmentDatabaseDescriptor *segdbDesc = NULL;
-	int			i = 0;
-	int			create_gang_retry_counter = 0;
-	int			in_recovery_mode_count = 0;
-	int			successful_connections = 0;
-	bool		retry = false;
-	int			poll_timeout = 0;
-	struct timeval startTS;
-	PostgresPollingStatusType *pollingStatus = NULL;
+	PostgresPollingStatusType	*pollingStatus = NULL;
+	SegmentDatabaseDescriptor	*segdbDesc = NULL;
+	struct timeval	startTS;
+	Gang	*newGangDefinition;
+	int		create_gang_retry_counter = 0;
+	int		in_recovery_mode_count = 0;
+	int		successful_connections = 0;
+	int		poll_timeout = 0;
+	int		i = 0;
+	int		size = 0;
+	bool	retry = false;
 
 	/*
 	 * true means connection status is confirmed, either established or in
@@ -65,18 +66,16 @@ createGang_async(GangType type, int gang_id, int size, int content)
 	 */
 	bool	   *connStatusDone = NULL;
 
-	ELOG_DISPATCHER_DEBUG("createGang type = %d, gang_id = %d, size = %d, content = %d",
-						  type, gang_id, size, content);
+	size = list_length(segments);
 
-	/* check arguments */
-	Assert(size == 1 || size == getgpsegmentCount());
+	ELOG_DISPATCHER_DEBUG("createGang size = %d, segment type = %d", size, segmentType);
 
 	Assert(CurrentGangCreating == NULL);
 
 	/* If we're in a retry, we may need to reset our initial state, a bit */
 	newGangDefinition = NULL;
 	/* allocate and initialize a gang structure */
-	newGangDefinition = buildGangDefinition(type, gang_id, size, content);
+	newGangDefinition = buildGangDefinition(segments, segmentType);
 	CurrentGangCreating = newGangDefinition;
 
 create_gang_retry:
@@ -124,7 +123,7 @@ create_gang_retry:
 			 * options are recognized.
 			 */
 			ret = build_gpqeid_param(gpqeid, sizeof(gpqeid),
-									 type == GANGTYPE_PRIMARY_WRITER,
+									 segdbDesc->isWriter,
 									 segdbDesc->identifier,
 									 segdbDesc->segment_database_info->hostSegs);
 
@@ -285,8 +284,7 @@ create_gang_retry:
 			Assert(successful_connections + in_recovery_mode_count == size);
 
 			if (gp_gang_creation_retry_count <= 0 ||
-				create_gang_retry_counter++ >= gp_gang_creation_retry_count ||
-				type != GANGTYPE_PRIMARY_WRITER)
+				create_gang_retry_counter++ >= gp_gang_creation_retry_count)
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								errmsg("failed to acquire resources on one or more segments"),
 								errdetail("Segments are in recovery mode.")));
@@ -324,7 +322,6 @@ create_gang_retry:
 	}
 
 	CurrentGangCreating = NULL;
-	setLargestGangsize(size);
 
 	return newGangDefinition;
 }
