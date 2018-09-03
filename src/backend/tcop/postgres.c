@@ -1540,6 +1540,7 @@ CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag)
 	return result;
 }
 
+
 /*
  * exec_simple_query
  *
