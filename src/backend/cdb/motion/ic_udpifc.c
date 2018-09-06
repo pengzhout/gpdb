@@ -5503,7 +5503,6 @@ doSendStopMessageUDPIFC(ChunkTransportState *transportStates, int16 motNodeID)
 												   "" /* databaseName */,
 												   "" /* tableName */) == FaultInjectorTypeSkip)
 				{
-					pthread_mutex_unlock(&ic_control_info.lock);
 					continue;
 				}
 #endif
