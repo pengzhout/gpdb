@@ -2954,7 +2954,19 @@ retry1:
 			break;
 	}
 
-	SIMPLE_FAULT_INJECTOR(ProcessStartupPacketFault);
+#ifdef FAULT_INJECTOR
+	if (FaultInjector_InjectFaultIfSet(ProcessStartupPacketFault,
+									   DDLNotSpecified,
+									   port->database_name /* databaseName */,
+									   "" /* tableName */) == FaultInjectorTypeSkip)
+	{
+		ereport(FATAL,
+				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
+				 errSendAlert(true),
+				 errmsg(POSTMASTER_IN_RECOVERY_MSG),
+				 errdetail("dummy location")));
+	}
+#endif
 
 	return STATUS_OK;
 }

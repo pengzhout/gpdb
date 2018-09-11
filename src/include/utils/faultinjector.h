@@ -219,7 +219,6 @@ typedef enum FaultInjectorIdentifier_e {
 
 	SendQEDetailsInitBackend,
 	ProcessStartupPacketFault,
-	QuickDie,
 	AfterOneSliceDispatched,
 
 	InterconnectStopAckIsLost,

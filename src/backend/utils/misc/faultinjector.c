@@ -329,8 +329,6 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault before sending QE details during backend initialization */
 	_("process_startup_packet"),
 		/* inject fault in ProcessStartupPacket() */
-	_("quickdie"),
-		/* inject fault in quickdie*/
 	_("after_one_slice_dispatched"),
 		/* inject fault in cdbdisp_dispatchX*/
 	_("interconnect_stop_ack_is_lost"),
@@ -1070,6 +1068,7 @@ FaultInjector_NewHashEntry(
 			case CreateGangInProgress:
 
 			case DecreaseToastMaxChunkSize:
+			case ProcessStartupPacketFault:
 
 				break;
 			default:
