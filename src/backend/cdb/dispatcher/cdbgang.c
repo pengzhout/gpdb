@@ -22,7 +22,6 @@
 #include "miscadmin.h"			/* MyDatabaseId */
 #include "pgstat.h"			/* pgstat_report_sessionid() */
 #include "storage/proc.h"		/* MyProc */
-#include "storage/ipc.h"
 #include "utils/memutils.h"
 
 #include "access/xact.h"

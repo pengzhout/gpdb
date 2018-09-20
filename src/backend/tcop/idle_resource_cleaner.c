@@ -108,7 +108,7 @@ IdleGangTimeoutHandler(void)
 
 		idle_gang_timeout_occurred = 0;
 
-		DisconnectAndDestroyUnusedGangs();
+		DisconnectAndDestroyUnusedQEs();
 
 		if (notify_enabled)
 			EnableNotifyInterrupt();

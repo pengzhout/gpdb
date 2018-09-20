@@ -43,6 +43,7 @@
 #include "libpq/ip.h"
 #include "cdb/cdbconn.h"
 #include "cdb/cdbfts.h"
+#include "storage/ipc.h"
 
 #define MAX_CACHED_1_GANGS 1
 
@@ -702,6 +703,14 @@ cleanupQE(SegmentDatabaseDescriptor *segdbDesc)
 	if (SIMPLE_FAULT_INJECTOR(CleanupQE) == FaultInjectorTypeSkip)
 		return false;
 #endif
+
+	/*
+	 * if the process is in the middle of blowing up... then we don't do
+	 * anything here.  making libpq and other calls can definitely result in
+	 * things getting HUNG.
+	 */
+	if (proc_exit_inprogress)
+		return false;
 
 	if (cdbconn_isBadConnection(segdbDesc))
 		return false;
