@@ -390,7 +390,7 @@ savepoint s1;
 create temp table disp_temp_test1 (c1 int, c2 int);
 insert into disp_temp_test1 values (1, 2);
 -- Let cleanupSegdb() return false and writer gang be destroyed
-select gp_inject_fault('cleanup_segdb', 'skip', 1);
+select gp_inject_fault('cleanup_qe', 'skip', 1);
 select * from disp_temp_test1 where c1 / 0 = 9;
 rollback to savepoint s1;
 rollback;
@@ -398,7 +398,7 @@ rollback;
 select * from disp_temp_test;
 select * from disp_temp_test1;
 -- reset fault
-select gp_inject_fault('cleanup_segdb', 'reset', 1);
+select gp_inject_fault('cleanup_qe', 'reset', 1);
 
 -- resume FTS probes
 select gp_inject_fault('fts_probe', 'reset', 1);

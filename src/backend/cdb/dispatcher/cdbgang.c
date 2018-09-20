@@ -56,8 +56,12 @@
 #include "utils/guc_tables.h"
 
 /*
- * Unique QE identifier, it's set when the QE is started up, it
- * will be use to go through slice table to find which slice
+ * All QEs are managed by cdb_component_dbs in QD, QD assigned
+ * a unique identifier for each QE, when a QE is created, this
+ * identifier is passed along with gpqeid params, see
+ * cdbgang_parse_gpqeid_params()
+ *
+ * qe_identifier is use to go through slice table and find which slice
  * this QE should execute.
  */
 int			qe_identifier = 0;
@@ -213,7 +217,7 @@ buildGangDefinition(List *segments, SegmentType segmentType)
 		{
 			contentId = lfirst_int(lc);
 			newGangDefinition->db_descriptors[i] =
-						cdbcomponent_allocateIdleSegdb(contentId, segmentType);
+						cdbcomponent_allocateIdleQE(contentId, segmentType);
 		}
 	}
 	PG_CATCH();
@@ -322,7 +326,7 @@ makeOptions(void)
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
-	qdinfo = cdbcomponent_getComponentInfo(-1); 
+	qdinfo = cdbcomponent_getComponentInfo(MASTER_CONTENT_ID); 
 	appendStringInfo(&string, " -c gp_qd_hostname=%s", qdinfo->hostip);
 	appendStringInfo(&string, " -c gp_qd_port=%d", qdinfo->port);
 
@@ -554,7 +558,7 @@ getCdbProcessesForQD(int isPrimary)
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for master mirror process");
 	}
 
-	qdinfo = cdbcomponent_getComponentInfo(-1);
+	qdinfo = cdbcomponent_getComponentInfo(MASTER_CONTENT_ID);
 
 	Assert(qdinfo->segindex == -1);
 	Assert(SEGMENT_IS_ACTIVE_PRIMARY(qdinfo));
@@ -629,7 +633,7 @@ void DisconnectAndDestroyUnusedQEs(void)
 		 *
 		 * Since we are idle, any reader gangs will be available but not allocated.
 		 */
-		cdbcomponent_cleanupIdleSegdbs(false);
+		cdbcomponent_cleanupIdleQEs(false);
 	}
 	else
 	{
@@ -643,7 +647,7 @@ void DisconnectAndDestroyUnusedQEs(void)
 		 * in the log.
 		 *
 		 */
-		cdbcomponent_cleanupIdleSegdbs(true);
+		cdbcomponent_cleanupIdleQEs(true);
 	}
 }
 
@@ -666,7 +670,7 @@ CheckForResetSession(void)
 	/* Do the session id change early. */
 
 	/* If we have gangs, we can't change our session ID. */
-	Assert(!cdbcomponent_segdbsExist());
+	Assert(!cdbcomponent_qesExist());
 
 	oldSessionId = gp_session_id;
 	ProcNewMppSessionId(&newSessionId);
@@ -889,6 +893,6 @@ RecycleGang(Gang *gp, bool forceDestroy)
 
 		Assert(segdbDesc != NULL);
 
-		cdbcomponent_recycleIdleSegdb(segdbDesc, forceDestroy);
+		cdbcomponent_recycleIdleQE(segdbDesc, forceDestroy);
 	}
 }

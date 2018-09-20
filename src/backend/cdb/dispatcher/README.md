@@ -7,6 +7,8 @@ This document illustrates the interfaces of a GPDB component called dispatcher, 
 The implementation of dispatcher is mainly located under this directory.
 
 ### Terms Used:
+* QD: Query Dispatcher, a backend forked by master with role GP_ROLE_DISPATCH who dispatches plan/command to QEs and get the results from QEs.
+* QE: Query Executor, a backend forked by master/segments with role GP_ROLE_EXECUTOR who gets plan/command from QD and pick a piece of it to execute.
 * Gang: Gang refers to a group of processes on segments. There are 4 types of Gang:
 	* `GANGTYPE_ENTRYDB_READER`: consist of one single process on master node
 	* `GANGTYPE_SINGLETON_READER`: consist of one single process on a segment node
@@ -19,9 +21,13 @@ For a query/plan, QD would build one `GANGTYPE_PRIMARY_WRITER` Gang, and several
 
 ### Interface Routines:
 * Gang creation and tear down:
-	* `AllocateGang`: allocate a gang with specified type on specified segments, the gang is made up of idle segment dbs got from CdbComponentDatabases (see cdbcomponent_allocateIdleSegdb).
-	* `RecycleGang`: put each member of gang back to segment pool if gang can be cleanup correctly including discarding results, connection status check (see cdbcomponent_recycleIdleSegdb), otherwise, destroy it.
-	* `DisconnectAndDestroyAllGangs`: tear down all existing Gangs of this session
+	* `AllocateGang`: allocate a gang with specified gang type on specified segments, the gang is made up of idle QEs got from CdbComponentDatabases, according QE type is requested for gang types (see cdbcomponent_allocateIdleQE):
+		* `GANGTYPE_ENTRYDB_READER`: SEGMENTTYPE_EXPLICT_ANY. 
+		* `GANGTYPE_SINGLETON_READER`: SEGMENTTYPE_EXPLICT_ANY or SEGMENTTYPE_EXPLICT_READER for cursor.
+		* `GANGTYPE_PRIMARY_READER`: SEGMENTTYPE_EXPLICT_ANY or SEGMENTTYPE_EXPLICT_READER for cursor.
+		* `GANGTYPE_PRIMARY_WRITER`: SEGMENTTYPE_EXPLICT_WRITER.
+	* `RecycleGang`: destroy or divide it into idle QEs pool, If gang can be cleanup correctly including discarding results, connection status check (see cdbcomponent_recycleIdleQE), otherwise, destroy it.
+	* `DisconnectAndDestroyAllGangs`: destroy all existing Gangs of this session
 * Gang status check:
 	* `GangOK`: check if a created Gang is healthy
 * Dispatch:
@@ -49,8 +55,7 @@ All dispatcher routines contains few standard steps:
 ### CdbComponentDatabases
 CdbComponentDatabases is a snapshot of current cluster components based on catalog gp_segment_configuration.
 It provides information about each segment component include dbid, contentid, hostname, ip address, current role etc.
-It also maintains a pool of idle segment dbs (SegmentDatabaseDescriptor), dispatcher can reuse those segment dbs
-between statements within a session.
+It also maintains a pool of idle QEs (SegmentDatabaseDescriptor), dispatcher can reuse those QEs between statements in the same session.
 
 CdbComponentDatabases has a memory context named CdbComponentsContext associated.
 
@@ -59,13 +64,13 @@ There are a few functions to manipulate CdbComponentDatabases, Dispatcher can us
 
 * cdbcomponent_getCdbComponents(): get a snapshot of current cluster components from gp_segment_configuration. When FTS version changed since last time, destroy current components snapshot and get a new one if 1) session has no temp tables 2) current gxact need two-phase commit but gxid has not been dispatched to segments yet or current gxact don't need two phase commit.
 
-* cdbcomponent_destroyCdbComponents(): destroy a snapshot of current cluster components include the MemoryContext and pool of idle segment dbs.
+* cdbcomponent_destroyCdbComponents(): destroy a snapshot of current cluster components including the MemoryContext and pool of idle QEs for all segments.
 
-* cdbcomponent_allocateIdleSegdb(contentId, SegmentType): allocate a free segment db by 1) reuse a segment db from pool of idle segment dbs. 2) create a brand new segment db. For case2, the connection is not actually established inside this function, the caller should establish the connections in a batch to gain performance. This function guarantees each segment in a session have only one writer. SegmentType can be:
+* cdbcomponent_allocateIdleQE(contentId, SegmentType): allocate a free QE by 1) reuse a QE from pool of idle QEs. 2) create a brand new QE. For case2, the connection is not actually established inside this function, the caller should establish the connections in a batch to gain performance. This function guarantees each segment in a session have only one writer. SegmentType can be:
 	* SEGMENTTYPE_EXPLICT_WRITER : must be writer, for DTX commands and DDL commands and DML commands need two-phase commit.
 	* SEGMENTTYPE_EXPLICT_READER : must be reader, only be used by cursor.
 	* SEGMENTTYPE_ANY: any type is ok, for most of queries which don't need two-phase commit.
 
-* cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor): recycle/destroy a segment db. a segment db will be destroyed if 1) caller specify forceDestroy to true. 2)connection to segment db is already bad. 3) FTS detect the segment is already down. 4) exceeded the pool size of idle segment dbs. 5) cached memory exceeded the limitation. otherwise, the segment db will be put into a pool for reusing later.
+* cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor): recycle/destroy a QE. a QE will be destroyed if 1) caller specify forceDestroy to true. 2)connection to QE is already bad. 3) FTS detect the segment is already down. 4) exceeded the pool size of idle QEs. 5) cached memory exceeded the limitation. otherwise, the QE will be put into a pool for reusing later.
 
-* cdbcomponent_cleanupIdleSegdbs(includeWriter): disconnect and destroy idle segment dbs of all components. includeWriter tells cleanup idle writers or not.
+* cdbcomponent_cleanupIdleQE(includeWriter): disconnect and destroy idle QEs of all segments. includeWriter tells cleanup idle writers or not.

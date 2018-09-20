@@ -156,16 +156,16 @@ extern void cdb_cleanup(int code, Datum arg  __attribute__((unused)) );
 CdbComponentDatabases * cdbcomponent_getCdbComponents(bool DNSLookupAsError);
 void cdbcomponent_destroyCdbComponents(void);
 
-void cdbcomponent_cleanupIdleSegdbs(bool includeWriter);
+void cdbcomponent_cleanupIdleQEs(bool includeWriter);
 
 CdbComponentDatabaseInfo * cdbcomponent_getComponentInfo(int contentId);
 
-struct SegmentDatabaseDescriptor * cdbcomponent_allocateIdleSegdb(int contentId, SegmentType segmentType);
+struct SegmentDatabaseDescriptor * cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType);
 
-void cdbcomponent_recycleIdleSegdb(struct SegmentDatabaseDescriptor *segdbDesc, bool forceDestroy);
+void cdbcomponent_recycleIdleQE(struct SegmentDatabaseDescriptor *segdbDesc, bool forceDestroy);
 
-bool cdbcomponent_segdbsExist(void);
-bool cdbcomponent_activeSegdbsExist(void);
+bool cdbcomponent_qesExist(void);
+bool cdbcomponent_activeQEsExist(void);
 
 List *cdbcomponent_getCdbComponentsList(void);
 /*

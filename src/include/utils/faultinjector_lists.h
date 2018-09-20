@@ -254,7 +254,7 @@ FI_IDENT(CreateGangInProgress, "create_gang_in_progress")
 /* inject fault when creating new TOAST tables, to modify the chunk size */
 FI_IDENT(DecreaseToastMaxChunkSize, "decrease_toast_max_chunk_size")
 /* inject fault to let cleanupGang return false */
-FI_IDENT(CleanupSegdb, "cleanup_segdb")
+FI_IDENT(CleanupQE, "cleanup_qe")
 #endif
 
 /*

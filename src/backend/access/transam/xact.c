@@ -3226,7 +3226,7 @@ AbortTransaction(void)
 	if (QueryCancelCleanup)
 	{
 		QueryCancelCleanup = false;
-		cdbcomponent_cleanupIdleSegdbs(false);
+		cdbcomponent_cleanupIdleQEs(false);
 	}
 
 	/*

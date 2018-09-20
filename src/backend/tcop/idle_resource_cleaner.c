@@ -37,7 +37,7 @@ static volatile sig_atomic_t idle_gang_timeout_occurred;
 void
 StartIdleResourceCleanupTimers()
 {
-	if (IdleSessionGangTimeout <= 0 || !cdbcomponent_segdbsExist())
+	if (IdleSessionGangTimeout <= 0 || !cdbcomponent_qesExist())
 		return;
 
 	enable_timeout_after(GANG_TIMEOUT, IdleSessionGangTimeout);

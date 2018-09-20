@@ -434,7 +434,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		 */
 		if (ResourceCleanupIdleGangs)
 		{
-			cdbcomponent_cleanupIdleSegdbs(false);
+			cdbcomponent_cleanupIdleQEs(false);
 		}
 
 		/*

@@ -3408,7 +3408,7 @@ isSafeToRecreateWriter(void)
 {
 	/*
 	 * Can not recycle current writer because temp files will be
-	 * dropped in the segement, dispatcher will info the segment
+	 * dropped in the segement, dispatcher will inform the segment
 	 * is down and report an error and reset the session.
 	 */
 	if (TempNamespaceOidIsValid())

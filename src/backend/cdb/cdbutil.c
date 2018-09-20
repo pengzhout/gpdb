@@ -63,7 +63,7 @@ static CdbComponentDatabases *cdb_component_dbs = NULL;
  * Helper Functions
  */
 static CdbComponentDatabases *getCdbComponentInfo(bool DnsLookupFailureIsError);
-static void cleanupComponentIdleSegdbs(CdbComponentDatabaseInfo *cdi, bool includeWriter);
+static void cleanupComponentIdleQEs(CdbComponentDatabaseInfo *cdi, bool includeWriter);
 
 static int	CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
 
@@ -465,7 +465,7 @@ getCdbComponentInfo(bool DNSLookupAsError)
  * a segment component.
  */
 static void
-cleanupComponentIdleSegdbs(CdbComponentDatabaseInfo *cdi, bool includeWriter)
+cleanupComponentIdleQEs(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 {
 	SegmentDatabaseDescriptor	*segdbDesc;
 	MemoryContext				oldContext;
@@ -503,7 +503,7 @@ cleanupComponentIdleSegdbs(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 }
 
 void
-cdbcomponent_cleanupIdleSegdbs(bool includeWriter)
+cdbcomponent_cleanupIdleQEs(bool includeWriter)
 {
 	CdbComponentDatabases	*cdbs;
 	int						i;
@@ -519,7 +519,7 @@ cdbcomponent_cleanupIdleSegdbs(bool includeWriter)
 		for (i = 0; i < cdbs->total_segment_dbs; i++)
 		{
 			CdbComponentDatabaseInfo *cdi = &cdbs->segment_db_info[i];
-			cleanupComponentIdleSegdbs(cdi, includeWriter);
+			cleanupComponentIdleQEs(cdi, includeWriter);
 		}
 	}
 
@@ -528,7 +528,7 @@ cdbcomponent_cleanupIdleSegdbs(bool includeWriter)
 		for (i = 0; i < cdbs->total_entry_dbs; i++)
 		{
 			CdbComponentDatabaseInfo *cdi = &cdbs->entry_db_info[i];
-			cleanupComponentIdleSegdbs(cdi, includeWriter);
+			cleanupComponentIdleQEs(cdi, includeWriter);
 		}
 	}
 
@@ -610,13 +610,13 @@ void
 cdbcomponent_destroyCdbComponents(void)
 {
 	/* caller must clean up all segdbs used by dispatcher states */
-	Assert(!cdbcomponent_activeSegdbsExist());
+	Assert(!cdbcomponent_activeQEsExist());
 
 	hash_destroy(segment_ip_cache_htab);
 	segment_ip_cache_htab = NULL;
 
 	/* disconnect and destroy idle QEs include writers */
-	cdbcomponent_cleanupIdleSegdbs(true);
+	cdbcomponent_cleanupIdleQEs(true);
 
 	/* delete the memory context */
 	if (CdbComponentsContext)
@@ -635,7 +635,7 @@ cdbcomponent_destroyCdbComponents(void)
  * not setup yet, callers need to establish the connection by themselves.
  */
 SegmentDatabaseDescriptor *
-cdbcomponent_allocateIdleSegdb(int contentId, SegmentType segmentType)
+cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 {
 	SegmentDatabaseDescriptor	*segdbDesc = NULL;
 	CdbComponentDatabaseInfo	*cdbinfo;
@@ -694,12 +694,12 @@ cdbcomponent_allocateIdleSegdb(int contentId, SegmentType segmentType)
 }
 
 static bool
-cleanupSegdb(SegmentDatabaseDescriptor *segdbDesc)
+cleanupQE(SegmentDatabaseDescriptor *segdbDesc)
 {
 	Assert(segdbDesc != NULL);
 
 #ifdef FAULT_INJECTOR
-	if (SIMPLE_FAULT_INJECTOR(CleanupSegdb) == FaultInjectorTypeSkip)
+	if (SIMPLE_FAULT_INJECTOR(CleanupQE) == FaultInjectorTypeSkip)
 		return false;
 #endif
 
@@ -726,7 +726,7 @@ cleanupSegdb(SegmentDatabaseDescriptor *segdbDesc)
 }
 
 void
-cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor *segdbDesc, bool forceDestroy)
+cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor *segdbDesc, bool forceDestroy)
 {
 	CdbComponentDatabaseInfo	*cdbinfo;
 	MemoryContext				oldContext;	
@@ -737,12 +737,12 @@ cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor *segdbDesc, bool forceDe
 
 	cdbinfo = segdbDesc->segment_database_info;
 
-	/* update num of active segment dbs */
+	/* update num of active QEs */
 	DECR_COUNT(cdbinfo, numActiveQEs);
 
 	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
 
-	if (forceDestroy || !cleanupSegdb(segdbDesc))
+	if (forceDestroy || !cleanupQE(segdbDesc))
 		goto destroy_segdb;
 
 	/* If freelist length exceed gp_cached_gang_threshold, destroy it */
@@ -751,7 +751,7 @@ cdbcomponent_recycleIdleSegdb(SegmentDatabaseDescriptor *segdbDesc, bool forceDe
 	if (!segdbDesc->isWriter && list_length(cdbinfo->freelist) >= maxLen)
 		goto destroy_segdb;
 
-	/* Recycle the segment db, put it to freelist */
+	/* Recycle the QE, put it to freelist */
 	if (segdbDesc->isWriter)
 	{
 		/* writer is always the header of freelist */
@@ -784,14 +784,14 @@ destroy_segdb:
 }
 
 bool
-cdbcomponent_segdbsExist(void)
+cdbcomponent_qesExist(void)
 {
 	return !cdb_component_dbs ? false :
 			(cdb_component_dbs->numIdleQEs > 0 || cdb_component_dbs->numActiveQEs > 0);
 }
 
 bool
-cdbcomponent_activeSegdbsExist(void)
+cdbcomponent_activeQEsExist(void)
 {
 	return !cdb_component_dbs ? false : cdb_component_dbs->numActiveQEs > 0;
 }

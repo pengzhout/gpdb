@@ -540,7 +540,7 @@ InitResGroups(void)
 	if (Gp_role == GP_ROLE_DISPATCH && pResGroupControl->segmentsOnMaster == 0)
 	{
 		Assert(IS_QUERY_DISPATCHER());
-		qdinfo = cdbcomponent_getComponentInfo(-1); 
+		qdinfo = cdbcomponent_getComponentInfo(MASTER_CONTENT_ID); 
 		pResGroupControl->segmentsOnMaster = qdinfo->hostSegs;
 		Assert(pResGroupControl->segmentsOnMaster > 0);
 	}
