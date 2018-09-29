@@ -516,9 +516,12 @@ void FtsLoop()
 
 		MemoryContextSwitchTo(oldContext);
 
+		/* free current segments info and IP address caches */
+		freeCdbComponentDatabases(cdb_component_dbs);
+		cdb_component_dbs = NULL;
+
 		/* free any pallocs we made inside probeSegments() */
 		MemoryContextReset(probeContext);
-		cdb_component_dbs = NULL;
 
 		if (!FtsIsActive())
 		{
