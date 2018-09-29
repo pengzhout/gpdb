@@ -19,6 +19,7 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
+#include "cdb/cdbvars.h"
 
 /*
  * getScanMethod
@@ -167,8 +168,18 @@ ExecScan(ScanState *node,
 	 */
 	if (!qual && !projInfo)
 	{
-		ResetExprContext(econtext);
-		return ExecScanFetch(node, accessMtd, recheckMtd);
+		TupleTableSlot *slot;
+
+		while (1)
+		{
+			ResetExprContext(econtext);
+			slot =  ExecScanFetch(node, accessMtd, recheckMtd);
+
+			if (!gp_enable_mk_sort && !TupIsNull(slot))
+				continue;
+
+			return slot;
+		}
 	}
 
 	/*
@@ -191,6 +202,9 @@ ExecScan(ScanState *node,
 			return NULL;
 
 		slot = ExecScanFetch(node, accessMtd, recheckMtd);
+
+		if (!gp_enable_mk_sort && !TupIsNull(slot))
+				continue;
 
 		/*
 		 * if the slot returned by the accessMtd contains NULL, then it means

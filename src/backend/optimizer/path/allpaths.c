@@ -453,6 +453,19 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	/* Consider index and bitmap scans */
 	create_index_paths(root, rel);
 
+	/* Consider motion scan */
+	if (!enable_tidscan)
+	{
+		CdbPathLocus locus;	
+		Assert(seqpath != NULL);
+
+		CdbPathLocus_MakeHashed(&locus, seqpath->locus.partkey_h, DEBUG_SEGMENTS);
+		seqpath = cdbpath_create_motion_path(root, seqpath, NULL, false, locus);
+		add_path(rel, seqpath);
+		set_cheapest(rel);
+		return;
+	}
+
 	/* we can add the seqscan path now */
 	add_path(rel, seqpath);
 

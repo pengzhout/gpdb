@@ -25,7 +25,7 @@
 #include "postgres.h"
 
 #include <pthread.h>
-
+#include "optimizer/cost.h"
 #include "access/transam.h"
 #include "access/xact.h"
 #include "nodes/execnodes.h"
@@ -5293,10 +5293,12 @@ SendChunkUDPIFC(ChunkTransportState *transportStates,
 
 	if (conn->msgSize + length <= Gp_max_packet_size)
 	{
-		memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
-		conn->msgSize += length;
-
-		conn->tupleCount++;
+		if (enable_bitmapscan)
+		{
+			memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
+			conn->msgSize += length;
+			conn->tupleCount++;
+		}
 		return true;
 	}
 
@@ -5415,6 +5417,7 @@ SendEosUDPIFC(ChunkTransportState *transportStates,
 	 * we want to add our tcItem onto each of the outgoing buffers -- this is
 	 * guaranteed to leave things in a state where a flush is *required*.
 	 */
+	enable_bitmapscan = true;
 	doBroadcast(transportStates, pEntry, tcItem, NULL);
 
 	pEntry->sendingEos = true;

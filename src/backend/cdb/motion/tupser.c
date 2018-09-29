@@ -30,6 +30,7 @@
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "optimizer/cost.h"
 
 #include "access/memtup.h"
 
@@ -628,6 +629,8 @@ SerializeTupleDirect(GenericTuple gtuple, SerTupInfo *pSerInfo, struct directTra
 	int			dataSize = TUPLE_CHUNK_HEADER_SIZE;
 	TupleDesc	tupdesc;
 
+	if (!enable_bitmapscan)
+		return -1;
 	AssertArg(gtuple != NULL);
 	AssertArg(pSerInfo != NULL);
 	AssertArg(b != NULL);

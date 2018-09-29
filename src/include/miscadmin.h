@@ -111,27 +111,14 @@ extern void RedZoneHandler_DetectRunawaySession(void);
 #ifdef USE_TEST_UTILS
 #define CHECK_FOR_INTERRUPTS() \
 do { \
-	if (gp_test_time_slice) \
-	{ \
-		CHECK_TIME_SLICE(); \
-	} \
-\
 	if (InterruptPending) \
 		ProcessInterrupts(__FILE__, __LINE__); \
-	if (IsResQueueEnabled() && gp_enable_resqueue_priority)	\
-		BackoffBackendTick(); \
-	ReportOOMConsumption(); \
-	RedZoneHandler_DetectRunawaySession();\
 } while(0)
 #else
 #define CHECK_FOR_INTERRUPTS() \
 do { \
 	if (InterruptPending) \
 		ProcessInterrupts(__FILE__, __LINE__); \
-	if (IsResQueueEnabled() && gp_enable_resqueue_priority)	\
-		BackoffBackendTick(); \
-	ReportOOMConsumption(); \
-	RedZoneHandler_DetectRunawaySession();\
 } while(0)
 #endif   /* USE_TEST_UTILS */
 

@@ -35,6 +35,7 @@
 #include "nodes/makefuncs.h"
 #include "utils/memutils.h"
 #include "utils/typcache.h"
+#include "optimizer/cost.h"
 
 
 
@@ -186,6 +187,8 @@ ExecMotion(MotionState * node)
 		gettimeofday(&startTime, NULL);
 #endif
 
+retry:
+		CHECK_FOR_INTERRUPTS();
 		if (node->ps.state->active_recv_id >= 0)
 		{
 			if (node->ps.state->active_recv_id != motion->motionID)
@@ -207,6 +210,9 @@ ExecMotion(MotionState * node)
         }
 		else
 			tuple = execMotionUnsortedReceiver(node);
+
+		if (!enable_bitmapscan && tuple != NULL)
+			goto retry;
 
 		/*
 		 * We tell the upper node as if this was the end of tuple stream
@@ -347,7 +353,7 @@ execMotionSender(MotionState * node)
 #endif
 	}
 
-	Assert(node->stopRequested || node->numTuplesFromChild == node->numTuplesToAMS);
+	//Assert(node->stopRequested || node->numTuplesFromChild == node->numTuplesToAMS);
 
 	/* nothing else to send out, so we return NULL up the tree. */
 	return NULL;
@@ -1082,6 +1088,11 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     }
 #endif
 
+#if 0
+	if (!enable_tidscan && Gp_role == GP_ROLE_EXECUTE)
+		Assert(0);
+#endif
+
 	return motionstate;
 }
 
@@ -1469,7 +1480,7 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 		hval = evalHashKey(econtext, node->hashExpr,
 				motion->hashDataTypes, node->cdbhash);
 
-		Assert(hval < getgpsegmentCount() && "redistribute destination outside segment array");
+//		Assert(hval < getgpsegmentCount() && "redistribute destination outside segment array");
 		
 		/* hashSegIdx takes our uint32 and maps it to an int, and here
 		 * we assign it to an int16. See below. */
@@ -1501,7 +1512,6 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 							node->ps.state->interconnect_context,
 							motion->motionID,
 							targetRoute);
-
 	/* send the tuple out. */
 	sendRC = SendTuple(node->ps.state->motionlayer_context,
 			node->ps.state->interconnect_context,

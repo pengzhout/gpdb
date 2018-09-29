@@ -252,7 +252,7 @@ cdbpath_create_motion_path(PlannerInfo *root,
 		if (CdbPathLocus_IsPartitioned(locus))
 		{
 			/* No motion if subpath partitioning matches caller's request. */
-			if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal, subpath->locus, locus))
+			if (enable_tidscan && cdbpathlocus_compare(CdbPathLocus_Comparison_Equal, subpath->locus, locus))
 				return subpath;
 		}
 

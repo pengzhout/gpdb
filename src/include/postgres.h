@@ -454,7 +454,8 @@ extern PGDLLIMPORT bool assert_enabled;
 extern void ExceptionalCondition(const char *conditionName,
 					 const char *errorType,
 			 const char *fileName, int lineNumber) __attribute__((noreturn));
-
+#include "cdb/cdbvars.h"
+#define DEBUG_SEGMENTS gp_cached_gang_threshold
 
 #ifdef __cplusplus
 }   /* extern "C" */

@@ -967,8 +967,8 @@ add_slice_to_motion(Motion *motion,
 			motion->plan.flow = makeFlow(FLOW_PARTITIONED, numsegments);
 			motion->plan.flow->locustype = CdbLocusType_Hashed;
 			motion->plan.flow->hashExpr = copyObject(motion->hashExpr);
-			motion->numOutputSegs = getgpsegmentCount();
-			motion->outputSegIdx = makeDefaultSegIdxArray(getgpsegmentCount());
+			motion->numOutputSegs = numsegments;
+			motion->outputSegIdx = makeDefaultSegIdxArray(numsegments);
 
 			break;
 		case MOTIONTYPE_FIXED:
@@ -1135,7 +1135,7 @@ makeDefaultSegIdxArray(int numSegs)
 	int			i;
 
 	for (i = 0; i < numSegs; i++)
-		segIdx[i] = i;
+		segIdx[i] = i % GpIdentity.numsegments;
 
 	return segIdx;
 }

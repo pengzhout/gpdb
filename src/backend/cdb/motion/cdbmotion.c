@@ -27,6 +27,7 @@
 #include "cdb/tupser.h"
 #include "utils/memutils.h"
 #include "utils/typcache.h"
+#include "optimizer/cost.h"
 
 
 /*
@@ -520,6 +521,9 @@ SendTuple(MotionLayerState *mlStates,
 	SendReturnCode rc;
 
 	AssertArg(tuple != NULL);
+
+	if (!enable_bitmapscan)
+		return SEND_COMPLETE;
 
 	/*
 	 * Analyze tools.  Do not send any thing if this slice is in the bit mask
