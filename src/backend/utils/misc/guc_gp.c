@@ -3165,6 +3165,17 @@ struct config_int ConfigureNamesInt_gp[] =
 	},
 
 	{
+		{"parallel_workers", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Sets the maximum value for statement_mem setting."),
+			NULL,
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT
+		},
+		&parallel_workers,
+		1, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"gp_vmem_limit_per_query", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Sets the maximum allowed memory per-statement on each segment."),
 			NULL,

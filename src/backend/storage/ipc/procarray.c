@@ -1457,6 +1457,17 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 					SharedLocalSnapshotSlot->slotid,
 					debugCaller,
 					DtxContextToString(DistributedTransactionContext))));
+
+	int j;
+	for (j = 0; j < MaxParallelHeapScanRelation; j++)
+	{
+		ParallelHeapScanDesc phs_desc = &SharedLocalSnapshotSlot->phsArray[j];
+		SpinLockInit(&phs_desc->phs_mutex);
+		phs_desc->phs_relid = InvalidOid;
+		phs_desc->phs_startblock = InvalidBlockNumber;
+		phs_desc->phs_cblock = InvalidBlockNumber;
+	}
+
 	LWLockRelease(SharedLocalSnapshotSlot->slotLock);
 }
 

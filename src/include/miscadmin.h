@@ -306,6 +306,7 @@ extern PGDLLIMPORT int work_mem;
 extern PGDLLIMPORT int maintenance_work_mem;
 extern PGDLLIMPORT int statement_mem;
 extern PGDLLIMPORT int max_statement_mem;
+extern PGDLLIMPORT int parallel_workers;
 extern PGDLLIMPORT int gp_vmem_limit_per_query;
 
 extern int	VacuumCostPageHit;

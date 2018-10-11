@@ -108,6 +108,7 @@ int			planner_work_mem = 32768;
 int			work_mem = 32768;
 int			statement_mem = 256000;
 int			max_statement_mem = 2048000;
+int			parallel_workers = 1;
 /*
  * gp_vmem_limit_per_query set to 0 means we
  * do not enforce per-query memory limit

@@ -17,6 +17,18 @@
 #include "utils/combocid.h"
 #include "utils/tqual.h"
 
+#define MaxParallelHeapScanRelation 5
+
+typedef struct ParallelHeapScanDescData
+{
+	Oid			phs_relid;
+	slock_t		phs_mutex;
+	BlockNumber phs_startblock;
+	BlockNumber phs_cblock;
+} ParallelHeapScanDescData;
+
+typedef struct ParallelHeapScanDescData* ParallelHeapScanDesc;
+
 /* MPP Shared Snapshot */
 typedef struct SharedSnapshotSlot
 {
@@ -36,6 +48,7 @@ typedef struct SharedSnapshotSlot
 	ComboCidKeyData combocids[MaxComboCids];
 	SnapshotData	snapshot;
 	LWLockId        slotLock;
+	struct ParallelHeapScanDescData phsArray[MaxParallelHeapScanRelation];			
 } SharedSnapshotSlot;
 
 extern volatile SharedSnapshotSlot *SharedLocalSnapshotSlot;
@@ -54,6 +67,7 @@ extern void readSharedLocalSnapshot_forCursor(Snapshot snapshot);
 
 extern void AtEOXact_SharedSnapshot(void);
 
+extern struct ParallelHeapScanDescData* retriveParallelHeapScanDesc(Oid relid);
 #define NUM_SHARED_SNAPSHOT_SLOTS (2 * max_prepared_xacts)
 
 #endif   /* SHAREDSNAPSHOT_H */

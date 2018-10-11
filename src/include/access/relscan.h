@@ -22,6 +22,8 @@
 
 #include "access/formatter.h"
 
+struct ParallelHeapScanDescData;
+
 typedef struct HeapScanDescData
 {
 	/* scan parameters */
@@ -47,6 +49,8 @@ typedef struct HeapScanDescData
 	Buffer		rs_cbuf;		/* current buffer in scan, if any */
 	/* NB: if rs_cbuf is not InvalidBuffer, we hold a pin on that buffer */
 	ItemPointerData rs_mctid;	/* marked scan position, if any */
+
+	struct ParallelHeapScanDescData *rs_parallel;
 
 	/* these fields only used in page-at-a-time mode and for bitmap scans */
 	int			rs_cindex;		/* current tuple's index in vistuples */

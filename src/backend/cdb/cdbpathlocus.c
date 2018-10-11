@@ -13,6 +13,7 @@
  */
 #include "postgres.h"
 
+#include "miscadmin.h"
 #include "catalog/gp_policy.h"	/* GpPolicy */
 #include "cdb/cdbdef.h"			/* CdbSwap() */
 #include "cdb/cdbpullup.h"		/* cdbpullup_missing_var_walker() */
@@ -282,7 +283,7 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 					policy->nattrs,
 					policy->attrs);
 
-			CdbPathLocus_MakeHashed(&result, partkey, policy->numsegments);
+			CdbPathLocus_MakeHashed(&result, partkey, policy->numsegments * parallel_workers);
 		}
 
 		/* Rows are distributed on an unknown criterion (uniformly, we hope!) */

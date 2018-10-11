@@ -4396,21 +4396,13 @@ FillSliceGangInfo(Slice *slice, int size)
 			}
 			else
 			{
-				if (!enable_tidscan)
-				{
 					int i;
 					for (i=0; i < size; i++)
 					{
-						slice->segments = lappend_int(slice->segments, i % 8);
+						slice->segments = lappend_int(slice->segments, i % GpIdentity.numsegments);
 					}
 					
 					slice->gangSize = size;
-				}
-				else
-				{
-					slice->segments = cdbcomponent_getCdbComponentsList();
-					slice->gangSize = list_length(slice->segments);
-				}
 			}
 			break;
 		case GANGTYPE_ENTRYDB_READER:

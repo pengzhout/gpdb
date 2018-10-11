@@ -291,7 +291,7 @@ CreateSharedSnapshotArray(void)
 			tmpSlot->slotindex = i;
 			tmpSlot->slotLock = LWLockAssign();
 
-			/*
+						/*
 			 * Fixup xip array pointer reference space allocated after slot structs:
 			 *
 			 * Note: xipEntryCount is initialized in SharedSnapshotShmemSize().
@@ -449,6 +449,17 @@ retry:
 	slot->writer_proc = MyProc;
 	slot->writer_xact = MyPgXact;
 
+	int j;
+	for (j = 0; j < MaxParallelHeapScanRelation; j++)
+	{
+		ParallelHeapScanDesc phs_desc = &slot->phsArray[j];
+		SpinLockInit(&phs_desc->phs_mutex);
+		phs_desc->phs_relid = InvalidOid;
+		phs_desc->phs_startblock = InvalidBlockNumber;
+		phs_desc->phs_cblock = InvalidBlockNumber;
+	}
+
+
 	LWLockRelease(SharedSnapshotLock);
 
 	return slot;
@@ -559,6 +570,17 @@ SharedSnapshotRemove(volatile SharedSnapshotSlot *slot, char *creatorDescription
 	slot->QDxid = 0;
 	slot->QDcid = 0;
 	slot->segmateSync = 0;
+
+	int j;
+
+	for (j = 0; j < MaxParallelHeapScanRelation; j++)
+	{
+		ParallelHeapScanDesc phs_desc = &slot->phsArray[j];
+		SpinLockInit(&phs_desc->phs_mutex);
+		phs_desc->phs_relid = InvalidOid;
+		phs_desc->phs_startblock = InvalidBlockNumber;
+		phs_desc->phs_cblock = InvalidBlockNumber;
+	}
 
 	sharedSnapshotArray->numSlots -= 1;
 
@@ -941,4 +963,33 @@ LogDistributedSnapshotInfo(Snapshot snapshot, const char *prefix)
 
 	elog(LOG, "%s", buf.data);
 	pfree(buf.data);
+}
+
+ParallelHeapScanDesc
+retriveParallelHeapScanDesc(Oid relid)
+{
+	int i;
+	ParallelHeapScanDesc phs_desc = NULL;
+
+	Assert(SharedLocalSnapshotSlot != NULL);
+
+	LWLockAcquire(SharedLocalSnapshotSlot->slotLock, LW_EXCLUSIVE);
+
+	for (i=0; i < MaxParallelHeapScanRelation; i++)
+	{
+		phs_desc = &(SharedLocalSnapshotSlot->phsArray[i]);
+
+		if (phs_desc->phs_relid == relid)
+			break;
+	}
+
+	if (i == MaxParallelHeapScanRelation)
+	{
+		phs_desc = &(SharedLocalSnapshotSlot->phsArray[0]);
+		phs_desc->phs_relid = relid;
+	}
+
+	LWLockRelease(SharedLocalSnapshotSlot->slotLock);
+
+	return phs_desc;
 }

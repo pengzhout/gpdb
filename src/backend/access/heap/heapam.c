@@ -77,6 +77,7 @@
 #include "utils/guc.h"
 #include "utils/visibility_summary.h"
 #include "utils/faultinjector.h"
+#include "utils/sharedsnapshot.h"
 
 
 /* GUC variable */
@@ -86,8 +87,10 @@ bool		synchronize_seqscans = true;
 static HeapScanDesc heap_beginscan_internal(Relation relation,
 						Snapshot snapshot,
 						int nkeys, ScanKey key,
+						ParallelHeapScanDesc parallel_scan,
 						bool allow_strat, bool allow_sync,
 						bool is_bitmapscan);
+static BlockNumber heap_parallelscan_nextpage(HeapScanDesc scan);
 static HeapTuple heap_prepare_insert(Relation relation, HeapTuple tup,
 					TransactionId xid, CommandId cid, int options, bool isFrozen);
 static XLogRecPtr log_heap_update(Relation reln, Buffer oldbuf,
@@ -498,6 +501,9 @@ heapgettup(HeapScanDesc scan,
 	int			linesleft;
 	ItemId		lpp;
 
+	if (!ScanDirectionIsForward(dir))
+		scan->rs_parallel = NULL;
+
 	/*
 	 * calculate next starting lineoff, given scan direction
 	 */
@@ -514,7 +520,21 @@ heapgettup(HeapScanDesc scan,
 				tuple->t_data = NULL;
 				return;
 			}
-			page = scan->rs_startblock; /* first page */
+
+			if (scan->rs_parallel != NULL)
+			{
+				page = heap_parallelscan_nextpage(scan);
+
+				if (page == InvalidBlockNumber)
+				{
+					Assert(!BufferIsValid(scan->rs_cbuf));
+					tuple->t_data = NULL;
+					return;
+				}
+			}
+			else
+				page = scan->rs_startblock; /* first page */
+
 			heapgetpage(scan, page);
 			lineoff = FirstOffsetNumber;		/* first offnum */
 			scan->rs_inited = true;
@@ -689,6 +709,11 @@ heapgettup(HeapScanDesc scan,
 				page = scan->rs_nblocks;
 			page--;
 		}
+		else if (scan->rs_parallel != NULL)
+		{
+			page = heap_parallelscan_nextpage(scan);
+			finished = (page == InvalidBlockNumber);	
+		}
 		else
 		{
 			page++;
@@ -776,6 +801,9 @@ heapgettup_pagemode(HeapScanDesc scan,
 	int			linesleft;
 	ItemId		lpp;
 
+	if (!ScanDirectionIsForward(dir))
+		scan->rs_parallel = NULL;
+
 	/*
 	 * calculate next starting lineindex, given scan direction
 	 */
@@ -792,7 +820,20 @@ heapgettup_pagemode(HeapScanDesc scan,
 				tuple->t_data = NULL;
 				return;
 			}
-			page = scan->rs_startblock; /* first page */
+
+			if (scan->rs_parallel != NULL)
+			{
+				page = heap_parallelscan_nextpage(scan);
+
+				if (page == InvalidBlockNumber)
+				{
+					Assert(!BufferIsValid(scan->rs_cbuf));
+					tuple->t_data = NULL;
+					return;
+				}
+			}
+			else
+				page = scan->rs_startblock; /* first page */
 			heapgetpage(scan, page);
 			lineindex = 0;
 			scan->rs_inited = true;
@@ -951,6 +992,11 @@ heapgettup_pagemode(HeapScanDesc scan,
 			if (page == 0)
 				page = scan->rs_nblocks;
 			page--;
+		}
+		else if (scan->rs_parallel != NULL)
+		{
+			page = heap_parallelscan_nextpage(scan);	
+			finished = (page == InvalidBlockNumber);
 		}
 		else
 		{
@@ -1574,7 +1620,7 @@ HeapScanDesc
 heap_beginscan(Relation relation, Snapshot snapshot,
 			   int nkeys, ScanKey key)
 {
-	return heap_beginscan_internal(relation, snapshot, nkeys, key,
+	return heap_beginscan_internal(relation, snapshot, nkeys, key, NULL,
 								   true, true, false);
 }
 
@@ -1583,7 +1629,7 @@ heap_beginscan_strat(Relation relation, Snapshot snapshot,
 					 int nkeys, ScanKey key,
 					 bool allow_strat, bool allow_sync)
 {
-	return heap_beginscan_internal(relation, snapshot, nkeys, key,
+	return heap_beginscan_internal(relation, snapshot, nkeys, key, NULL,
 								   allow_strat, allow_sync, false);
 }
 
@@ -1591,13 +1637,14 @@ HeapScanDesc
 heap_beginscan_bm(Relation relation, Snapshot snapshot,
 				  int nkeys, ScanKey key)
 {
-	return heap_beginscan_internal(relation, snapshot, nkeys, key,
+	return heap_beginscan_internal(relation, snapshot, nkeys, key, NULL,
 								   false, false, true);
 }
 
 static HeapScanDesc
 heap_beginscan_internal(Relation relation, Snapshot snapshot,
 						int nkeys, ScanKey key,
+						ParallelHeapScanDesc parallel_scan,
 						bool allow_strat, bool allow_sync,
 						bool is_bitmapscan)
 {
@@ -1624,6 +1671,16 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 	scan->rs_strategy = NULL;	/* set in initscan */
 	scan->rs_allow_strat = allow_strat;
 	scan->rs_allow_sync = allow_sync;
+
+	if (parallel_workers > 1)
+	{
+		Oid relid = RelationGetRelid(relation);	
+
+		if (relid == 28490 || relid == 32771)
+			parallel_scan = retriveParallelHeapScanDesc(relid);
+	}
+
+	scan->rs_parallel = parallel_scan;
 
 	/*
 	 * we can use page-at-a-time mode if it's an MVCC-safe snapshot
@@ -1663,6 +1720,18 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 		scan->rs_key = NULL;
 
 	initscan(scan, key, false);
+
+#if 0
+	if (scan->rs_parallel != NULL)
+	{
+		ParallelHeapScanDesc parallel_scan;
+
+		parallel_scan = scan->rs_parallel;
+		SpinLockAcquire(&parallel_scan->phs_mutex);
+		parallel_scan->phs_cblock = parallel_scan->phs_startblock;
+		SpinLockRelease(&parallel_scan->phs_mutex);
+	}
+#endif
 
 	return scan;
 }
@@ -7962,4 +8031,57 @@ heap_mask(char *pagedata, BlockNumber blkno)
 				memset(page_item + len, MASK_MARKER, padlen);
 		}
 	}
+}
+
+static BlockNumber
+heap_parallelscan_nextpage(HeapScanDesc scan)
+{
+       BlockNumber page = InvalidBlockNumber;
+       ParallelHeapScanDesc parallel_scan;
+
+       Assert(scan->rs_parallel);
+       parallel_scan = scan->rs_parallel;
+
+       /* Grab the spinlock. */
+       SpinLockAcquire(&parallel_scan->phs_mutex);
+
+       /*
+        * If the scan's startblock has not yet been initialized, we must do so
+        * now.  If this is not a synchronized scan, we just start at block 0, but
+        * if it is a synchronized scan, we must get the starting position from
+        * the synchronized scan machinery.  We can't hold the spinlock while
+        * doing that, though, so release the spinlock, get the information we
+        * need, and retry.  If nobody else has initialized the scan in the
+        * meantime, we'll fill in the value we fetched on the second time
+        * through.
+        */
+       if (parallel_scan->phs_startblock == InvalidBlockNumber)
+       {
+               parallel_scan->phs_startblock = 0;
+               parallel_scan->phs_cblock = parallel_scan->phs_startblock;
+       }
+
+       /*
+        * The current block number is the next one that needs to be scanned,
+        * unless it's InvalidBlockNumber already, in which case there are no more
+        * blocks to scan.  After remembering the current value, we must advance
+        * it so that the next call to this function returns the next block to be
+        * scanned.
+        */
+       page = parallel_scan->phs_cblock;
+       if (page != InvalidBlockNumber)
+       {
+               parallel_scan->phs_cblock++;
+               if (parallel_scan->phs_cblock >= scan->rs_nblocks)
+                       parallel_scan->phs_cblock = 0;
+               if (parallel_scan->phs_cblock == parallel_scan->phs_startblock)
+               {
+                       parallel_scan->phs_cblock = InvalidBlockNumber;
+               }
+       }
+
+       /* Release the lock. */
+       SpinLockRelease(&parallel_scan->phs_mutex);
+
+       return page;
 }
