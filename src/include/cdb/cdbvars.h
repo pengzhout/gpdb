@@ -887,12 +887,8 @@ extern uint32 Gp_listener_port;
  */
 extern void write_log(const char *fmt,...) __attribute__((format(printf, 1, 2)));
 
-extern void verifyGpIdentityIsSet(void);
 
 extern void increment_command_count(void);
-
-extern bool updateGpIdentityNumsegments(void);
-extern bool updateSystemProcessGpIdentityNumsegments(void);
 
 /* default to RANDOM distribution for CREATE TABLE without DISTRIBUTED BY */
 extern bool gp_create_table_random_default_distribution;

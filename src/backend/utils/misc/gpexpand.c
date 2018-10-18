@@ -33,6 +33,7 @@
 #include "utils/relcache.h"
 #include "utils/gpexpand.h"
 
+extern uint8 getFtsVersion(void);
 
 /*
  * Catalog lock.
@@ -72,6 +73,7 @@ void
 gp_expand_protect_catalog_changes(Relation relation)
 {
 	LockAcquireResult	acquired;
+	CdbComponentDatabases *cdbs = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		/* only lock catalog updates on qd */
