@@ -68,6 +68,7 @@
 #define S_PER_D (60 * 60 * 24)
 #define MS_PER_D (1000 * 60 * 60 * 24)
 
+static int dummy_segments = -1;
 /*
  * Assign/Show hook functions defined in this module
  */
@@ -3294,7 +3295,7 @@ struct config_int ConfigureNamesInt_gp[] =
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&GpIdentity.numsegments,
+		&dummy_segments,
 		UNINITIALIZED_GP_IDENTITY_VALUE, INT_MIN, INT_MAX,
 		NULL, NULL, NULL
 	},
