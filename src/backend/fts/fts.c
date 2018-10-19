@@ -366,8 +366,8 @@ CdbComponentDatabases *readCdbComponentInfoAndUpdateStatus(MemoryContext probeCo
 		CdbComponentDatabaseInfo *segInfo = &cdbs->segment_db_info[i];
 		uint8	segStatus = 0;
 
-		if (SEGMENT_IS_ALIVE(segInfo))
-			FTS_STATUS_SET_UP(segStatus);
+		if (!SEGMENT_IS_ALIVE(segInfo))
+			FTS_STATUS_SET_DOWN(segStatus);
 
 		ftsProbeInfo->fts_status[segInfo->dbid] = segStatus;
 	}
