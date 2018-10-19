@@ -33,7 +33,7 @@
 #include "utils/relcache.h"
 #include "utils/gpexpand.h"
 
-extern uint8 getFtsVersion(void);
+static volatile int *gp_expand_version;
 
 /*
  * Catalog lock.
@@ -48,6 +48,36 @@ static LOCKTAG gp_expand_locktag =
 	.locktag_type = LOCKTAG_USERLOCK,
 	.locktag_lockmethodid = USER_LOCKMETHOD,
 };
+
+int
+GpExpandVersionShmemSize(void)
+{
+	return sizeof(gp_expand_version);
+}
+
+void
+GpExpandVersionShmemInit(void)
+{
+	if (IsUnderPostmaster)
+		return;
+
+	/* only postmaster initialize it */
+	gp_expand_version = (volatile int*)ShmemAlloc(GpExpandVersionShmemSize());  
+	*gp_expand_version = 0;
+}
+
+int
+GetGpExpandVersion(void)
+{
+	return *gp_expand_version;
+}
+
+Datum
+gp_expand_bump_version(PG_FUNCTION_ARGS)
+{
+	*gp_expand_version = *gp_expand_version + 1;
+	PG_RETURN_VOID();
+}
 
 /*
  * Lock the catalog lock in exclusive mode.
@@ -73,6 +103,8 @@ void
 gp_expand_protect_catalog_changes(Relation relation)
 {
 	LockAcquireResult	acquired;
+	int					oldVersion;
+	int					newVersion;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		/* only lock catalog updates on qd */
@@ -114,11 +146,12 @@ gp_expand_protect_catalog_changes(Relation relation)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("gpexpand in progress, catalog changes are disallowed.")));
 
-	/* FIXME: use a timestamp instead of size */
-	if (getgpsegmentCount() != FtsGetTotalSegments())
+	oldVersion = cdbcomponent_getCdbComponents(true)->expand_version;
+	newVersion = GetGpExpandVersion();
+	if (oldVersion != newVersion)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("cluster size is changed from %d to %d, "
+				 errmsg("cluster is expaneded from version %d to %d, "
 						"catalog changes are disallowed",
-						getgpsegmentCount(), FtsGetTotalSegments())));
+						oldVersion, newVersion)));
 }

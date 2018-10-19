@@ -158,15 +158,3 @@ getFtsVersion(void)
 {
 	return ftsProbeInfo->fts_statusVersion;
 }
-
-uint32
-FtsGetTotalSegments(void)
-{
-	/*
-	 * ftsProbeInfo is stored in shared memory, so check whether shared memory
-	 * has been initialized
-	 */
-	Assert(ftsProbeInfo);
-
-	return ftsProbeInfo->total_segments;
-}

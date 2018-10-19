@@ -379,7 +379,6 @@ CdbComponentDatabases *readCdbComponentInfoAndUpdateStatus(MemoryContext probeCo
 	if (ftsProbeInfo->fts_statusVersion == 0)
 	{
 		ftsProbeInfo->fts_statusVersion++;
-		ftsProbeInfo->total_segments = cdbs->total_segments;
 	}
 
 	return cdbs;
@@ -564,10 +563,7 @@ void FtsLoop()
 
 			/* Bump the version if configuration was updated. */
 			if (updated_probe_state)
-			{
 				ftsProbeInfo->fts_statusVersion++;
-				ftsProbeInfo->total_segments = cdbs->total_segments;
-			}
 		}
 
 		/* free current components info and free ip addr caches */	

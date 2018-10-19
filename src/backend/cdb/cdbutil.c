@@ -46,6 +46,7 @@
 #include "storage/ipc.h"
 #include "postmaster/fts.h"
 #include "catalog/namespace.h"
+#include "utils/gpexpand.h"
 
 #define MAX_CACHED_1_GANGS 1
 
@@ -538,6 +539,7 @@ void
 cdbcomponent_updateCdbComponents(void)
 {
 	uint8 ftsVersion= getFtsVersion();
+	int expandVersion = GetGpExpandVersion();
 
 	PG_TRY();
 	{
@@ -546,23 +548,24 @@ cdbcomponent_updateCdbComponents(void)
 			cdb_component_dbs = getCdbComponentInfo(true);
 			cdb_component_dbs->fts_version = ftsVersion;
 		}
-		else if (cdb_component_dbs->fts_version != ftsVersion &&
-				 !TempNamespaceOidIsValid())
+		else if ((cdb_component_dbs->fts_version != ftsVersion ||
+				 cdb_component_dbs->expand_version != expandVersion))
 		{
-			/*
-			 * A fts version change don't always means a segment is
-			 * down. A mirror InSync status change also change fts
-			 * version, so we need to be careful of destroying exist
-			 * cdb_component_dbs.
-			 *
-			 * Can not update current writer because temp files will be
-			 * dropped in the segement, dispatcher will inform the segment
-			 * is down and report an error and reset the session.
-			 */
-			ELOG_DISPATCHER_DEBUG("FTS rescanned, get new component databases info.");
-			cdbcomponent_destroyCdbComponents();
-			cdb_component_dbs = getCdbComponentInfo(true);
-			cdb_component_dbs->fts_version = ftsVersion;
+			if (TempNamespaceOidIsValid())
+			{
+				/*
+				 * Do not update here, otherwise, temp files will be lost 
+				 * in segments;
+				 */
+			}
+			else
+			{
+				ELOG_DISPATCHER_DEBUG("FTS rescanned, get new component databases info.");
+				cdbcomponent_destroyCdbComponents();
+				cdb_component_dbs = getCdbComponentInfo(true);
+				cdb_component_dbs->fts_version = ftsVersion;
+				cdb_component_dbs->expand_version = expandVersion;
+			}
 		}
 	}
 	PG_CATCH();
@@ -592,6 +595,7 @@ cdbcomponent_getCdbComponents(bool DNSLookupAsError)
 		{
 			cdb_component_dbs = getCdbComponentInfo(DNSLookupAsError);
 			cdb_component_dbs->fts_version = getFtsVersion();
+			cdb_component_dbs->expand_version = GetGpExpandVersion();
 		}
 	}
 	PG_CATCH();
@@ -722,7 +726,7 @@ cleanupQE(SegmentDatabaseDescriptor *segdbDesc)
 		return false;
 
 	/* if segment is down, the gang can not be reused */
-	if (!FtsIsSegmentUp(segdbDesc->segment_database_info))
+	if (FtsIsSegmentDown(segdbDesc->segment_database_info))
 		return false; 
 
 	/* If a reader exceed the cached memory limitation, destroy it */
