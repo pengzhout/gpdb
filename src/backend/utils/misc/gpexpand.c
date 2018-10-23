@@ -149,7 +149,7 @@ gp_expand_protect_catalog_changes(Relation relation)
 	oldVersion = cdbcomponent_getCdbComponents(true)->expand_version;
 	newVersion = GetGpExpandVersion();
 	if (oldVersion != newVersion)
-		ereport(ERROR,
+		ereport(FATAL,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("cluster is expaneded from version %d to %d, "
 						"catalog changes are disallowed",

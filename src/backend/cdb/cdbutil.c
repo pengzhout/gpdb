@@ -547,6 +547,7 @@ cdbcomponent_updateCdbComponents(void)
 		{
 			cdb_component_dbs = getCdbComponentInfo(true);
 			cdb_component_dbs->fts_version = ftsVersion;
+			cdb_component_dbs->expand_version = GetGpExpandVersion();
 		}
 		else if ((cdb_component_dbs->fts_version != ftsVersion ||
 				 cdb_component_dbs->expand_version != expandVersion))
