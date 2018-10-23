@@ -2188,9 +2188,6 @@ setCurrentGxact(void)
 	setCurrentGxactState(DTX_STATE_ACTIVE_NOT_DISTRIBUTED);
 
 	currentGxact->gxid = gxid;
-
-	/* update the snapshot of current segments info */
-	cdbcomponent_updateCdbComponents();
 }
 
 static void
