@@ -377,9 +377,7 @@ CdbComponentDatabases *readCdbComponentInfoAndUpdateStatus(MemoryContext probeCo
 	 * shared memory for the first time after FTS startup.
 	 */
 	if (ftsProbeInfo->fts_statusVersion == 0)
-	{
 		ftsProbeInfo->fts_statusVersion++;
-	}
 
 	return cdbs;
 }

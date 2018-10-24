@@ -52,7 +52,7 @@ static LOCKTAG gp_expand_locktag =
 int
 GpExpandVersionShmemSize(void)
 {
-	return sizeof(gp_expand_version);
+	return sizeof(*gp_expand_version);
 }
 
 void
@@ -72,10 +72,18 @@ GetGpExpandVersion(void)
 	return *gp_expand_version;
 }
 
+/*
+ * Used by gpexpand to bump the gpexpand version once gpexpand started up
+ * new segments and updated the gp_segment_configuration.
+ *
+ * a gpexpand version change also prevent concurrent changes to catalog
+ * during gpexpand (see gp_expand_lock_catalog)
+ *
+ */
 Datum
 gp_expand_bump_version(PG_FUNCTION_ARGS)
 {
-	*gp_expand_version = *gp_expand_version + 1;
+	*gp_expand_version += 1;
 	PG_RETURN_VOID();
 }
 

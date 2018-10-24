@@ -45,7 +45,7 @@ connections and auxiliary processes) until they are added to `gp_segment_
 configuration` so others can know about their existance and information;
 
 Each global transaction will fetch or update a snapshot of `gp_segment_
-configuration` at the beginning of transaction, so new segments can be used
+configuration` at the beginning of transaction, so new segments can be used in
 any newly created transactions, but for transactions that have got snapshot
 of `gp_segment_configuration` they will still work on old segments. In other
 words, if a transaction begins with N segments then it will only see these N
