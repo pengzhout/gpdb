@@ -1125,7 +1125,12 @@ cdbdisp_dispatchX(QueryDesc* queryDesc,
 		{
 			if (Test_print_direct_dispatch_info)
 			{
-				elog(INFO, "Dispatch command to SINGLE content");
+				if (list_length(slice->directDispatch.contentIds) == 1)
+					elog(INFO, "Dispatch command to SINGLE content");
+				else if (list_length(slice->directDispatch.contentIds) < getgpsegmentCount())
+					elog(INFO, "Dispatch command to SINGLE content");
+				else
+					elog(INFO, "Dispatch command to SINGLE content");
 			}
 		}
 		else

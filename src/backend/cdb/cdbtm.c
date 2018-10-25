@@ -1808,6 +1808,8 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 	{
 		if (list_length(twophaseSegments) == 1)
 			elog(INFO, "Distributed transaction command '%s' to SINGLE content", dtxProtocolCommandStr);
+		else if (list_length(twophaseSegments) < getgpsegmentCount())
+			elog(INFO, "Distributed transaction command '%s' to PARTIAL contents", dtxProtocolCommandStr);
 		else
 			elog(INFO, "Distributed transaction command '%s' to ALL contents", dtxProtocolCommandStr);
 	}
