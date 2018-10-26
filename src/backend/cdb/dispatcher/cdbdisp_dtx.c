@@ -87,7 +87,6 @@ CdbDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	Gang	   *primaryGang;
 	char	   *queryText = NULL;
 	int			queryTextLen = 0;
-	List		*segments;
 
 	*badGangs = false;
 	*qeError = NULL;

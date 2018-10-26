@@ -183,4 +183,8 @@ void cdbdisp_cleanupDispatcherHandle(const struct ResourceOwnerData * owner);
 void AtAbort_DispatcherState(void);
 
 void AtSubAbort_DispatcherState(void);
+
+char *
+segmentsToContentStr(List *segments);
+
 #endif   /* CDBDISP_H */

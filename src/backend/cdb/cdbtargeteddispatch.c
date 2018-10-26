@@ -291,8 +291,6 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 			{
 				long		curIndex = index;
 				int			hashCode;
-				ListCell	*lc;
-				bool		found = false;
 
 				/* hash the attribute values */
 				cdbhashinit(h);
@@ -320,14 +318,7 @@ GetContentIdsFromPlanForSingleRelation(List *rtable, Plan *plan, int rangeTableI
 
 				hashCode = cdbhashreduce(h);
 
-				foreach(lc, result.dd.contentIds)
-				{
-					if (hashCode == lfirst_int(lc))
-						found = true;
-				}
-
-				if (!found)
-					result.dd.contentIds = lappend_int(result.dd.contentIds, hashCode);
+				result.dd.contentIds = list_append_unique_int(result.dd.contentIds, hashCode);
 			}
 		}
 		else

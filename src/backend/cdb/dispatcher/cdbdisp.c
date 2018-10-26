@@ -587,3 +587,17 @@ cdbdisp_markNamedPortalGangsDestroyed(void)
 		head = head->next;
 	}
 }
+
+char*
+segmentsToContentStr(List *segments)
+{
+	int size = list_length(segments);
+	if (size == 0)
+		return "ALL contents";
+	else if (size == 1)
+		return "SINGLE content";
+	else if (size < getgpsegmentCount())
+		return "PARTIAL contents";
+	else
+		return "ALL contents";
+}
