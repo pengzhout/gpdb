@@ -1,5 +1,10 @@
 set allow_system_table_mods=true;
 
+-- start_matchsubs
+-- m/NOTICE:  OIDS=TRUE is not recommended for user-created tables. Use OIDS=FALSE to prevent wrap-around of the OID counter/
+-- s/^/GP_IGNORE: /
+-- end_matchsubs
+
 -- Hash distributed tables
 Create table t1_reshuffle_ao(a int, b int, c int) with (appendonly = true) distributed by (a);
 update gp_distribution_policy  set numsegments=2 where localoid='t1_reshuffle_ao'::regclass;
@@ -9,13 +14,13 @@ Update t1_reshuffle_ao set c = gp_segment_id;
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle_ao set with (reshuffle);
+Alter table t1_reshuffle_ao expand table;
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
-Alter table t1_reshuffle_ao set with (reshuffle);
+Alter table t1_reshuffle_ao expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
@@ -31,13 +36,13 @@ Update t1_reshuffle_ao set c = gp_segment_id;
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle_ao set with (reshuffle);
+Alter table t1_reshuffle_ao expand table;
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
-Alter table t1_reshuffle_ao set with (reshuffle);
+Alter table t1_reshuffle_ao expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
@@ -59,13 +64,13 @@ insert into t1_reshuffle_ao values
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle_ao set with (reshuffle);
+Alter table t1_reshuffle_ao expand table;
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
-Alter table t1_reshuffle_ao set with (reshuffle);
+Alter table t1_reshuffle_ao expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
@@ -82,13 +87,13 @@ insert into t1_reshuffle_ao select i,i,0 from generate_series(1,100) I;
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle_ao set with (reshuffle);
+Alter table t1_reshuffle_ao expand table;
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
-Alter table t1_reshuffle_ao set with (reshuffle);
+Alter table t1_reshuffle_ao expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle_ao group by gp_segment_id;
 
@@ -105,7 +110,7 @@ Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 
 begin;
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 abort;
@@ -113,7 +118,7 @@ abort;
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
@@ -130,7 +135,7 @@ Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 
 begin;
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 abort;
@@ -138,7 +143,7 @@ abort;
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
@@ -157,7 +162,7 @@ Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 
 begin;
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 abort;
@@ -165,7 +170,7 @@ abort;
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
 
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 
 Select count(*) from r1_reshuffle_ao;
 Select count(*) > 0 from r1_reshuffle_ao where gp_segment_id=2;
@@ -225,7 +230,7 @@ Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 1);
 Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 2);
 
 begin;
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 Select count(*) from r1_reshuffle_ao;
 abort;
 
@@ -233,7 +238,7 @@ Select count(*) from r1_reshuffle_ao;
 Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 1);
 Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 2);
 
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 
 Select count(*) from r1_reshuffle_ao;
 Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 1);
@@ -254,7 +259,7 @@ Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 1);
 Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 2);
 
 begin;
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 Select count(*) from r1_reshuffle_ao;
 abort;
 
@@ -262,7 +267,7 @@ Select count(*) from r1_reshuffle_ao;
 Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 1);
 Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 2);
 
-Alter table r1_reshuffle_ao set with (reshuffle);
+Alter table r1_reshuffle_ao expand table;
 
 Select count(*) from r1_reshuffle_ao;
 Select select_on_segment_ao('Select count(*) from r1_reshuffle_ao;', 1);

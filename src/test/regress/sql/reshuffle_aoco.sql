@@ -9,13 +9,13 @@ Update t1_reshuffle_aoco set c = gp_segment_id;
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle_aoco set with (reshuffle);
+Alter table t1_reshuffle_aoco expand table;
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
-Alter table t1_reshuffle_aoco set with (reshuffle);
+Alter table t1_reshuffle_aoco expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
@@ -37,13 +37,13 @@ insert into t1_reshuffle_aoco values
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle_aoco set with (reshuffle);
+Alter table t1_reshuffle_aoco expand table;
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
-Alter table t1_reshuffle_aoco set with (reshuffle);
+Alter table t1_reshuffle_aoco expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
@@ -60,13 +60,13 @@ insert into t1_reshuffle_aoco select i,i,0 from generate_series(1,100) I;
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle_aoco set with (reshuffle);
+Alter table t1_reshuffle_aoco expand table;
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
-Alter table t1_reshuffle_aoco set with (reshuffle);
+Alter table t1_reshuffle_aoco expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle_aoco group by gp_segment_id;
 
@@ -83,7 +83,7 @@ Select count(*) from r1_reshuffle_aoco;
 Select count(*) > 0 from r1_reshuffle_aoco where gp_segment_id=2;
 
 begin;
-Alter table r1_reshuffle_aoco set with (reshuffle);
+Alter table r1_reshuffle_aoco expand table;
 Select count(*) from r1_reshuffle_aoco;
 Select count(*) > 0 from r1_reshuffle_aoco where gp_segment_id=2;
 abort;
@@ -91,7 +91,7 @@ abort;
 Select count(*) from r1_reshuffle_aoco;
 Select count(*) > 0 from r1_reshuffle_aoco where gp_segment_id=2;
 
-Alter table r1_reshuffle_aoco set with (reshuffle);
+Alter table r1_reshuffle_aoco expand table;
 
 Select count(*) from r1_reshuffle_aoco;
 Select count(*) > 0 from r1_reshuffle_aoco where gp_segment_id=2;
@@ -110,7 +110,7 @@ Select count(*) from r1_reshuffle_aoco;
 Select count(*) > 0 from r1_reshuffle_aoco where gp_segment_id=2;
 
 begin;
-Alter table r1_reshuffle_aoco set with (reshuffle);
+Alter table r1_reshuffle_aoco expand table;
 Select count(*) from r1_reshuffle_aoco;
 Select count(*) > 0 from r1_reshuffle_aoco where gp_segment_id=2;
 abort;
@@ -118,7 +118,7 @@ abort;
 Select count(*) from r1_reshuffle_aoco;
 Select count(*) > 0 from r1_reshuffle_aoco where gp_segment_id=2;
 
-Alter table r1_reshuffle_aoco set with (reshuffle);
+Alter table r1_reshuffle_aoco expand table;
 
 Select count(*) from r1_reshuffle_aoco;
 Select count(*) > 0 from r1_reshuffle_aoco where gp_segment_id=2;
@@ -178,7 +178,7 @@ Select select_on_segment_aoco('Select count(*) from r1_reshuffle_aoco;', 1);
 Select select_on_segment_aoco('Select count(*) from r1_reshuffle_aoco;', 2);
 
 begin;
-Alter table r1_reshuffle_aoco set with (reshuffle);
+Alter table r1_reshuffle_aoco expand table;
 Select count(*) from r1_reshuffle_aoco;
 abort;
 
@@ -186,7 +186,7 @@ Select count(*) from r1_reshuffle_aoco;
 Select select_on_segment_aoco('Select count(*) from r1_reshuffle_aoco;', 1);
 Select select_on_segment_aoco('Select count(*) from r1_reshuffle_aoco;', 2);
 
-Alter table r1_reshuffle_aoco set with (reshuffle);
+Alter table r1_reshuffle_aoco expand table;
 
 Select count(*) from r1_reshuffle_aoco;
 Select select_on_segment_aoco('Select count(*) from r1_reshuffle_aoco;', 1);

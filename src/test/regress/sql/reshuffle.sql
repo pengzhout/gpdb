@@ -9,13 +9,13 @@ Update t1_reshuffle set c = gp_segment_id;
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle set with (reshuffle);
+Alter table t1_reshuffle expand table;
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
-Alter table t1_reshuffle set with (reshuffle);
+Alter table t1_reshuffle expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
@@ -31,13 +31,13 @@ Update t1_reshuffle set c = gp_segment_id;
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle set with (reshuffle);
+Alter table t1_reshuffle expand table;
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
-Alter table t1_reshuffle set with (reshuffle);
+Alter table t1_reshuffle expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
@@ -59,13 +59,13 @@ insert into t1_reshuffle values
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle set with (reshuffle);
+Alter table t1_reshuffle expand table;
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
-Alter table t1_reshuffle set with (reshuffle);
+Alter table t1_reshuffle expand table;
 
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
@@ -82,14 +82,25 @@ insert into t1_reshuffle select i,i,0 from generate_series(1,100) I;
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
 begin;
-Alter table t1_reshuffle set with (reshuffle);
+Alter table t1_reshuffle expand table;
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 abort;
 
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
-Alter table t1_reshuffle set with (reshuffle);
+Alter table t1_reshuffle_1_prt_other expand prepare;
+Alter table t1_reshuffle_1_prt_t1_reshuffle_1 expand prepare;
+Alter table t1_reshuffle_1_prt_other expand table;
+Alter table t1_reshuffle_1_prt_t1_reshuffle_1 expand table;
+Alter table t1_reshuffle expand prepare;
+Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
+Alter table t1_reshuffle_1_prt_t1_reshuffle_1 expand table;
+Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
+Alter table t1_reshuffle_1_prt_t1_reshuffle_2 expand table;
+Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
+
+Alter table t1_reshuffle expand table;
 Select gp_segment_id, count(*) from t1_reshuffle group by gp_segment_id;
 
 select numsegments from gp_distribution_policy where localoid='t1_reshuffle'::regclass;
@@ -105,7 +116,7 @@ Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 
 begin;
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 abort;
@@ -113,7 +124,7 @@ abort;
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
@@ -130,7 +141,7 @@ Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 
 begin;
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 abort;
@@ -138,7 +149,7 @@ abort;
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
@@ -157,7 +168,7 @@ Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 
 begin;
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 abort;
@@ -165,7 +176,7 @@ abort;
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
 
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 
 Select count(*) from r1_reshuffle;
 Select count(*) > 0 from r1_reshuffle where gp_segment_id=2;
@@ -225,7 +236,7 @@ Select select_on_segment('Select count(*) from r1_reshuffle;', 1);
 Select select_on_segment('Select count(*) from r1_reshuffle;', 2);
 
 begin;
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 Select count(*) from r1_reshuffle;
 abort;
 
@@ -233,7 +244,7 @@ Select count(*) from r1_reshuffle;
 Select select_on_segment('Select count(*) from r1_reshuffle;', 1);
 Select select_on_segment('Select count(*) from r1_reshuffle;', 2);
 
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 
 Select count(*) from r1_reshuffle;
 Select select_on_segment('Select count(*) from r1_reshuffle;', 1);
@@ -254,7 +265,7 @@ Select select_on_segment('Select count(*) from r1_reshuffle;', 1);
 Select select_on_segment('Select count(*) from r1_reshuffle;', 2);
 
 begin;
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 Select count(*) from r1_reshuffle;
 abort;
 
@@ -262,7 +273,7 @@ Select count(*) from r1_reshuffle;
 Select select_on_segment('Select count(*) from r1_reshuffle;', 1);
 Select select_on_segment('Select count(*) from r1_reshuffle;', 2);
 
-Alter table r1_reshuffle set with (reshuffle);
+Alter table r1_reshuffle expand table;
 
 Select count(*) from r1_reshuffle;
 Select select_on_segment('Select count(*) from r1_reshuffle;', 1);
@@ -296,7 +307,7 @@ FOR EACH STATEMENT EXECUTE PROCEDURE trigger_func('before_stmt');
 -- update should fail
 update table_with_update_trigger set a = a + 1;
 -- reshuffle should success and not hiting any triggers.
-Alter table table_with_update_trigger set with (reshuffle);
+Alter table table_with_update_trigger expand table;
 select gp_segment_id, count(*) from table_with_update_trigger group by 1 order by 1;
 --
 -- Test reshuffle inheritance parent table, parent table has different numsegments with
@@ -316,5 +327,5 @@ update mix_base_tbl set a=a+1;
 select gp_segment_id, * from mix_base_tbl order by 2, 1;
 -- reshuffle the parent table, both parent and child table will be rebalanced to all
 -- segments
-Alter table mix_base_tbl set with (reshuffle);
+Alter table mix_base_tbl expand table;
 select gp_segment_id, * from mix_base_tbl order by 2, 1;
