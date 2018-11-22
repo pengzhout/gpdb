@@ -14671,17 +14671,17 @@ get_expand_method(Relation rel, PartStatus ps)
 		return EXPANDMETHOD_CTAS;
 
 	/*
-	 * for partition table, use CTAS for now, EXPANDMETHOD_UPDATE
+	 * for random partition table, use CTAS for now, EXPANDMETHOD_RESHUFFLE
 	 * cannot expand randomly distributed partition table well
 	 */
-	if (ps != PART_STATUS_NONE)
+	if (ps != PART_STATUS_NONE && GpPolicyIsRandomPartitioned(rel->rd_cdbpolicy))
 		return EXPANDMETHOD_CTAS;
 
 	/* 
-	 * TODO: choose expand method by calculating relation size and data size to be
+	 * choose expand method by calculating relation size and data size to be
 	 * moved
 	 */
-	return EXPANDMETHOD_UPDATE;
+	return EXPANDMETHOD_RESHUFFLE;
 }
 
 static void
@@ -14691,7 +14691,7 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd, bool prepare)
 	AlteredTableInfo	*tab;
 	AlterTableCmd		*rootCmd;
 	MemoryContext		oldContext;
-	ExpandMethod		method;
+	ExpandMethod		method = EXPANDMETHOD_NONE;
 	PartStatus			ps = PART_STATUS_NONE;
 	Oid					relid = RelationGetRelid(rel);
 	Oid					rootPartOid;
@@ -14726,20 +14726,37 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd, bool prepare)
 	{
 		ps = rel_part_status(relid);
 
+		/* only rootCmd is dispatched to QE, we can store */
 		if (rootCmd == cmd)
 			rootCmd->def = (Node*)makeNode(ExpandStmtSpec);
 		spec = (ExpandStmtSpec *)rootCmd->def;
 		Assert(spec);
+		/*
+		 * pg_partition and pg_partitions are empty on QEs,
+		 * so pass partition status info to QEs.
+		 */
 		add_part_status_map(spec, ps, relid);
 
+		/*
+		 * QEs cannot tell the root partition oid because
+		 * empty pg_partition and pg_partitions, so pass
+		 * it to QEs too.
+		 */
 		if (ps == PART_STATUS_LEAF)
 			rootPartOid = rel_partition_get_master(relid);
 		else if (ps == PART_STATUS_ROOT)
 			rootPartOid = relid;
-		spec->rootPartOid = rootPartOid;	
+		spec->rootPartOid = rootPartOid;
 
-		method = get_expand_method(rel, ps);
-		spec->method = method;
+		if (method == EXPANDMETHOD_NONE)
+		{
+			method = get_expand_method(rel, ps);
+			/* pass it to QEs */
+			spec->method = method;
+		}
+
+		/* make sure each sub command use the same method */
+		method = spec->method;
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -14752,16 +14769,27 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd, bool prepare)
 
 	if (!prepare)
 	{
+		Assert(method == EXPANDMETHOD_CTAS || method == EXPANDMETHOD_RESHUFFLE);
+
 		/* two ways to move data */
 		if (method == EXPANDMETHOD_CTAS)
 			ATExecExpandTableCTAS(rootCmd, rel, cmd, ps);	
-		else if (method == EXPANDMETHOD_UPDATE)
+		else if (method == EXPANDMETHOD_RESHUFFLE)
 		{
-			/* tricky way to make it same within ATExecExpandTableCTAS() */
 			ATExecExpandTableReshuffle(rootCmd, rel, cmd, ps);
+			/*
+			 * little bit tricky here,
+			 * ATExecExpandTableCTAS() close the relation temporarily,
+			 * and reopen it in ATRewriteCatalogs() to avoiding
+			 * ATRewriteCatalogs() to close a relation pointer that
+			 * has already been closed.
+			 *
+			 * ATRewriteCatalogs() don't know what method we use, so
+			 * let's keep same behavior with ATExecExpandTableCTAS()
+			 * here.
+			 */
 			relation_close(rel, NoLock);
 		}
-
 	}
 
 	switch (ps)
@@ -14784,7 +14812,7 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd, bool prepare)
 			}
 			else
 			{
-				/* 
+				/*
 				 * expand stage, change policy of leaf partition to the same
 				 * of root partition
 				 */
@@ -14812,10 +14840,10 @@ ATExecExpandTableReshuffle(AlterTableCmd *rootCmd, Relation rel, AlterTableCmd *
 		return;
 
 	/* root command should have moved data for sub-commands */
-	if (rootCmd != cmd) 
+	if (rootCmd != cmd)
 		return;
 
-	/* 
+	/*
 	 * we are expanding leaf partition directly, EXPAND PREPARE should have
 	 * set policy of all leaf partition to random to guarantee each leaf
 	 * partition can be expand seperately. change the policy table of leaf
@@ -14877,10 +14905,6 @@ ATExecExpandTableCTAS(AlterTableCmd *rootCmd, Relation rel, AlterTableCmd *cmd, 
 		saveOptimizerGucValue = optimizer;
 		optimizer = false;
 
-		if (saveOptimizerGucValue)
-			ereport(LOG,
-					(errmsg("ALTER SET DISTRIBUTED BY: falling back to legacy query optimizer to ensure re-distribution of tuples.")));
-
 		/* Step (b) - build CTAS */
 		if (ps == PART_STATUS_LEAF)
 		{
@@ -14908,7 +14932,7 @@ ATExecExpandTableCTAS(AlterTableCmd *rootCmd, Relation rel, AlterTableCmd *cmd, 
 		 */
 		queryDesc->gpmon_pkt = NULL;
 
-		/* 
+		/*
 		 * We need to update our snapshot here to make sure we see all
 		 * committed work. We have an exclusive lock on the table so no one
 		 * will be able to access the table now.

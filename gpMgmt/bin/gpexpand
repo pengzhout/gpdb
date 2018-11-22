@@ -1961,7 +1961,7 @@ ORDER BY fq_name, tableoid desc;
         return (' , '.join(name_list), ' , '.join(oid_list))
 
     def perform_expansion(self):
-        """Performs the actual table re-organiations"""
+        """Performs the actual table re-organizations"""
         expansionStart = datetime.datetime.now()
 
         # setup a threadpool
