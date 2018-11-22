@@ -14748,12 +14748,9 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd, bool prepare)
 			rootPartOid = relid;
 		spec->rootPartOid = rootPartOid;
 
-		if (method == EXPANDMETHOD_NONE)
-		{
-			method = get_expand_method(rel, ps);
-			/* pass it to QEs */
-			spec->method = method;
-		}
+		/* pass method to QEs */
+		if (rootCmd == cmd)
+			spec->method = get_expand_method(rel, ps);
 
 		/* make sure each sub command use the same method */
 		method = spec->method;
