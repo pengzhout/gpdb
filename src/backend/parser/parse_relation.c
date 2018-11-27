@@ -593,6 +593,11 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 		/* quick check to see if name could be a system column */
 		attnum = specialAttNum(colname);
 
+		/* gp_segment_id is ambiguous for replicated table, so disable it */
+		if (attnum == GpSegmentIdAttributeNumber &&
+			GpPolicyIsReplicated(GpPolicyFetch(rte->relid)))
+			return result;
+
 		/* In constraint check, no system column is allowed except tableOid */
 		/*
 		 * In GPDB, tableoid is not allowed either, because we've removed
