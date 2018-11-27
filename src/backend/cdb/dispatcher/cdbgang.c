@@ -1394,7 +1394,7 @@ bool isTargetPortal(const char *p1, const char *p2)
  * 2. max mop of this gang > gp_vmem_protect_gang_cache_limit
  */
 static List *
-cleanupPortalGangList(List *gplist, int cachelimit)
+cleanupPortalGangList(List *gplist, int cachelimit, const char *portal_name)
 {
 	ListCell *cell = NULL;
 	ListCell *prevcell = NULL;
@@ -1409,8 +1409,9 @@ cleanupPortalGangList(List *gplist, int cachelimit)
 		Gang *gang = (Gang *) lfirst(cell);
 		Assert(gang->type != GANGTYPE_PRIMARY_WRITER);
 
-		if (nLeft > cachelimit ||
-			getGangMaxVmem(gang) > gp_vmem_protect_gang_cache_limit)
+		if (isTargetPortal(gang->portal_name, portal_name) &&
+			(nLeft > cachelimit ||
+			 getGangMaxVmem(gang) > gp_vmem_protect_gang_cache_limit))
 		{
 			DisconnectAndDestroyGang(gang);
 			gplist = list_delete_cell(gplist, cell, prevcell);
@@ -1455,8 +1456,8 @@ void cleanupPortalGangs(Portal portal)
 	else
 		oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-	availableReaderGangsN = cleanupPortalGangList(availableReaderGangsN, gp_cached_gang_threshold);
-	availableReaderGangs1 = cleanupPortalGangList(availableReaderGangs1, MAX_CACHED_1_GANGS);
+	availableReaderGangsN = cleanupPortalGangList(availableReaderGangsN, gp_cached_gang_threshold, portal_name);
+	availableReaderGangs1 = cleanupPortalGangList(availableReaderGangs1, MAX_CACHED_1_GANGS, portal_name);
 
 	ELOG_DISPATCHER_DEBUG("cleanupPortalGangs '%s'. Reader gang inventory: "
 			"allocatedN=%d availableN=%d allocated1=%d available1=%d",
