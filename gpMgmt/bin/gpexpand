@@ -1761,7 +1761,7 @@ Set PGDATABASE or use the -D option to specify the correct database to use.""" %
 
         src_bytes_str = "0" if self.options.simple_progress else "pg_relation_size(quote_ident(n.nspname) || '.' || quote_ident(c.relname))"
         sql = """SELECT
-    n.nspname || '.' || c.relname as fq_name,
+    quote_ident(n.nspname) || '.' || quote_ident(c.relname) as fq_name,
     n.oid as schemaoid,
     c.oid as tableoid,
     p.attrnums as distribution_policy,
@@ -1853,17 +1853,17 @@ WHERE
         Step2:
            Change all leaf partition's policy back to old policy with a mandatory
            data movement.
-"""
+        """
         src_bytes_str = "0" if self.options.simple_progress else "pg_relation_size(quote_ident(n.nspname) || '.' || quote_ident(c.relname))"
         sql = """
 SELECT
-    n.nspname || '.' || c.relname as fq_name,
+    quote_ident(n.nspname) || '.' || quote_ident(c.relname) as fq_name,
     n.oid as schemaoid,
     c.oid as tableoid,
     d.attrnums as distributed_policy,
     now() as last_updated,
     %s,
-    n.nspname || '.' || c.relname as root_partition_name
+    quote_ident(n.nspname) || '.' || quote_ident(c.relname) as root_partition_name
 FROM
     pg_class c,
     pg_namespace n,
@@ -2181,7 +2181,7 @@ class ExpandTable():
              self.storage_options, self.rank, self.status,
              self.expansion_started, self.expansion_finished,
              self.source_bytes) = row
-        if self.fq_name.strip() == self.root_partition_name:
+        if self.fq_name == self.root_partition_name:
             self.is_root_partition = True
 
     def add_table(self, conn):
@@ -2189,7 +2189,7 @@ class ExpandTable():
                             VALUES ('%s','%s',%s,%s,
                                     '%s','%s', '%s', '%s', '%s','%s',%d,'%s','%s','%s',%d)
                     """ % (gpexpand_schema, status_detail_table,
-                           self.dbname, self.fq_name, self.schema_oid, self.table_oid,
+                           self.dbname, self.fq_name.replace("\'", "\'\'"), self.schema_oid, self.table_oid,
                            self.distrib_policy, self.distrib_policy_names, self.distrib_policy_coloids,
                            self.distrib_policy_type, self.root_partition_name,
                            self.storage_options, self.rank, self.status,
@@ -2202,8 +2202,7 @@ class ExpandTable():
     def mark_started(self, status_conn, table_conn, start_time, cancel_flag):
         if cancel_flag:
             return
-        (schema_name, table_name) = self.fq_name.split('.')
-        sql = "SELECT pg_relation_size(quote_ident('%s') || '.' || quote_ident('%s'))" % (schema_name, table_name)
+        sql = "SELECT pg_relation_size(%s)" % (self.table_oid)
         cursor = dbconn.execSQL(table_conn, sql)
         row = cursor.fetchone()
         src_bytes = int(row[0])
@@ -2245,9 +2244,7 @@ class ExpandTable():
         if self.storage_options:
             new_storage_options = ',' + self.storage_options
 
-        (schema_name, table_name) = self.fq_name.split('.')
-
-        sql = 'ALTER TABLE %s "%s"."%s" EXPAND TABLE' % (only_str, schema_name, table_name)
+        sql = 'ALTER TABLE %s %s EXPAND TABLE' % (only_str, self.fq_name)
 
         logger.info('Expanding %s.%s' % (self.dbname.decode('utf-8'), self.fq_name.decode('utf-8')))
         logger.debug("Expand SQL: %s" % sql.decode('utf-8'))
@@ -2257,8 +2254,8 @@ class ExpandTable():
             dbconn.execSQL(table_conn, sql)
             table_conn.commit()
             if self.options.analyze:
-                sql = 'ANALYZE "%s"."%s"' % (schema_name, table_name)
-                logger.info('Analyzing %s.%s' % (schema_name.decode('utf-8'), table_name.decode('utf-8')))
+                sql = 'ANALYZE %s' % (self.fq_name)
+                logger.info('Analyzing %s' % (self.fq_name.decode('utf-8')))
                 dbconn.execSQL(table_conn, sql)
                 table_conn.commit()
 
@@ -2395,15 +2392,14 @@ class ExpandCommand(SQLCommand):
         # validate table hasn't been dropped
         start_time = None
         try:
-            (schema_name, table_name) = self.table.fq_name.split('.')
             sql = """select * from pg_class c, pg_namespace n
-            where c.relname = '%s' and n.oid = c.relnamespace and n.nspname='%s'""" % (table_name, schema_name)
+            where c.oid = %d and n.oid = c.relnamespace and n.oid=%d""" % (self.table.table_oid,
+                                                                           self.table.schema_oid)
 
             cursor = dbconn.execSQL(table_conn, sql)
 
             if cursor.rowcount == 0:
-                logger.info('%s.%s no longer exists in database %s' % (schema_name.decode('utf-8'),
-                                                                       table_name.decode('utf-8'),
+                logger.info('%s no longer exists in database %s' % (self.table.fq_name.decode('utf-8'),
                                                                        self.table.dbname.decode('utf-8')))
 
                 self.table.mark_does_not_exist(status_conn, datetime.datetime.now())
