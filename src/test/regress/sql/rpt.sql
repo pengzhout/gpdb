@@ -308,10 +308,17 @@ create table baz (c1 int, c2 int) distributed replicated;
 create table qux (c1 int, c2 int);
 
 select gp_segment_id from baz;
+select xmin from baz;
+select xmax from baz;
+select ctid from baz;
 select * from baz where c2 = gp_segment_id;
 select * from baz, qux where baz.c1 = gp_segment_id;
 update baz set c2 = gp_segment_id;
 update baz set c2 = 1 where gp_segment_id = 1;
 update baz set c2 = 1 from qux where gp_segment_id = baz.c1;
+insert into baz select i, i from generate_series(1, 1000) i;
+vacuum baz;
+vacuum full baz;
+analyze baz;
 
 drop schema rpt cascade;

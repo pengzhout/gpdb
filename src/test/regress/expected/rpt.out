@@ -619,6 +619,18 @@ select gp_segment_id from baz;
 ERROR:  column "gp_segment_id" does not exist
 LINE 1: select gp_segment_id from baz;
                ^
+select xmin from baz;
+ERROR:  column "xmin" does not exist
+LINE 1: select xmin from baz;
+               ^
+select xmax from baz;
+ERROR:  column "xmax" does not exist
+LINE 1: select xmax from baz;
+               ^
+select ctid from baz;
+ERROR:  column "ctid" does not exist
+LINE 1: select ctid from baz;
+               ^
 select * from baz where c2 = gp_segment_id;
 ERROR:  column "gp_segment_id" does not exist
 LINE 1: select * from baz where c2 = gp_segment_id;
@@ -637,6 +649,10 @@ ERROR:  column "gp_segment_id" does not exist
 LINE 1: update baz set c2 = 1 where gp_segment_id = 1;
                                     ^
 update baz set c2 = 1 from qux where gp_segment_id = baz.c1;
+insert into baz select i, i from generate_series(1, 1000) i;
+vacuum baz;
+vacuum full baz;
+analyze baz;
 drop schema rpt cascade;
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table foo
