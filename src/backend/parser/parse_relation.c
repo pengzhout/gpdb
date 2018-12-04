@@ -1921,7 +1921,7 @@ getLockedRefname(ParseState *pstate, const char *refname)
  * isSimplyUpdatableRelation
  *
  * The oid must reference a normal, heap relation. This disallows
- * AO, AO/CO, external tables, views, etc.
+ * AO, AO/CO, external tables, views, replicated table etc.
  *
  * If 'noerror' is true, function returns true/false. If 'noerror'
  * is false, throws an error if the relation is not simply updatable.
@@ -1971,6 +1971,17 @@ isSimplyUpdatableRelation(Oid relid, bool noerror)
 		}
 
 		if (rel->rd_rel->relstorage != RELSTORAGE_HEAP)
+		{
+			if (!noerror)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("\"%s\" is not simply updatable",
+								RelationGetRelationName(rel))));
+			return_value = false;
+			break;
+		}
+
+		if (GpPolicyIsReplicated(rel->rd_cdbpolicy))
 		{
 			if (!noerror)
 				ereport(ERROR,
