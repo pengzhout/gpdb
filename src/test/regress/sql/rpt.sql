@@ -321,4 +321,10 @@ vacuum baz;
 vacuum full baz;
 analyze baz;
 
+-- Test dependencies check when alter table to replicated table
+create view v_qux as select ctid from qux;
+alter table qux set distributed replicated;
+drop view v_qux;
+alter table qux set distributed replicated;
+
 drop schema rpt cascade;

@@ -653,6 +653,14 @@ insert into baz select i, i from generate_series(1, 1000) i;
 vacuum baz;
 vacuum full baz;
 analyze baz;
+-- Test dependencies check when alter table to replicated table
+create view v_qux as select ctid from qux;
+alter table qux set distributed replicated;
+ERROR:  cannot set distributed replicated because other object depend on its system columns
+DETAIL:  view v_qux depends on table qux column ctid
+HINT:  system columns of replicated table will be exposed to users after altering, resolve dependencies first
+drop view v_qux;
+alter table qux set distributed replicated;
 drop schema rpt cascade;
 NOTICE:  drop cascades to 4 other objects
 DETAIL:  drop cascades to table foo
