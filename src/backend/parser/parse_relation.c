@@ -1981,6 +1981,12 @@ isSimplyUpdatableRelation(Oid relid, bool noerror)
 			break;
 		}
 
+		/*
+		 * A row in replicated table cannot be identified by (ctid + gp_segment_id)
+		 * in all replicas, for each row replica, the gp_segment_id is different,
+		 * the ctid is also not guaranteed to be the same, so it's not simply
+		 * updateable for CURRENT OF.
+		 */
 		if (GpPolicyIsReplicated(rel->rd_cdbpolicy))
 		{
 			if (!noerror)
