@@ -2277,7 +2277,7 @@ typedef struct NestLoopState
 	JoinState	js;				/* its first field is NodeTag */
 	bool		nl_NeedNewOuter;
 	bool		nl_MatchedOuter;
-	bool		nl_innerSquelchNeeded;	/*CDB*/
+	bool		nl_squelchInner; /* flag for early end of retrieval from inner */
 	bool		shared_outer;
 	bool		prefetch_inner;
 	bool		reset_inner; /*CDB-OLAP*/
@@ -2335,7 +2335,7 @@ typedef struct MergeJoinState
 	ExprContext *mj_OuterEContext;
 	ExprContext *mj_InnerEContext;
 	bool		prefetch_inner; /* MPP-3300 */
-	bool		mj_squelchInner; /* MPP-3300 */
+	bool		mj_squelchInner; /* flag for early end of retrieval from inner */
 } MergeJoinState;
 
 /* ----------------

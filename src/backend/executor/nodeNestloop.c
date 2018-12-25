@@ -140,7 +140,6 @@ ExecNestLoop(NestLoopState *node)
 		ExecReScan(innerPlan);
 		ResetExprContext(econtext);
 
-		node->nl_innerSquelchNeeded = false; /* no need to squelch inner since it was completely prefetched */
 		node->prefetch_inner = false;
 		node->reset_inner = false;
 	}
@@ -176,7 +175,7 @@ ExecNestLoop(NestLoopState *node)
 				 * we have reached inner end-of-data at least once and
 				 * squelch is not needed.
 				 */
-				if (node->nl_innerSquelchNeeded)
+				if (node->nl_squelchInner)
 				{
 					ExecSquelchNode(innerPlan);
 				}
@@ -411,6 +410,12 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
 
 	/*
+	 * If it's safe to eager free and inner is not prefetched,
+	 * we can squelch inner when outer is empty
+	 */
+	nlstate->nl_squelchInner = !nlstate->js.ps.delayEagerFree && !nlstate->prefetch_inner ;
+
+	/*
 	 * initialize child expressions
 	 */
 	nlstate->js.ps.targetlist = (List *)
@@ -497,7 +502,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	 */
 	nlstate->nl_NeedNewOuter = true;
 	nlstate->nl_MatchedOuter = false;
-	nlstate->nl_innerSquelchNeeded = true;		/*CDB*/
 
 
     if (node->join.jointype == JOIN_LASJ_NOTIN)

@@ -677,7 +677,6 @@ ExecMergeJoin(MergeJoinState *node)
 		ExecReScan(innerPlan);
 		ResetExprContext(econtext);
 
-		node->mj_squelchInner = false; /* we will never need to Squelch the inner, we've fetched it all */
 		node->prefetch_inner = false;
 	}
 
@@ -1607,7 +1606,14 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	mergestate->mj_ConstFalseJoin = false;
 
 	mergestate->prefetch_inner = node->join.prefetch_inner;
-	mergestate->mj_squelchInner = true;
+
+	/*
+	 * If it's safe to eager free and inner is not prefetched,
+	 * we can squelch inner when outer is empty
+	 */
+	mergestate->mj_squelchInner = !mergestate->js.ps.delayEagerFree &&
+									!mergestate->prefetch_inner;
+
 	/* Prepare inner operators for rewind after the prefetch */
 	rewindflag = mergestate->prefetch_inner ? EXEC_FLAG_REWIND : 0;
 
