@@ -29,6 +29,7 @@
 
 static void splitJoinQualExpr(NestLoopState *nlstate);
 static void extractFuncExprArgs(FuncExprState *fstate, List **lclauses, List **rclauses);
+static TupleTableSlot *ExecNestLoopImpl(NestLoopState *node);
 
 /* ----------------------------------------------------------------
  *		ExecNestLoop(node)
@@ -62,6 +63,29 @@ static void extractFuncExprArgs(FuncExprState *fstate, List **lclauses, List **r
  */
 TupleTableSlot *
 ExecNestLoop(NestLoopState *node)
+{
+	TupleTableSlot *slot;
+
+	slot = ExecNestLoopImpl(node);
+
+	if (!slot && !node->js.ps.delayEagerFree)
+	{
+		/* Stop motion nodes or shared scan node bellow */
+		ExecSquelchNode(node);
+
+		/*
+		 * The memory used by child nodes might not be freed because
+		 * they are not eager free safe. However, when the nestloop is done,
+		 * we can free the memory used by the child nodes.
+		 */
+		ExecEagerFreeChildNodes((PlanState *)node, false);
+	}
+
+	return slot;
+}
+
+static TupleTableSlot *
+ExecNestLoopImpl(NestLoopState *node)
 {
 	NestLoop   *nl;
 	PlanState  *innerPlan;
@@ -125,15 +149,10 @@ ExecNestLoop(NestLoopState *node)
 				(node->nl_InnerJoinKeys && isJoinExprNull(node->nl_InnerJoinKeys, econtext)))
 		{
 			/*
-			 * If LASJ_NOTIN and a null was found on the inner side, then clean out.
-			 * We'll read no more from either inner or outer subtree. To keep our
-			 * sibling QEs from being starved, tell source QEs not to
-			 * clog up the pipeline with our never-to-be-consumed
-			 * data.
+			 * If LASJ_NOTIN and a null was found on the inner side, all tuples
+			 * in outer sider will be treated as "not in" tuples in inner side.
 			 */
 			ENL1_printf("Found NULL tuple on the inner side, clean out");
-			ExecSquelchNode(outerPlan);
-			ExecSquelchNode(innerPlan);
 			return NULL;
 		}
 
@@ -167,29 +186,6 @@ ExecNestLoop(NestLoopState *node)
 			if (TupIsNull(outerTupleSlot))
 			{
 				ENL1_printf("no outer tuple, ending join");
-
-				/*
-				 * CDB: If outer tuple stream was empty, notify inner
-				 * subplan that we won't fetch its results, so QEs in
-				 * lower gangs won't keep trying to send to us.  Else
-				 * we have reached inner end-of-data at least once and
-				 * squelch is not needed.
-				 */
-				if (node->nl_squelchInner)
-				{
-					ExecSquelchNode(innerPlan);
-				}
-
-				/*
-				 * The memory used by child nodes might not be freed because
-				 * they are not eager free safe. However, when the nestloop is done,
-				 * we can free the memory used by the child nodes.
-				 */
-				if (!node->js.ps.delayEagerFree)
-				{
-					ExecEagerFreeChildNodes((PlanState *)node, false);
-				}
-
 				return NULL;
 			}
 
@@ -296,15 +292,10 @@ ExecNestLoop(NestLoopState *node)
 				(node->nl_InnerJoinKeys && isJoinExprNull(node->nl_InnerJoinKeys, econtext)))
 		{
 			/*
-			 * If LASJ_NOTIN and a null was found on the inner side, then clean out.
-			 * We'll read no more from either inner or outer subtree. To keep our
-			 * sibling QEs from being starved, tell source QEs not to
-			 * clog up the pipeline with our never-to-be-consumed
-			 * data.
+			 * If LASJ_NOTIN and a null was found on the inner side, all tuples
+			 * in outer sider will be treated as "not in" tuples in inner side.
 			 */
 			ENL1_printf("Found NULL tuple on the inner side, clean out");
-			ExecSquelchNode(outerPlan);
-			ExecSquelchNode(innerPlan);
 			return NULL;
 		}
 
@@ -408,12 +399,6 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	 */
 	nlstate->js.ps.delayEagerFree =
 		((eflags & (EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)) != 0);
-
-	/*
-	 * If it's safe to eager free and inner is not prefetched,
-	 * we can squelch inner when outer is empty
-	 */
-	nlstate->nl_squelchInner = !nlstate->js.ps.delayEagerFree && !nlstate->prefetch_inner ;
 
 	/*
 	 * initialize child expressions
@@ -585,7 +570,6 @@ ExecReScanNestLoop(NestLoopState *node)
 	node->nl_NeedNewOuter = true;
 	node->nl_MatchedOuter = false;
 	node->nl_innerSideScanned = false;
-	/* CDB: We intentionally leave node->nl_innerSquelchNeeded unchanged on ReScan */
 }
 
 /* ----------------------------------------------------------------

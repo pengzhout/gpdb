@@ -45,6 +45,7 @@
 /* Returns true if doing null-fill on inner relation */
 #define HJ_FILL_INNER(hjstate)	((hjstate)->hj_NullOuterTupleSlot != NULL)
 
+static TupleTableSlot *ExecHashJoinImpl(HashJoinState *node);
 static TupleTableSlot *ExecHashJoinOuterGetTuple(PlanState *outerNode,
 						  HashJoinState *hjstate,
 						  uint32 *hashvalue);
@@ -71,6 +72,31 @@ static bool ExecHashJoinReloadHashTable(HashJoinState *hjstate);
  */
 TupleTableSlot *				/* return: a tuple or NULL */
 ExecHashJoin(HashJoinState *node)
+{
+	TupleTableSlot *slot;
+
+	slot = ExecHashJoinImpl(node);
+
+	if (!slot && !node->js.ps.delayEagerFree)
+	{
+		/* Stop motion nodes or shared scan node bellow */
+		ExecSquelchNode(node);
+
+		/*
+		 * The hash table might not be freed because they are not eager free
+		 * safe. However, if it's eager free safe and the hash join is done,
+		 * we can free the hash table.
+		 *
+		 * XXX: should we free child node?
+		 */
+		ExecEagerFreeHashJoin(node);
+	}
+
+	return slot;
+}
+
+static TupleTableSlot *				/* return: a tuple or NULL */
+ExecHashJoinImpl(HashJoinState *node)
 {
 	EState	   *estate;
 	PlanState  *outerNode;
@@ -220,22 +246,11 @@ ExecHashJoin(HashJoinState *node)
 #endif
 
 				/**
-				 * If LASJ_NOTIN and a null was found on the inner side, then clean out.
+				 * If LASJ_NOTIN and a null was found on the inner side, all tuples
+				 * in outer sider will be treated as "not in" tuples in inner side.
 				 */
 				if (node->js.jointype == JOIN_LASJ_NOTIN && hashNode->hs_hashkeys_null)
-				{
-					/*
-					 * CDB: We'll read no more from outer subtree. To keep sibling QEs
-					 * from being starved, tell source QEs not to clog up the pipeline
-					 * with our never-to-be-consumed data.
-					 */
-					ExecSquelchNode(outerNode);
-					/* end of join */
-
-					ExecEagerFreeHashJoin(node);
-
 					return NULL;
-				}
 
 				/*
 				 * If the inner relation is completely empty, and we're not
@@ -243,19 +258,7 @@ ExecHashJoin(HashJoinState *node)
 				 * outer relation.
 				 */
 				if (hashtable->totalTuples == 0 && !HJ_FILL_OUTER(node))
-				{
-					/*
-					 * CDB: We'll read no more from outer subtree. To keep sibling QEs
-					 * from being starved, tell source QEs not to clog up the pipeline
-					 * with our never-to-be-consumed data.
-					 */
-					ExecSquelchNode(outerNode);
-					/* end of join */
-
-					ExecEagerFreeHashJoin(node);
-
 					return NULL;
-				}
 
 				/*
 				 * We just scanned the entire inner side and built the hashtable
@@ -506,12 +509,8 @@ ExecHashJoin(HashJoinState *node)
 				 * Try to advance to next batch.  Done if there are no more.
 				 */
 				if (!ExecHashJoinNewBatch(node))
-				{
-					if (!node->reuse_hashtable)
-						ExecEagerFreeHashJoin(node);
-
 					return NULL;	/* end of join */
-				}
+
 				node->hj_JoinState = HJ_NEED_NEW_OUTER;
 				break;
 
@@ -549,6 +548,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	hjstate->js.ps.plan = (Plan *) node;
 	hjstate->js.ps.state = estate;
 	hjstate->reuse_hashtable = (eflags & EXEC_FLAG_REWIND) != 0;
+	hjstate->js.ps.delayEagerFree = hjstate->reuse_hashtable;
 
 	/*
 	 * Miscellaneous initialization
