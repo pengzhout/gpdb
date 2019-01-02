@@ -773,5 +773,48 @@ select count(*) from dispatch_foo, dispatch_bar where exists (select dispatch_fo
 (1 row)
 
 reset gp_cached_segworkers_threshold;
+--
+-- Test SET command also need two phase commit
+--
+set default_with_oids to true;
+select gp_inject_fault('variable_set', 'reset', 2);
+NOTICE:  Success:  (seg0 10.153.101.106:25432 pid=458627)
+ gp_inject_fault 
+-----------------
+ t
+(1 row)
+
+select gp_inject_fault('variable_set', 'error', 2);
+NOTICE:  Success:  (seg0 10.153.101.106:25432 pid=458627)
+ gp_inject_fault 
+-----------------
+ t
+(1 row)
+
+-- set command should fail, default_with_oids should still be true
+set default_with_oids to false;
+ERROR:  fault triggered, fault name:'variable_set' fault type:'error'  (seg0 10.153.101.106:25432 pid=458636)
+-- insert tuples to all segments, we should see tuples on all segments has oid
+create table set_test_t1 (c1 int, c2 int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'c1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  OIDS=TRUE is not recommended for user-created tables
+HINT:  Use OIDS=FALSE to prevent wrap-around of the OID counter.
+insert into set_test_t1 select i, i from generate_series(1, 10) i;
+-- should be zero
+select count(*) from set_test_t1 where oid=0;
+ count 
+-------
+     0
+(1 row)
+
+-- reset fault
+select gp_inject_fault('variable_set', 'reset', 2);
+NOTICE:  Success:  (seg0 10.153.101.106:25432 pid=458627)
+ gp_inject_fault 
+-----------------
+ t
+(1 row)
+
 \c regression
 DROP DATABASE dispatch_test_db;

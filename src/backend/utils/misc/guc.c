@@ -87,6 +87,7 @@
 #include "utils/xml.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbvars.h"
+#include "utils/faultinjector.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -7177,6 +7178,8 @@ void
 ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
+
+	SIMPLE_FAULT_INJECTOR(VariableSet);
 
 	switch (stmt->kind)
 	{

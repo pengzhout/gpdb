@@ -249,10 +249,15 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 	char	   *queryText;
 	int		queryTextLength;
 	ListCell   *le;
-	ErrorData *qeError = NULL;
+	ErrorData	*qeError = NULL;
+	Gang		*primaryGang;	
 
+	/*
+	 * GUC variable can be commited and rolled back within a transaction,
+	 * we need a two phase commit to guarantee this
+	 */
 	dtmPreCommand("CdbDispatchSetCommand", strCommand, NULL,
-				  false /* no two-phase commit needed for SET */,
+				  true, /* need two phase commit */
 				  false, /* no snapshot needed for SET */
 				  false /* inCursor */ );
 
@@ -260,13 +265,15 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 		 "CdbDispatchSetCommand for command = '%s'",
 		 strCommand);
 
-	pQueryParms = cdbdisp_buildCommandQueryParms(strCommand, DF_NONE);
+	pQueryParms = cdbdisp_buildCommandQueryParms(strCommand, DF_NEED_TWO_PHASE);
 
 	ds = cdbdisp_makeDispatcherState(false);
 
 	queryText = buildGpQueryString(pQueryParms, &queryTextLength);
 
-	AllocateGang(ds, GANGTYPE_PRIMARY_WRITER, cdbcomponent_getCdbComponentsList());
+	primaryGang = AllocateGang(ds, GANGTYPE_PRIMARY_WRITER, cdbcomponent_getCdbComponentsList());
+
+	addToGxactTwophaseSegments(primaryGang);
 
 	/* put all idle segment to a gang so QD can send SET command to them */
 	AllocateGang(ds, GANGTYPE_PRIMARY_READER, formIdleSegmentIdList());
@@ -303,6 +310,12 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 
 	if (qeError)
 	{
+		/*
+		 * The GUC variables in writer gang will be rolled back by two phase commit.
+		 * The reader gang have no chance to be rolled back, so just destroy it, when
+		 * new QE is allocated, the correct GUC will be dispatched along with command.
+		 */
+		cdbcomponent_cleanupIdleQEs(false);
 		ReThrowError(qeError);
 	}
 }

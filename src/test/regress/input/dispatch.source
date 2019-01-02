@@ -436,5 +436,21 @@ language plpgsql volatile;
 set gp_cached_segworkers_threshold to 1;
 select count(*) from dispatch_foo, dispatch_bar where exists (select dispatch_foo_func());
 reset gp_cached_segworkers_threshold;
+--
+-- Test SET command also need two phase commit
+--
+set default_with_oids to true;
+select gp_inject_fault('variable_set', 'reset', 2);
+select gp_inject_fault('variable_set', 'error', 2);
+-- set command should fail, default_with_oids should still be true
+set default_with_oids to false;
+-- insert tuples to all segments, we should see tuples on all segments has oid
+create table set_test_t1 (c1 int, c2 int);
+insert into set_test_t1 select i, i from generate_series(1, 10) i;
+-- should be zero
+select count(*) from set_test_t1 where oid=0;
+-- reset fault
+select gp_inject_fault('variable_set', 'reset', 2);
 \c regression
 DROP DATABASE dispatch_test_db;
+
