@@ -439,16 +439,15 @@ reset gp_cached_segworkers_threshold;
 --
 -- Test SET command also need two phase commit
 --
-set default_with_oids to true;
+CREATE OR REPLACE FUNCTION gp_execute_on_server(content int, query text) returns text
+language C as '@abs_builddir@/regress@DLSUFFIX@', 'gp_execute_on_server';
 select gp_inject_fault('variable_set', 'reset', 2);
 select gp_inject_fault('variable_set', 'error', 2);
--- set command should fail, default_with_oids should still be true
-set default_with_oids to false;
--- insert tuples to all segments, we should see tuples on all segments has oid
-create table set_test_t1 (c1 int, c2 int);
-insert into set_test_t1 select i, i from generate_series(1, 10) i;
--- should be zero
-select count(*) from set_test_t1 where oid=0;
+set log_min_messages to error ;
+-- set command should fail, log_min_messages should still be warning 
+select gp_execute_on_server(0, 'show log_min_messages');
+select gp_execute_on_server(1, 'show log_min_messages');
+select gp_execute_on_server(2, 'show log_min_messages');
 -- reset fault
 select gp_inject_fault('variable_set', 'reset', 2);
 \c regression
