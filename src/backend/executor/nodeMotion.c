@@ -164,6 +164,14 @@ ExecMotion(MotionState *node)
 {
 	Motion	   *motion = (Motion *) node->ps.plan;
 
+	/* sanity check */
+	if (node->stopRequested)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("unexpected internal error"),
+				 errmsg("Already stopped motion node is executed again, data will lost"),
+				 errhint("Likely motion node is incorrectly squelched earlier")));
+
 	/*
 	 * at the top here we basically decide: -- SENDER vs. RECEIVER and --
 	 * SORTED vs. UNSORTED
@@ -1616,6 +1624,9 @@ ExecStopMotion(MotionState *node)
 	Motion	   *motion;
 
 	AssertArg(node != NULL);
+
+	if (node->stopRequested)
+		return;
 
 	motion = (Motion *) node->ps.plan;
 	node->stopRequested = true;
