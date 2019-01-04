@@ -321,9 +321,8 @@ GpPolicyFetch(Oid tbloid)
 			ReleaseSysCache(gp_policy_tuple);
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-					 errmsg("sanity check failed"),
-					 errdetail("\"numsegments\" of table cannot be larger than the size of the cluster"),
-					 errhint("table might be expanded after current global transaction is started, re-run the query")));
+					 errmsg("\"numsegments\" of table cannot be larger than the size of the cluster"),
+					 errhint("Table might be expanded after current global transaction is started, re-run the query.")));
 		}
 
 		attr = SysCacheGetAttr(GPPOLICYID, gp_policy_tuple,
