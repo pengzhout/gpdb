@@ -308,6 +308,23 @@ GpPolicyFetch(Oid tbloid)
 		else
 			numsegments = DatumGetInt32(attr);
 
+		/*
+		 * Sanity check of numsegments.
+		 *
+		 * Currently, Gxact always use a fixed size of cluster after the Gxact started,
+		 * If a table is expanded after Gxact started, we should report an error,
+		 * otherwise, planner will arrange a gang whose size is larger than the size
+		 * of cluster and dispatcher cannot handle this.
+		 */
+		if (numsegments > GP_POLICY_ALL_NUMSEGMENTS)
+		{
+			ReleaseSysCache(gp_policy_tuple);
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("\"numsegments\" of table cannot be larger than the size of the cluster"),
+					 errhint("Table might be expanded after current global transaction is started, re-run the query.")));
+		}
+
 		attr = SysCacheGetAttr(GPPOLICYID, gp_policy_tuple,
 							   Anum_gp_policy_type,
 							   &isNull);
