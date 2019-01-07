@@ -865,6 +865,18 @@ typedef struct GpId
 								 * a primary and its mirror have the same segIndex */
 } GpId;
 
+/*
+ * Support for multiple "types" of interconnect
+ */
+typedef enum GpExpandMethod
+{
+	GPEXPAND_METHOD_REBUILD = 0,
+	GPEXPAND_METHOD_MOVE,
+} GpExpandMethod;
+
+/* specify the method to expand a table */
+extern int Gp_expand_method;
+
 /* --------------------------------------------------------------------------------------------------
  * Global variable declaration for the data for the single row of gp_id table
  */

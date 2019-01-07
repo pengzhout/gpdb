@@ -344,6 +344,11 @@ int			cdb_total_plans = 0;
 int			cdb_max_slices = 0;
 
 /*
+ * Specify the method to expand a table
+ */
+int			Gp_expand_method = GPEXPAND_METHOD_REBUILD;
+
+/*
  * Local macro to provide string values of numeric defines.
  */
 #define CppNumericAsString(s) CppAsString(s)

@@ -604,6 +604,13 @@ static const struct config_enum_entry optimizer_join_order_options[] = {
 	{NULL, 0}
 };
 
+static const struct config_enum_entry gp_expand_methods[] = {
+	{"rebuild", GPEXPAND_METHOD_REBUILD},
+	{"move", GPEXPAND_METHOD_MOVE},
+	{NULL, 0}
+};
+
+
 IndexCheckType gp_indexcheck_insert = INDEX_CHECK_NONE;
 IndexCheckType gp_indexcheck_vacuum = INDEX_CHECK_NONE;
 
@@ -4934,6 +4941,17 @@ struct config_enum ConfigureNamesEnum_gp[] =
 		},
 		&optimizer_join_order,
 		JOIN_ORDER_EXHAUSTIVE_SEARCH, optimizer_join_order_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"gp_expand_method", PGC_USERSET, GP_ARRAY_TUNING,
+			gettext_noop("Specify the method to expand a table."),
+			gettext_noop("Valid values are rebuild, move"),
+			GUC_GPDB_ADDOPT | GUC_NOT_IN_SAMPLE
+		},
+		&Gp_expand_method,
+		GPEXPAND_METHOD_REBUILD, gp_expand_methods,
 		NULL, NULL, NULL
 	},
 

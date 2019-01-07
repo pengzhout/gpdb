@@ -9,6 +9,7 @@ create schema test_reshuffle_aoco;
 set search_path=test_reshuffle_aoco,public;
 set gp_default_storage_options='appendonly=true,orientation=column';
 set allow_system_table_mods=true;
+set gp_expand_method = move;
 
 -- Hash distributed tables
 select gp_debug_set_create_table_default_numsegments(2);

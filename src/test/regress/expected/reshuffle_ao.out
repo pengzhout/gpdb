@@ -7,6 +7,7 @@ create schema test_reshuffle_ao;
 set search_path=test_reshuffle_ao,public;
 set gp_default_storage_options='appendonly=true,orientation=row';
 set allow_system_table_mods=true;
+set gp_expand_method = move;
 -- Hash distributed tables
 select gp_debug_set_create_table_default_numsegments(2);
  gp_debug_set_create_table_default_numsegments 
