@@ -880,7 +880,13 @@ cdb_setup(void)
 		InitMotionLayerIPC();
 	}
 
-	if (Gp_role == GP_ROLE_DISPATCH)
+	/*
+	 * initTM() goes through all in-doubt transactions and resolve them
+	 * which need to be under a superuser context. Meanwhile, in-doubt
+	 * transactions occur with a crash or PANIC, so normally startup
+	 * process (superuser) takes the responsibility.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && IsAuthenticatedUserSuperUser())
 	{
 		/* initialize TM */
 		initTM();

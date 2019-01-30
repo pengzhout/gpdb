@@ -1227,44 +1227,6 @@ getSuperuser(Oid *userOid)
 	return suser;
 }
 
-static char *
-ChangeToSuperuser()
-{
-	char	   *olduser = NULL;
-	char	   *newuser;
-	Oid			userOid = InvalidOid;
-	MemoryContext oldcontext;
-
-	if (!IsAuthenticatedUserSuperUser())
-	{
-		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-		newuser = getSuperuser(&userOid);
-		MemoryContextSwitchTo(oldcontext);
-
-		olduser = MyProcPort->user_name;
-		SetSessionUserId(userOid, true);
-		MyProcPort->user_name = newuser;
-	}
-
-	return olduser;
-}
-
-static void
-RestoreToUser(char *olduser)
-{
-	MemoryContext oldcontext;
-
-	if (!IsAuthenticatedUserSuperUser())
-	{
-		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-		pfree(MyProcPort->user_name);
-		MemoryContextSwitchTo(oldcontext);
-
-		MyProcPort->user_name = olduser;
-		SetSessionUserId(GetAuthenticatedUserId(), false);
-	}
-}
-
 /*
  * Initialize TM, called by cdb_setup() for each QD process.
  *
@@ -1279,7 +1241,6 @@ RestoreToUser(char *olduser)
 void
 initTM(void)
 {
-	char	   *olduser = NULL;
 	MemoryContext oldcontext;
 	bool		succeeded,
 				first;
@@ -1289,14 +1250,6 @@ initTM(void)
 	/* Need to recover ? */
 	if (!*shmTmRecoverred)
 	{
-		/*
-		 * DTM initialization should be done in the context of the superuser,
-		 * and not the user who initiated this backend (MPP-13866). Following
-		 * code changes the context to superuser and and then restores it
-		 * back.
-		 */
-		olduser = ChangeToSuperuser();
-
 		SIMPLE_FAULT_INJECTOR(DtmInit);
 
 		oldcontext = CurrentMemoryContext;
@@ -1355,8 +1308,6 @@ initTM(void)
 			 */
 			break;
 		}
-
-		RestoreToUser(olduser);
 	}
 }
 
