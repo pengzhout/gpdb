@@ -252,9 +252,6 @@ typedef struct TMGALLXACTSTATUS
 
 typedef struct TmControlBlock
 {
-	LWLockId					ControlLock;
-
-	bool						recoverred;
 	DistributedTransactionTimeStamp	distribTimeStamp;
 	DistributedTransactionId	seqno;
 	bool						DtmStarted;
@@ -272,10 +269,9 @@ typedef struct TmControlBlock
 #define DTM_DEBUG3 (Debug_print_full_dtm ? LOG : DEBUG3)
 #define DTM_DEBUG5 (Debug_print_full_dtm ? LOG : DEBUG5)
 
-extern volatile bool *shmTmRecoverred;
 extern volatile bool *shmDtmStarted;
-extern LWLockId shmControlLock;
 extern int max_tm_gxacts;
+extern bool am_dtx_recovery;
 
 extern DtxContext DistributedTransactionContext;
 
@@ -324,7 +320,6 @@ extern bool dispatchDtxCommand(const char *cmd);
 
 extern void tmShmemInit(void);
 extern int	tmShmemSize(void);
-extern void initTM(void);
 
 extern void verify_shared_snapshot_ready(void);
 
@@ -359,5 +354,7 @@ extern bool currentGxactWriterGangLost(void);
 extern void addToGxactTwophaseSegments(struct Gang* gp);
 
 extern DistributedTransactionId generateGID(void);
+
+extern int dtx_recovery_start(void);
 
 #endif   /* CDBTM_H */
