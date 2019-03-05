@@ -145,12 +145,6 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 
-#ifdef EXEC_BACKEND
-#include "storage/spin.h"
-
-void FtsProbeMain(int argc, char *argv[]);
-#endif
-
 /*
  * This is set in backends that are handling a GPDB specific message (FTS or
  * fault injector) on mirror.
@@ -211,8 +205,7 @@ static dlist_head BackendList = DLIST_STATIC_INIT(BackendList);
 /* CDB */
 typedef enum pmsub_type
 {
-	FtsProbeProc = 0,
-	PerfmonProc,
+	PerfmonProc = 0,
 	BackoffProc,
 	PerfmonSegmentInfoProc,
 	GlobalDeadLockDetectorProc,
@@ -415,9 +408,6 @@ typedef struct pmsubproc
 
 static PMSubProc PMSubProcList[MaxPMSubType] =
 {
-	{0, FtsProbeProc,
-	 (PMSubStartCallback*)&ftsprobe_start,
-	 "ftsprobe process", PMSUBPROC_FLAG_QD, true},
 	{0, PerfmonProc,
 	(PMSubStartCallback*)&perfmon_start,
 	"perfmon process", PMSUBPROC_FLAG_QD, false},
@@ -437,9 +427,13 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 
 static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
 {
+	{"ftsprobe process",
+	 BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION,
+	 BgWorkerStart_DtxRecovering, /* no need to wait dtx recovery */
+	 0, /* restart immediately if ftsprobe exits with non-zero code */
+	 FtsProbeMain, {0}, {0}, 0, 0,
+	 FtsProbeStartRule},
 };
-
-static PMSubProc *FTSSubProc = &PMSubProcList[FtsProbeProc];
 
 static bool ReachedNormalRunning = false;		/* T if we've reached PM_RUN */
 
@@ -5625,23 +5619,6 @@ SubPostmasterMain(int argc, char *argv[])
 		GlobalDeadLockDetector(argc - 2, argv + 2);
 		proc_exit(0);
 	}
-	if (strcmp(argv[1], "--forkftsprobe") == 0)
-	{
-		/* Close the postmaster's sockets */
-		ClosePostmasterPorts(false);
-
-		/* Restore basic shared memory pointers */
-		InitShmemAccess(UsedShmemSegAddr);
-
-		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitAuxiliaryProcess();
-
-		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
-
-		FtsProbeMain(argc - 2, argv + 2);
-		proc_exit(0);
-	}
 	if (strcmp(argv[1], "--forkperfmon") == 0)
 	{
 		/* Close the postmaster's sockets */
@@ -5798,10 +5775,9 @@ sigusr1_handler(SIGNAL_ARGS)
 		MaybeStartWalReceiver();
 	}
 
-	Assert(FTSSubProc->procType == FtsProbeProc);
-	if (CheckPostmasterSignal(PMSIGNAL_WAKEN_FTS) && FTSSubProc->pid != 0)
+	if (CheckPostmasterSignal(PMSIGNAL_WAKEN_FTS) && FtsProbePID() != 0)
 	{
-		signal_child(FTSSubProc->pid, SIGINT);
+		signal_child(FtsProbePID(), SIGINT);
 	}
 
 	if (CheckPostmasterSignal(PMSIGNAL_ADVANCE_STATE_MACHINE) &&
