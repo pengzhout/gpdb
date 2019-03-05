@@ -75,6 +75,9 @@ extern void ShmemBackendArrayAllocation(void);
 /* CDB */
 typedef int (PMSubStartCallback)(void);
 
+extern void load_auxiliary_libraries(void);
+extern bool amAuxiliaryBgWorker(void);
+
 /*
  * Note: MAX_BACKENDS is limited to 2^23-1 because inval.c stores the
  * backend ID as a 3-byte signed integer.  Even if that limitation were
@@ -83,5 +86,6 @@ typedef int (PMSubStartCallback)(void);
  * GUC check hooks and in RegisterBackgroundWorker().
  */
 #define MAX_BACKENDS	0x7fffff
+#define MaxPMAuxProc	1
 
 #endif   /* _POSTMASTER_H */
