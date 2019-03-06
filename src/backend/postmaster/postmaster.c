@@ -208,7 +208,6 @@ typedef enum pmsub_type
 	PerfmonProc = 0,
 	BackoffProc,
 	PerfmonSegmentInfoProc,
-	GlobalDeadLockDetectorProc,
 	DtxRecoveryProc,
 	MaxPMSubType
 } PMSubType;
@@ -218,8 +217,6 @@ static Backend *ShmemBackendArray;
 #endif
 
 BackgroundWorker *MyBgworkerEntry = NULL;
-
-
 
 /* The socket number we are listening for connections on */
 int			PostPortNumber;
@@ -417,9 +414,6 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, PerfmonSegmentInfoProc,
 	(PMSubStartCallback*)&perfmon_segmentinfo_start,
 	"stats sender process", PMSUBPROC_FLAG_QD_AND_QE, true},
-	{0, GlobalDeadLockDetectorProc,
-	(PMSubStartCallback*)&global_deadlock_detector_start,
-	"global deadlock detector process", PMSUBPROC_FLAG_QD, true},
 	{0, DtxRecoveryProc,
 	(PMSubStartCallback*)&dtx_recovery_start,
 	"dtx recovery process", PMSUBPROC_FLAG_QD, true},
@@ -433,6 +427,13 @@ static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
 	 0, /* restart immediately if ftsprobe exits with non-zero code */
 	 FtsProbeMain, {0}, {0}, 0, 0,
 	 FtsProbeStartRule},
+
+	{"global deadlock detector process",
+	 BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION,
+	 BgWorkerStart_RecoveryFinished,
+	 0, /* restart immediately if gdd exits with non-zero code */
+	 GlobalDeadLockDetectorMain, {0}, {0}, 0, 0,
+	 GlobalDeadLockDetectorStartRule},
 };
 
 static bool ReachedNormalRunning = false;		/* T if we've reached PM_RUN */
@@ -1767,15 +1768,10 @@ ServiceStartable(PMSubProc *subProc)
 	/*
 	 * GUC gp_enable_gpperfmon controls the start
 	 * of both the 'perfmon' and 'stats sender' processes
-	 *
-	 * Use gp_enable_global_deadlock_detector to check if the GDD need
-	 * to startup
 	 */
 	if (subProc->procType == PerfmonProc && !gp_enable_gpperfmon)
 		result = 0;
 	else if (subProc->procType == PerfmonSegmentInfoProc && !gp_enable_gpperfmon && !gp_enable_query_metrics)
-		result = 0;
-	else if (subProc->procType == GlobalDeadLockDetectorProc && !gp_enable_global_deadlock_detector)
 		result = 0;
 	else if (subProc->procType == DtxRecoveryProc && *shmDtmStarted)
 		result = 0;
@@ -5601,23 +5597,6 @@ SubPostmasterMain(int argc, char *argv[])
 		/* Do not want to attach to shared memory */
 
 		SysLoggerMain(argc, argv);		/* does not return */
-	}
-	if (strcmp(argv[1], "--forkglobaldeadlockdetector") == 0)
-	{
-		/* Close the postmaster's sockets */
-		ClosePostmasterPorts(false);
-
-		/* Restore basic shared memory pointers */
-		InitShmemAccess(UsedShmemSegAddr);
-
-		/* Need a PGPROC to run CreateSharedMemoryAndSemaphores */
-		InitAuxiliaryProcess();
-
-		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
-
-		GlobalDeadLockDetector(argc - 2, argv + 2);
-		proc_exit(0);
 	}
 	if (strcmp(argv[1], "--forkperfmon") == 0)
 	{
