@@ -205,8 +205,7 @@ static dlist_head BackendList = DLIST_STATIC_INIT(BackendList);
 /* CDB */
 typedef enum pmsub_type
 {
-	PerfmonProc = 0,
-	MaxPMSubType
+	MaxPMSubType = 0,
 } PMSubType;
 
 #ifdef EXEC_BACKEND
@@ -402,9 +401,6 @@ typedef struct pmsubproc
 
 static PMSubProc PMSubProcList[MaxPMSubType] =
 {
-	{0, PerfmonProc,
-	(PMSubStartCallback*)&perfmon_start,
-	"perfmon process", PMSUBPROC_FLAG_QD, false},
 };
 
 static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
@@ -447,9 +443,9 @@ static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
 	{"perfmon process",
 	 BGWORKER_SHMEM_ACCESS,
 	 BgWorkerStart_RecoveryFinished,
-	 0, /* restart immediately if ftsprobe exits with non-zero code */
+	 0, /* restart immediately if perfmon process exits with non-zero code */
 	 PerfmonMain, {0}, {0}, 0, 0,
-	 PerfmonStartRule, false},
+	 PerfmonStartRule},
 };
 
 static bool ReachedNormalRunning = false;		/* T if we've reached PM_RUN */
@@ -1785,10 +1781,7 @@ ServiceStartable(PMSubProc *subProc)
 	 * GUC gp_enable_gpperfmon controls the start
 	 * of both the 'perfmon' and 'stats sender' processes
 	 */
-	if (subProc->procType == PerfmonProc && !gp_enable_gpperfmon)
-		result = 0;
-	else
-		result = ((subProc->flags & flagNeeded) != 0);
+	result = ((subProc->flags & flagNeeded) != 0);
 
 	return result;
 }
