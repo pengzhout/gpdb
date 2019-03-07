@@ -206,7 +206,6 @@ static dlist_head BackendList = DLIST_STATIC_INIT(BackendList);
 typedef enum pmsub_type
 {
 	PerfmonProc = 0,
-	BackoffProc,
 	MaxPMSubType
 } PMSubType;
 
@@ -406,9 +405,6 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, PerfmonProc,
 	(PMSubStartCallback*)&perfmon_start,
 	"perfmon process", PMSUBPROC_FLAG_QD, false},
-	{0, BackoffProc,
-	(PMSubStartCallback*)&backoff_start,
-	"sweeper process", PMSUBPROC_FLAG_QD_AND_QE, true},
 };
 
 static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
@@ -440,6 +436,20 @@ static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
 	 0, /* restart immediately if stats sender exits with non-zero code */
 	 SegmentInfoSenderMain, {0}, {0}, 0, 0,
 	 SegmentInfoSenderStartRule},
+
+	{"sweeper process",
+	 BGWORKER_SHMEM_ACCESS,
+	 BgWorkerStart_RecoveryFinished,
+	 0, /* restart immediately if sweeper process exits with non-zero code */
+	 BackoffSweeperMain, {0}, {0}, 0, 0,
+	 BackoffSweeperStartRule},
+
+	{"perfmon process",
+	 BGWORKER_SHMEM_ACCESS,
+	 BgWorkerStart_RecoveryFinished,
+	 0, /* restart immediately if ftsprobe exits with non-zero code */
+	 PerfmonMain, {0}, {0}, 0, 0,
+	 PerfmonStartRule, false},
 };
 
 static bool ReachedNormalRunning = false;		/* T if we've reached PM_RUN */
