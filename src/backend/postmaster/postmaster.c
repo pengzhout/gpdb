@@ -207,7 +207,6 @@ typedef enum pmsub_type
 {
 	PerfmonProc = 0,
 	BackoffProc,
-	PerfmonSegmentInfoProc,
 	MaxPMSubType
 } PMSubType;
 
@@ -410,9 +409,6 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, BackoffProc,
 	(PMSubStartCallback*)&backoff_start,
 	"sweeper process", PMSUBPROC_FLAG_QD_AND_QE, true},
-	{0, PerfmonSegmentInfoProc,
-	(PMSubStartCallback*)&perfmon_segmentinfo_start,
-	"stats sender process", PMSUBPROC_FLAG_QD_AND_QE, true},
 };
 
 static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
@@ -437,6 +433,13 @@ static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
 	 0, /* restart immediately if dtx recovery process exits with non-zero code */
 	 DtxRecoveryMain, {0}, {0}, 0, 0,
 	 DtxRecoveryStartRule},
+
+	{"stats sender process",
+	 BGWORKER_SHMEM_ACCESS,
+	 BgWorkerStart_RecoveryFinished,
+	 0, /* restart immediately if stats sender exits with non-zero code */
+	 SegmentInfoSenderMain, {0}, {0}, 0, 0,
+	 SegmentInfoSenderStartRule},
 };
 
 static bool ReachedNormalRunning = false;		/* T if we've reached PM_RUN */
@@ -1773,8 +1776,6 @@ ServiceStartable(PMSubProc *subProc)
 	 * of both the 'perfmon' and 'stats sender' processes
 	 */
 	if (subProc->procType == PerfmonProc && !gp_enable_gpperfmon)
-		result = 0;
-	else if (subProc->procType == PerfmonSegmentInfoProc && !gp_enable_gpperfmon && !gp_enable_query_metrics)
 		result = 0;
 	else
 		result = ((subProc->flags & flagNeeded) != 0);
