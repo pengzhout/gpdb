@@ -653,7 +653,6 @@ static void ShmemBackendArrayRemove(Backend *bn);
 #define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
 
 /* if we are a QD postmaster or not */
-extern bool Gp_entry_postmaster;
 bool Gp_entry_postmaster = false;
 
 #ifndef WIN32
@@ -7196,6 +7195,21 @@ setProcAffinity(int id)
 	elog(LOG, "gp_set_proc_affinity setting ignored; feature not configured");
 }
 #endif
+
+/*
+ * Master is started once in utility mode by gpstart to fetch segment info,
+ * then it is restarted again to production/dispatch mode with "-E" specified.
+ *
+ * This function checks 1) is master, 2) is under dispatch mode
+ */
+bool
+IsUnderMasterDispatchMode(void)
+{
+	if (Gp_entry_postmaster && Gp_role == GP_ROLE_DISPATCH)
+		return true;
+
+	return false;
+}
 
 void
 load_auxiliary_libraries(void)

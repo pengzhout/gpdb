@@ -77,6 +77,7 @@ typedef int (PMSubStartCallback)(void);
 
 extern void load_auxiliary_libraries(void);
 extern bool amAuxiliaryBgWorker(void);
+extern bool IsUnderMasterDispatchMode(void);
 
 /*
  * Note: MAX_BACKENDS is limited to 2^23-1 because inval.c stores the
