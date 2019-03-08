@@ -202,12 +202,6 @@ typedef struct bkend
 
 static dlist_head BackendList = DLIST_STATIC_INIT(BackendList);
 
-/* CDB */
-typedef enum pmsub_type
-{
-	MaxPMSubType = 0,
-} PMSubType;
-
 #ifdef EXEC_BACKEND
 static Backend *ShmemBackendArray;
 #endif
@@ -372,36 +366,8 @@ static time_t AbortStartTime = 0;
 /* Length of said timeout */
 #define SIGKILL_CHILDREN_AFTER_SECS		5
 
-/* CDB */
-
 /* Set at database system is ready to accept connections */
 pg_time_t PMAcceptingConnectionsStartTime = 0;
-
-typedef enum PMSUBPROC_FLAGS
-{
-	PMSUBPROC_FLAG_QD 					= 0x1,
-	PMSUBPROC_FLAG_QE 					= 0x4,
-	PMSUBPROC_FLAG_QD_AND_QE 			= (PMSUBPROC_FLAG_QD|PMSUBPROC_FLAG_QE),
-} PMSUBPROC_FLAGS;
-
-
-
-typedef struct pmsubproc
-{
-	pid_t		pid;			/* process id (0 when not running) */
-	PMSubType   procType;       /* process type */
-	PMSubStartCallback *serverStart; /* server start function */
-	char       *procName;
-	int        flags;          /* flags indicating in which kind
-							    * of instance to start the process */
-	bool        cleanupBackend; /* flag if process failure should
-								* cause cleanup of backend processes
-								* false = do not cleanup (eg. for gpperfmon) */
-} PMSubProc;
-
-static PMSubProc PMSubProcList[MaxPMSubType] =
-{
-};
 
 static BackgroundWorker PMAuxProcList[MaxPMAuxProc] =
 {
@@ -503,8 +469,6 @@ static void reset_shared(int port);
 static void SIGHUP_handler(SIGNAL_ARGS);
 static void pmdie(SIGNAL_ARGS);
 static void reaper(SIGNAL_ARGS);
-static bool ServiceProcessesExist(int excludeFlags);
-static bool StopServices(int excludeFlags, int signal);
 static void sigusr1_handler(SIGNAL_ARGS);
 static void startup_die(SIGNAL_ARGS);
 static void dummy_handler(SIGNAL_ARGS);
@@ -518,7 +482,6 @@ static void PostmasterStateMachine(void);
 static void BackendInitialize(Port *port);
 static void BackendRun(Port *port) __attribute__((noreturn));
 static void ExitPostmaster(int status) __attribute__((noreturn));
-static bool ServiceStartable(PMSubProc *subProc);
 static int	ServerLoop(void);
 static int	BackendStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool SSLdone);
@@ -1766,26 +1729,6 @@ checkPgDir(const char *dir)
 	}
 }
 
-static bool
-ServiceStartable(PMSubProc *subProc)
-{
-	int flagNeeded;
-	bool result;
-
-	if (Gp_entry_postmaster)
-		flagNeeded = PMSUBPROC_FLAG_QD;
-	else
-		flagNeeded = PMSUBPROC_FLAG_QE;
-
-	/*
-	 * GUC gp_enable_gpperfmon controls the start
-	 * of both the 'perfmon' and 'stats sender' processes
-	 */
-	result = ((subProc->flags & flagNeeded) != 0);
-
-	return result;
-}
-
 /*
  * Determine how long should we let ServerLoop sleep.
  *
@@ -1909,7 +1852,6 @@ ServerLoop(void)
 	{
 		fd_set		rmask;
 		int			selres;
-		int			s;
 		time_t		now;
 
 		/*
@@ -2057,23 +1999,6 @@ ServerLoop(void)
 		if (PgStatPID == 0 &&
 			(pmState == PM_RUN || pmState == PM_HOT_STANDBY))
 			PgStatPID = pgstat_start();
-
-		/* MPP: If we have lost one of our servers, try to start a new one */
-		for (s=0; s < MaxPMSubType; s++)
-		{
-			PMSubProc *subProc = &PMSubProcList[s];
-
-			if (subProc->pid == 0 &&
-				StartupPID == 0 &&
-				pmState > PM_STARTUP &&
-				!FatalError &&
-				Shutdown == NoShutdown &&
-				ServiceStartable(subProc))
-			{
-				subProc->pid =
-					(subProc->serverStart)();
-			}
-		}
 
 		/* If we need to signal the autovacuum launcher, do so now */
 		if (avlauncher_needs_signal)
@@ -3017,17 +2942,6 @@ SIGHUP_handler(SIGNAL_ARGS)
 			signal_child(SysLoggerPID, SIGHUP);
 		if (PgStatPID != 0)
 			signal_child(PgStatPID, SIGHUP);
-		{
-			int ii;
-
-			for (ii=0; ii < MaxPMSubType; ii++)
-			{
-				PMSubProc *subProc = &PMSubProcList[ii];
-
-				if (subProc->pid != 0)
-					signal_child(subProc->pid, SIGHUP);
-			}
-		}
 
 		/* Reload authentication config files too */
 		if (!load_hba())
@@ -3156,9 +3070,6 @@ pmdie(SIGNAL_ARGS)
 			if (WalReceiverPID != 0)
 				signal_child(WalReceiverPID, SIGTERM);
 			SignalUnconnectedWorkers(SIGTERM);
-			/* The GPDB-specific service processes use SIGUSR2 for shutdown. */
-			/* WALREP_FIXME: should switch to using SIGTERM for consistency */
-			StopServices(0, SIGUSR2);
 			if (pmState == PM_RECOVERY)
 			{
 				/*
@@ -3241,10 +3152,8 @@ static void
 reaper(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
-	int         s;
 	int			pid;			/* process id of dead child process */
 	int			exitstatus;		/* its exit status */
-	bool        wasServiceProcess = false;
 
 	PG_SETMASK(&BlockSig);
 
@@ -3363,55 +3272,6 @@ reaper(SIGNAL_ARGS)
 
 			continue;
 		}
-
-		/*
-		 * MPP: Was it one of our servers? If so, just try to start a new one;
-		 * no need to force reset of the rest of the system. (If fail, we'll
-		 * try again in future cycles of the main loop.)
-		 */
-		wasServiceProcess = false;
-		for (s = 0; s < MaxPMSubType; s++)
-		{
-			PMSubProc *subProc = &PMSubProcList[s];
-
-			if (subProc->pid != 0 && pid == subProc->pid)
-			{
-				subProc->pid = 0;
-				if (!EXIT_STATUS_0(exitstatus))
-					LogChildExit(LOG, subProc->procName, pid, exitstatus);
-
-				if (ServiceStartable(subProc))
-				{
-					if (StartupPID == 0 &&
-						!FatalError && Shutdown == NoShutdown)
-					{
-						/*
-						 * Before we attempt a restart -- let's make
-						 * sure that any backend Proc structures are
-						 * tidied up.
-						 */
-						if (subProc->cleanupBackend == true)
-						{
-							Assert(subProc->procName && strcmp(subProc->procName, "perfmon process") != 0);
-							CleanupBackend(pid, exitstatus);
-						}
-
-						/*
-						 * We can't restart during do_reaper() since we may
-						 * initiate a postmaster reset (in which case we'll
-						 * wind up waiting for the restarted process to die).
-						 * Leave the startup to ServerLoop(). (MPP-7676)
-						 */
-					}
-				}
-
-				wasServiceProcess = true;
-				break;
-			}
-		}
-
-		if (wasServiceProcess)
-			continue;
 
 		/*
 		 * Was it the bgwriter?  Normal exit can be ignored; we'll start a new
@@ -3701,43 +3561,6 @@ CleanupBackgroundWorker(int pid,
 	}
 
 	return false;
-}
-
-static bool
-ServiceProcessesExist(int excludeFlags)
-{
-	int s;
-
-	for (s=0; s < MaxPMSubType; s++)
-	{
-		PMSubProc *subProc = &PMSubProcList[s];
-		if (subProc->pid != 0 &&
-			(subProc->flags & excludeFlags) == 0)
-			return true;
-	}
-
-	return false;
-}
-
-static bool
-StopServices(int excludeFlags, int signal)
-{
-	int s;
-	bool signaled = false;
-
-	for (s=0; s < MaxPMSubType; s++)
-	{
-		PMSubProc *subProc = &PMSubProcList[s];
-
-		if (subProc->pid != 0 &&
-			(subProc->flags & excludeFlags) == 0)
-		{
-			signal_child(subProc->pid, signal);
-			signaled = true;
-		}
-	}
-
-	return signaled;
 }
 
 /*
@@ -4186,19 +4009,6 @@ PostmasterStateMachine(void)
 		}
 	}
 
-	if (pmState == PM_WAIT_BACKENDS)
-	{
-		/*
-		 */
-		if (CountChildren(BACKEND_TYPE_NORMAL | BACKEND_TYPE_AUTOVAC) == 0)
-		{
-			/* The GPDB-specific service processes use SIGUSR2 for shutdown. */
-			/* WALREP_FIXME: should switch to using SIGTERM for consistency */
-			StopServices(0, SIGUSR2);
-			pmState = PM_WAIT_BACKENDS;
-		}
-	}
-
 	if (pmState == PM_WAIT_READONLY)
 	{
 		/*
@@ -4245,8 +4055,7 @@ PostmasterStateMachine(void)
 			(CheckpointerPID == 0 ||
 			 (!FatalError && Shutdown < ImmediateShutdown)) &&
 			WalWriterPID == 0 &&
-			AutoVacPID == 0 &&
-			!ServiceProcessesExist(0))
+			AutoVacPID == 0)
 		{
 			if (Shutdown >= ImmediateShutdown || FatalError)
 			{
@@ -4570,7 +4379,6 @@ TerminateChildren(int signal)
 	if (PgStatPID != 0)
 		signal_child(PgStatPID, signal);
 	SignalUnconnectedWorkers(signal);
-	StopServices(0, SIGQUIT);
 }
 
 /*

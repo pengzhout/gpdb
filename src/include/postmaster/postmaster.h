@@ -72,9 +72,6 @@ extern Size ShmemBackendArraySize(void);
 extern void ShmemBackendArrayAllocation(void);
 #endif
 
-/* CDB */
-typedef int (PMSubStartCallback)(void);
-
 extern void load_auxiliary_libraries(void);
 extern bool amAuxiliaryBgWorker(void);
 extern bool IsUnderMasterDispatchMode(void);
