@@ -892,9 +892,6 @@ cdbcomponent_getComponentInfo(int contentId)
 void
 cdb_setup(void)
 {
-	int	i;
-	static const int DtxRecoveryWaitTime = 40;
-
 	elog(DEBUG1, "Initializing Greenplum components...");
 
 	/* If gp_role is UTILITY, skip this call. */
@@ -910,16 +907,12 @@ cdb_setup(void)
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH && !*shmDtmStarted)
 	{
-		for (i = 0; i < DtxRecoveryWaitTime; i++)
+		while (true)
 		{
 			pg_usleep(100 * 1000); /* 100ms */
 			if (*shmDtmStarted)
-				return;
+				break;
 		}
-
-		ereport(FATAL,
-				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
-				 errmsg("the database system is recovering distributed transactions")));
 	}
 }
 
