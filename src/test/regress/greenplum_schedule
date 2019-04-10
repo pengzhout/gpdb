@@ -158,7 +158,15 @@ test: bfv_cte bfv_joins bfv_subquery bfv_planner bfv_legacy bfv_temp bfv_dml
 
 test: qp_olap_mdqa qp_misc gp_recursive_cte qp_dml_joins qp_dml_oids trigger_sets_oid
 
-test: qp_misc_jiras qp_with_clause qp_executor qp_olap_windowerr qp_olap_window qp_derived_table qp_bitmapscan qp_dropped_cols
+# NOTE: qp_misc_jiras access view "pg_partitions" internal which cannot run concurrently
+# with queries which drop a partition table. View "pg_partitions" contains a simple pattern:
+# select pg_get_expr(xxxxx, 'partition_oid') from pg_partition_rule; so if a partition
+# table is dropped between its oid been scanned from pg_partition_rule and opened by
+# pg_get_expr() for first time, the error as below will report.
+# 	ERROR:  relation not found (OID 130643)
+# 	DETAIL:  This can be validly caused by a concurrent delete operation on this object.
+test: qp_misc_jiras 
+test: qp_with_clause qp_executor qp_olap_windowerr qp_olap_window qp_derived_table qp_bitmapscan qp_dropped_cols
 test: qp_with_functional_inlining qp_with_functional_noinlining
 test: qp_functions_in_contexts_setup
 test: qp_misc_rio_join_small qp_misc_rio qp_correlated_query qp_targeted_dispatch qp_gist_indexes2 qp_gist_indexes3 qp_gist_indexes4 qp_query_execution qp_functions_in_from qp_functions_in_select qp_functions_in_subquery qp_functions_in_subquery_column qp_functions_in_subquery_constant qp_functions_in_with
