@@ -44,9 +44,29 @@ select count_of_items_in_database_directory('@testtablespace@/some_isolation2_pg
 
 -- Cleanup things we've created
 0U: select pg_drop_replication_slot('some_replication_slot');
+0Uq:
 drop database some_database_with_tablespace;
 drop database some_database_without_tablespace;
 drop tablespace some_isolation2_pg_basebackup_tablespace;
 !\retcode rm -rf @testtablespace@/some_isolation2_pg_basebackup;
 !\retcode rm -rf @testtablespace@/some_isolation2_pg_basebackup_tablespace/*;
 
+-- Test cases in this file actually created below xlog records:
+--   create tablespace
+--   checkpoint-1
+--   create db
+--   checkpoint-2
+--   drop db
+--   drop tablespace
+-- 
+-- Mirror receive and replay these records, when a checkpoint is replayed, it
+-- doesn't flush anything at that point, instead checkpointer process will perform
+-- a restartpoint later and update the pg_control. If the following cases restart
+-- mirror in immediate mode, the pg_control's latest checkpoint location will still
+-- point to checkpoint-1 and start replay at that point, then replay of "create db"
+-- will fail because the tablespace is gone. 
+-- 
+-- To make sure pg_control's checkpoint location catch up, we do a fast restart
+-- here, so mirror will force a restartpoint before restart.
+--
+!\retcode gpstop -ra -M fast;
