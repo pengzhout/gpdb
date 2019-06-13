@@ -7102,9 +7102,13 @@ cdbpathtoplan_create_motion_plan(PlannerInfo *root,
 		subplan->flow->hashExprs &&
 		is_projection_capable_plan(subplan))
 	{
+		int saved_tlist_len = list_length(subplan->targetlist);
 		subplan->targetlist = add_to_flat_tlist_junk(subplan->targetlist,
 													 subplan->flow->hashExprs,
 													 true /* resjunk */);
+		/* Update targetlist of motion node if subplan extended its targetlist */
+		if (saved_tlist_len != list_length(subplan->targetlist))
+			motion->plan.targetlist = cdbpullup_targetlist(subplan, false /* useExecutorVarFormat */);
 	}
 
 	return motion;
