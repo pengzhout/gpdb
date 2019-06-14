@@ -7094,6 +7094,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo *root,
                                                 : NULL,
                                               subplan);
 
+#if 0
 	/**
 	 * If plan has a flow node, and its child is projection capable,
 	 * then ensure all entries of hashExpr are in the targetlist.
@@ -7110,6 +7111,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo *root,
 		if (saved_tlist_len != list_length(subplan->targetlist))
 			motion->plan.targetlist = cdbpullup_targetlist(subplan, false /* useExecutorVarFormat */);
 	}
+#endif
 
 	return motion;
 }								/* cdbpathtoplan_create_motion_plan */
