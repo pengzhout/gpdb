@@ -637,7 +637,7 @@ DtxRecoveryMain(Datum main_arg)
 	BackgroundWorkerUnblockSignals();
 
 	/* Connect to postgres */
-	BackgroundWorkerInitializeConnection("postgres", NULL);
+	BackgroundWorkerInitializeConnection(DB_FOR_COMMON_ACCESS, NULL);
 
 	/* do the real job of dtx recovery process */
 	StartTransactionCommand();

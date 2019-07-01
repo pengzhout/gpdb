@@ -6983,19 +6983,9 @@ void
 load_auxiliary_libraries(void)
 {
 	BackgroundWorker *worker;
-	slist_mutable_iter iter;
+	slist_iter iter;
 	int	i;
-
-	/* remove remaining auxiliary workers */
-	slist_foreach_modify(iter, &BackgroundWorkerList)
-	{
-		RegisteredBgWorker *rw;
-
-		rw = slist_container(RegisteredBgWorker, rw_lnode, iter.cur);
-
-		if (isAuxiliaryBgWorker(&rw->rw_worker))
-			ForgetBackgroundWorker(&iter);
-	}
+	bool registered;
 
 	/* load all auxiliary workers */
 	for (i = 0; i < MaxPMAuxProc; i++)
@@ -7004,6 +6994,22 @@ load_auxiliary_libraries(void)
 
 		if (worker->bgw_start_rule &&
 			!worker->bgw_start_rule(worker->bgw_main_arg))
+			continue;
+
+		/* skip already registered worker */
+		registered = false;
+		slist_foreach(iter, &BackgroundWorkerList)
+		{
+			RegisteredBgWorker *rw;
+
+			rw = slist_container(RegisteredBgWorker, rw_lnode, iter.cur);
+
+			if (!strcmp(rw->rw_worker.bgw_name, worker->bgw_name) &&
+				rw->rw_worker.bgw_main == worker->bgw_main &&
+				rw->rw_worker.bgw_start_rule == worker->bgw_start_rule)
+				registered = true;
+		}
+		if (registered)
 			continue;
 
 		RegisterBackgroundWorker(worker);
