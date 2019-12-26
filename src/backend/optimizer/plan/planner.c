@@ -382,15 +382,16 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * serializable mode.
 	 */
 	/* GPDB_96_MERGE_FIXME: disable parallel workers for now */
-	glob->parallelModeOK = false;
-	/*
-	 * glob->parallelModeOK = (cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
-	 *         IsUnderPostmaster && dynamic_shared_memory_type != DSM_IMPL_NONE &&
-	 *         parse->commandType == CMD_SELECT && !parse->hasModifyingCTE &&
-	 *         parse->utilityStmt == NULL && max_parallel_workers_per_gather > 0 &&
-	 *         !IsParallelWorker() && !IsolationIsSerializable() &&
-	 *         !has_parallel_hazard((Node *) parse, true);
-	 */
+	//glob->parallelModeOK = false;
+	
+	glob->parallelModeOK = (cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
+	        IsUnderPostmaster && dynamic_shared_memory_type != DSM_IMPL_NONE &&
+	        parse->commandType == CMD_SELECT && !parse->hasModifyingCTE &&
+	        parse->utilityStmt == NULL && max_parallel_workers_per_gather > 0 &&
+	        !IsParallelWorker() && !IsolationIsSerializable() &&
+	        !has_parallel_hazard((Node *) parse, true) &&
+			gp_enable_mpp_plan;
+	
 
 	/*
 	 * glob->parallelModeNeeded should tell us whether it's necessary to
@@ -4402,16 +4403,17 @@ create_grouping_paths(PlannerInfo *root,
 		 */
 		if (grouped_rel->partial_pathlist)
 		{
+			CdbPathLocus gatherLocus;
 			Path	   *path = (Path *) linitial(grouped_rel->partial_pathlist);
 			double		total_groups = path->rows * path->parallel_workers;
 
+#if 0
 			path = (Path *) create_gather_path(root,
 											   grouped_rel,
 											   path,
 											   partial_grouping_target,
 											   NULL,
 											   &total_groups);
-
 			/*
 			 * Gather is always unsorted, so we'll need to sort, unless
 			 * there's no GROUP BY clause, in which case there will only be a
@@ -4423,6 +4425,16 @@ create_grouping_paths(PlannerInfo *root,
 												 path,
 												 root->group_pathkeys,
 												 -1.0);
+#endif
+
+			CdbPathLocus_MakeSingleQE(&gatherLocus, getgpsegmentCount());
+
+			path = cdbpath_create_motion_path(root,
+											  path,
+											  root->group_pathkeys,
+											  false,
+											  gatherLocus,
+											  0);
 
 			if (parse->hasAggs || parse->groupClause)
 				add_path(grouped_rel, (Path *)
@@ -4523,15 +4535,25 @@ create_grouping_paths(PlannerInfo *root,
 									  false, /* force */
 									  &hash_info))
 			{
+				CdbPathLocus gatherLocus;
 				double		total_groups = path->rows * path->parallel_workers;
 
+				CdbPathLocus_MakeSingleQE(&gatherLocus, getgpsegmentCount());
+
+				path = cdbpath_create_motion_path(root,
+												  path,
+												  NIL,
+												  false,
+												  gatherLocus,
+												  0);
+#if 0
 				path = (Path *) create_gather_path(root,
 												   grouped_rel,
 												   path,
 												   partial_grouping_target,
 												   NULL,
 												   &total_groups);
-
+#endif
 				add_path(grouped_rel, (Path *)
 						 create_agg_path(root,
 										 grouped_rel,

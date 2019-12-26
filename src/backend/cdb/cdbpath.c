@@ -795,6 +795,9 @@ cdbpath_match_preds_to_distkey(PlannerInfo *root,
 		!CdbPathLocus_IsHashedOJ(locus))
 		return false;
 
+	if (path->parallel_workers > 0)
+		return false;
+
 	Assert(cdbpathlocus_is_valid(locus));
 
 	ctx.root = root;
@@ -916,7 +919,7 @@ cdbpath_match_preds_to_both_distkeys(PlannerInfo *root,
  *      select_mergejoin_clauses() in joinpath.c
  *      make_pathkeys_for_mergeclauses() in pathkeys.c
  */
-static bool
+bool
 cdbpath_distkeys_from_preds(PlannerInfo *root,
 							List *mergeclause_list,
 							Path *a_path,
@@ -2337,6 +2340,9 @@ try_redistribute(PlannerInfo *root, CdbpathMfjRel *g, CdbpathMfjRel *o,
 	Assert(CdbPathLocus_IsGeneral(g->locus) ||
 		   CdbPathLocus_IsSegmentGeneral(g->locus));
 	Assert(CdbPathLocus_IsPartitioned(o->locus));
+
+	if (o->path->parallel_workers > 0)
+		return false;
 
 	/*
 	 * we cannot add motion if requiring order.

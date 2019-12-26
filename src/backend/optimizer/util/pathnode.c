@@ -858,9 +858,11 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 	}
 	else
 	{
+#if 0
 		/* Reject and recycle the new path */
 		if (!IsA(new_path, IndexPath))
 			pfree(new_path);
+#endif
 	}
 }                               /* add_path */
 
@@ -1123,6 +1125,7 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 				list_delete_cell(parent_rel->partial_pathlist, p1, p1_prev);
 			/* we should not see IndexPaths here, so always safe to delete */
 			Assert(!IsA(old_path, IndexPath));
+
 			pfree(old_path);
 			/* p1_prev does not advance */
 		}
@@ -1157,6 +1160,7 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 	{
 		/* we should not see IndexPaths here, so always safe to delete */
 		Assert(!IsA(new_path, IndexPath));
+
 		/* Reject and recycle the new path */
 		pfree(new_path);
 	}
@@ -3265,6 +3269,7 @@ create_nestloop_path(PlannerInfo *root,
 										 NIL,
 										 outer_must_be_local,
 										 inner_must_be_local);
+
 	if (CdbPathLocus_IsNull(join_locus))
 		return NULL;
 
@@ -3591,6 +3596,7 @@ create_hashjoin_path(PlannerInfo *root,
 										 NIL,
 										 outer_must_be_local,
 										 inner_must_be_local);
+
 	if (CdbPathLocus_IsNull(join_locus))
 		return NULL;
 

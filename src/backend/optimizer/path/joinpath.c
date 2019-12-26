@@ -28,6 +28,7 @@
 
 #include "executor/nodeHash.h"                  /* ExecHashRowSize() */
 #include "cdb/cdbpath.h"                        /* cdbpath_rows() */
+#include "utils/guc.h"
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
 set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
@@ -1308,7 +1309,8 @@ consider_parallel_nestloop(PlannerInfo *root,
 			Path	   *innerpath = (Path *) lfirst(lc2);
 
 			/* Can't join to an inner path that is not parallel-safe */
-			if (!innerpath->parallel_safe)
+			if (!innerpath->parallel_safe &&
+				!gp_enable_mpp_plan)
 				continue;
 
 			/*
@@ -1556,7 +1558,9 @@ hash_inner_and_outer(PlannerInfo *root,
 			 * have to search cheapest_parameterized_paths for the cheapest
 			 * unparameterized inner path.
 			 */
-			if (cheapest_total_inner->parallel_safe)
+			if (gp_enable_mpp_plan)
+				cheapest_safe_inner = cheapest_total_inner;
+			else if (cheapest_total_inner->parallel_safe)
 				cheapest_safe_inner = cheapest_total_inner;
 			else
 			{
@@ -1580,6 +1584,7 @@ hash_inner_and_outer(PlannerInfo *root,
 										  cheapest_partial_outer,
 										  cheapest_safe_inner,
 										  hashclauses, jointype, extra);
+
 		}
 	}
 }
