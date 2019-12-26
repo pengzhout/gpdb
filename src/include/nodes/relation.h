@@ -695,6 +695,10 @@ typedef struct RelOptInfo
 
 	/* used by foreign scan */
 	ForeignTable		*ftEntry;
+
+	/* refer to its mppfied relation */
+	bool	mpp;
+	struct	RelOptInfo	*mpp_rel;
 } RelOptInfo;
 
 /*

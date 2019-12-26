@@ -150,6 +150,8 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->baserestrictcost.per_tuple = 0;
 	rel->joininfo = NIL;
 	rel->has_eclass_joins = false;
+	rel->mpp = false;
+	rel->mpp_rel = NULL;
 
 	/* Check type of rtable entry */
 	switch (rte->rtekind)

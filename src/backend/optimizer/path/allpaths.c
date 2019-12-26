@@ -561,6 +561,9 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	/* Now find the cheapest of the paths for this rel */
 	set_cheapest(rel);
 
+	if (gp_enable_mpp_plan)
+		migrate_mpp_rel(root, rel, NULL);
+
 #ifdef OPTIMIZER_DEBUG
 	debug_print_rel(root, rel);
 #endif

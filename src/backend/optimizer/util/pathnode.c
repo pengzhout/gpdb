@@ -5014,3 +5014,51 @@ reparameterize_path(PlannerInfo *root, Path *path,
 	}
 	return NULL;
 }
+
+void
+migrate_mpp_rel(PlannerInfo *root, RelOptInfo *rel, RelOptInfo *mpp_rel)
+{
+	ListCell	*lc;
+
+	Assert(!rel->mpp);
+
+	if (!mpp_rel)
+	{
+		mpp_rel = makeNode(RelOptInfo);
+		mpp_rel = memcpy(mpp_rel, rel, sizeof(RelOptInfo));
+
+		mpp_rel->mpp = true; 
+		mpp_rel->pathlist = NIL;
+		mpp_rel->partial_pathlist = NIL;
+		mpp_rel->cheapest_startup_path = NULL;
+		mpp_rel->cheapest_total_path = NULL;
+		mpp_rel->cheapest_unique_path = NULL;
+	}
+
+	switch(rel->reloptkind)
+	{
+		/* for baserel, just set mpp_rel->partial_pathlist to rel->pathlist */
+		case RELOPT_BASEREL:
+			mpp_rel->partial_pathlist = rel->pathlist;
+
+		default:
+			elog(ERROR, "unexpected migrate on ");
+	}
+
+	/* rel->pathlist might contians the local-paralleled path, Gather motion it */
+	CdbPathLocus locus;
+	CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
+
+	foreach (lc, rel->pathlist)
+	{
+		Path	*path = (Path *) lfirst(lc);
+
+		path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);	
+
+		add_path(mpp_rel, path);
+	}
+
+	set_cheapest(mpp_rel);
+
+	rel->mpp_rel = mpp_rel;
+}
