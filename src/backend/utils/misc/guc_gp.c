@@ -153,6 +153,7 @@ bool		Debug_datumstream_write_use_small_initial_buffers = false;
 bool		gp_create_table_random_default_distribution = true;
 bool		gp_allow_non_uniform_partitioning_ddl = true;
 bool		gp_enable_exchange_default_partition = false;
+bool		gp_enable_parallelscan = false;
 int			dtx_phase2_retry_count = 0;
 
 bool		log_dispatch_stats = false;
@@ -1900,6 +1901,16 @@ struct config_bool ConfigureNamesBool_gp[] =
 			NULL
 		},
 		&gp_enable_exchange_default_partition,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"gp_enable_parallelscan", PGC_USERSET, COMPAT_OPTIONS,
+			gettext_noop("Enable parallel scan in GPDB"),
+			NULL
+		},
+		&gp_enable_parallelscan,
 		false,
 		NULL, NULL, NULL
 	},
