@@ -52,6 +52,7 @@
 #include "cdb/cdbmutate.h"		/* cdbmutate_warn_ctid_without_segid */
 #include "cdb/cdbpath.h"		/* cdbpath_rows() */
 #include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
 
 // TODO: these planner gucs need to be refactored into PlannerConfig.
 bool		gp_enable_sort_limit = FALSE;
@@ -122,7 +123,7 @@ static void set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				 RangeTblEntry *rte);
 static void set_worktable_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					   RangeTblEntry *rte);
-static RelOptInfo *make_rel_from_joinlist(PlannerInfo *root, List *joinlist);
+static RelOptInfo *make_rel_from_joinlist(PlannerInfo *root, List *joinlist, bool mpp);
 static Query *push_down_restrict(PlannerInfo *root, RelOptInfo *rel,
 				   RangeTblEntry *rte, Index rti, Query *subquery);
 static bool subquery_is_pushdown_safe(Query *subquery, Query *topquery,
@@ -154,6 +155,7 @@ RelOptInfo *
 make_one_rel(PlannerInfo *root, List *joinlist)
 {
 	RelOptInfo *rel;
+	RelOptInfo *mpp_rel;
 	Index		rti;
 
 	/*
@@ -190,7 +192,14 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 	/*
 	 * Generate access paths for the entire join tree.
 	 */
-	rel = make_rel_from_joinlist(root, joinlist);
+	rel = make_rel_from_joinlist(root, joinlist, false);
+
+	if (gp_enable_mpp_plan)
+	{
+		mpp_rel = make_rel_from_joinlist(root, joinlist, true);
+		migrate_mpp_rel(root, rel, mpp_rel);
+		rel = mpp_rel;
+	}
 
 	/*
 	 * The result should join all and only the query's base rels.
@@ -2496,9 +2505,22 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel)
 	 * non-NIL pathkeys.
 	 */
 	cheapest_partial_path = linitial(rel->partial_pathlist);
-	simple_gather_path = (Path *)
-		create_gather_path(root, rel, cheapest_partial_path, rel->reltarget,
-						   NULL, NULL);
+
+	if (!rel->mpp)
+	{
+		simple_gather_path = (Path *)
+			create_gather_path(root, rel, cheapest_partial_path, rel->reltarget,
+							   NULL, NULL);
+	}
+	else
+	{
+		CdbPathLocus locus;
+		CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
+
+		simple_gather_path = (Path *)
+			cdbpath_create_motion_path(root, cheapest_partial_path,
+									   cheapest_partial_path->pathkeys, false, locus);	
+	}
 	add_path(rel, simple_gather_path);
 }
 
@@ -2510,7 +2532,7 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel)
  * data structure.
  */
 static RelOptInfo *
-make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
+make_rel_from_joinlist(PlannerInfo *root, List *joinlist, bool mpp)
 {
 	int			levels_needed;
 	List	   *initial_rels;
@@ -2542,11 +2564,17 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 			int			varno = ((RangeTblRef *) jlnode)->rtindex;
 
 			thisrel = find_base_rel(root, varno);
+
+			if (mpp)
+			{
+				thisrel = thisrel->mpp_rel;
+				Assert(thisrel);
+			}
 		}
 		else if (IsA(jlnode, List))
 		{
 			/* Recurse to handle subproblem */
-			thisrel = make_rel_from_joinlist(root, (List *) jlnode);
+			thisrel = make_rel_from_joinlist(root, (List *) jlnode, mpp);
 		}
 		else
 		{
@@ -2680,6 +2708,9 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 				bring_to_outer_query(root, rel, NIL);
 			}
 
+			if (rel->pathlist == NIL)
+				continue;
+
 			/* Find and save the cheapest paths for this rel */
 			set_cheapest(rel);
 
@@ -2699,6 +2730,8 @@ standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 	rel = (RelOptInfo *) linitial(root->join_rel_level[levels_needed]);
 
 	root->join_rel_level = NULL;
+	root->join_rel_hash = NULL;
+	root->join_rel_list = NIL;
 
 	return rel;
 }

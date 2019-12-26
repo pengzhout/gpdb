@@ -2027,7 +2027,7 @@ create_material_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 {
 	MaterialPath *pathnode = makeNode(MaterialPath);
 
-	Assert(subpath->parent == rel);
+//	Assert(subpath->parent == rel);
 
 	pathnode->path.pathtype = T_Material;
 	pathnode->path.parent = rel;
@@ -5035,27 +5035,46 @@ migrate_mpp_rel(PlannerInfo *root, RelOptInfo *rel, RelOptInfo *mpp_rel)
 		mpp_rel->cheapest_unique_path = NULL;
 	}
 
+	/* update the rows and ntuples */
+	mpp_rel->rows = rel->rows * getgpsegmentCount();
+	mpp_rel->pages = rel->pages * getgpsegmentCount();
+	mpp_rel->tuples = rel->tuples * getgpsegmentCount();
+
+	CdbPathLocus locus;
+	CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
+
 	switch(rel->reloptkind)
 	{
 		/* for baserel, just set mpp_rel->partial_pathlist to rel->pathlist */
 		case RELOPT_BASEREL:
 			mpp_rel->partial_pathlist = rel->pathlist;
 
+			foreach (lc, rel->pathlist)
+			{
+				Path	*path = (Path *) lfirst(lc);
+
+				path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);	
+
+				add_path(mpp_rel, path);
+			}
+			break;
+		case RELOPT_JOINREL:
+			/* 
+			 * Only consider local-paralleled plan.
+			 */
+			foreach (lc, rel->pathlist)
+			{
+				Path	*path = (Path *) lfirst(lc);
+
+				if (!IsA(path, GatherPath))
+					continue;
+
+				path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);	
+				add_path(mpp_rel, path);
+			}
+			break;
 		default:
 			elog(ERROR, "unexpected migrate on ");
-	}
-
-	/* rel->pathlist might contians the local-paralleled path, Gather motion it */
-	CdbPathLocus locus;
-	CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
-
-	foreach (lc, rel->pathlist)
-	{
-		Path	*path = (Path *) lfirst(lc);
-
-		path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);	
-
-		add_path(mpp_rel, path);
 	}
 
 	set_cheapest(mpp_rel);

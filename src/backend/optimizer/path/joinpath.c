@@ -28,6 +28,7 @@
 
 #include "executor/nodeHash.h"                  /* ExecHashRowSize() */
 #include "cdb/cdbpath.h"                        /* cdbpath_rows() */
+#include "utils/guc.h"                        /* cdbpath_rows() */
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
 set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
@@ -35,6 +36,7 @@ set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
 #define PATH_PARAM_BY_REL(path, rel)  \
 	((path)->param_info && bms_overlap(PATH_REQ_OUTER(path), (rel)->relids))
 
+static bool try_join_rel(Path *outer_path, Path *inner_path, bool mpp);
 static void sort_inner_and_outer(PlannerInfo *root, RelOptInfo *joinrel,
 					 RelOptInfo *outerrel, RelOptInfo *innerrel,
 					 JoinType jointype, JoinPathExtraData *extra);
@@ -322,6 +324,9 @@ try_nestloop_path(PlannerInfo *root,
 	Relids		required_outer;
 	JoinCostWorkspace workspace;
 
+	if (!try_join_rel(outer_path, inner_path, joinrel->mpp))
+		return;
+
 	/*
 	 * Check to see if proposed path is still parameterized, and reject if the
 	 * parameterization wouldn't be sensible --- unless allow_star_schema_join
@@ -397,6 +402,9 @@ try_partial_nestloop_path(PlannerInfo *root,
 {
 	JoinCostWorkspace workspace;
 
+	if (!try_join_rel(outer_path, inner_path, joinrel->mpp))
+		return;
+
 	/*
 	 * If the inner path is parameterized, the parameterization must be fully
 	 * satisfied by the proposed outer path.  Parameterized partial paths are
@@ -458,6 +466,9 @@ try_mergejoin_path(PlannerInfo *root,
 {
 	Relids		required_outer;
 	JoinCostWorkspace workspace;
+
+	if (!try_join_rel(outer_path, inner_path, joinrel->mpp))
+		return;
 
 	/*
 	 * Check to see if proposed path is still parameterized, and reject if the
@@ -537,6 +548,9 @@ try_hashjoin_path(PlannerInfo *root,
 	Relids		required_outer;
 	JoinCostWorkspace workspace;
 
+	if (!try_join_rel(outer_path, inner_path, joinrel->mpp))
+		return;
+
 	/*
 	 * Check to see if proposed path is still parameterized, and reject if the
 	 * parameterization wouldn't be sensible.
@@ -599,6 +613,9 @@ try_partial_hashjoin_path(PlannerInfo *root,
 						  JoinPathExtraData *extra)
 {
 	JoinCostWorkspace workspace;
+
+	if (!try_join_rel(outer_path, inner_path, joinrel->mpp))
+		return;
 
 	/*
 	 * If the inner path is parameterized, the parameterization must be fully
@@ -1804,4 +1821,21 @@ select_cdb_redistribute_clauses(PlannerInfo *root,
 	}
 
 	return result_list;
+}
+
+static bool
+try_join_rel(Path *outer_path, Path *inner_path, bool mpp)
+{
+	if (!gp_enable_mpp_plan)
+		return true;
+
+	/* 
+	 * If we are planning the join rel in the segment view, skip the planning if
+	 * if the input rels have different locus, because from the view of segment,
+	 * produced data is not partial of the whole data, instead it's is wrong data
+	 */
+	if (!cdbpathlocus_equal(outer_path->locus, inner_path->locus) && !mpp)
+		return false;
+
+	return true;
 }

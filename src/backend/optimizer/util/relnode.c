@@ -451,6 +451,10 @@ build_join_rel(PlannerInfo *root,
 	joinrel->baserestrictcost.per_tuple = 0;
 	joinrel->joininfo = NIL;
 	joinrel->has_eclass_joins = false;
+	/* xxx */
+	Assert(outer_rel->mpp == inner_rel->mpp);
+	joinrel->mpp = outer_rel->mpp;
+	joinrel->mpp_rel = NULL;
 
 	/* CDB: Join between single-row inputs produces a single-row joinrel. */
 	if (outer_rel->onerow && inner_rel->onerow)
