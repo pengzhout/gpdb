@@ -3596,8 +3596,7 @@ create_hashjoin_path(PlannerInfo *root,
 	}
 	else
 	{
-		Assert(cdbpathlocus_equal(outer_path->locus, inner_path->locus));
-		join_locus = outer_path->locus;
+		join_locus = inner_path->locus;
 	}
 
 	if (CdbPathLocus_IsNull(join_locus))

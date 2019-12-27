@@ -721,6 +721,8 @@ try_partial_hashjoin_path_gp(PlannerInfo *root,
 {
 	Path	   *cheapest_partial_outer;
 	Path	   *cheapest_partial_inner;
+	CdbPathLocus	partial_outerlocus;
+	CdbPathLocus	partial_innerlocus;
 	CdbPathLocus	outer_targetlocus;
 	CdbPathLocus	inner_targetlocus;
 	List			*outer_distkeys;
@@ -732,12 +734,49 @@ try_partial_hashjoin_path_gp(PlannerInfo *root,
 		(Path *) linitial(outerrel->partial_pathlist);
 	cheapest_partial_inner =
 		(Path *) linitial(outerrel->partial_pathlist);
+
 	target_numsegments = cheapest_partial_outer->locus.numsegments;
+
+	partial_outerlocus = cheapest_partial_outer->locus;
+	partial_innerlocus = cheapest_partial_inner->locus;
 
 	if (cheapest_partial_inner == NULL)
 		return;
 
-	/* First, try broadcast cheapest partial inner path */
+	/* 
+	 * First, handle non-partition join with non-partition, 
+	 * we might need to add a Gather Motion in inner path
+	 */
+	if (!CdbPathLocus_IsPartitioned(partial_outerlocus))
+	{
+		/* next turn the outer will be inner, let's plan then */
+		if (CdbPathLocus_IsPartitioned(partial_innerlocus))
+			return;
+
+		if CdbPathLocus_IsBottleneck(partial_outerlocus)
+		{
+			inner_targetlocus = partial_outerlocus;
+
+			cheapest_partial_inner =
+				cdbpath_create_motion_path(root, cheapest_partial_inner, NIL, false, inner_targetlocus);
+		}
+		else if (CdbPathLocus_IsSegmentGeneral(partial_outerlocus))
+		{
+			CdbPathLocus_MakeSingleQE(&inner_targetlocus, target_numsegments);
+
+			cheapest_partial_inner =
+				cdbpath_create_motion_path(root, cheapest_partial_inner, NIL, false, inner_targetlocus);
+		}
+
+		try_partial_hashjoin_path(root, joinrel,
+								  cheapest_partial_outer,
+								  cheapest_partial_inner,
+								  hashclauses, jointype, extra);
+
+		return;
+	}
+
+	/* Second, try broadcast cheapest partial inner path to cheapest outer path */
 	CdbPathLocus_MakeReplicated(&inner_targetlocus,
 								target_numsegments);
 
@@ -751,7 +790,7 @@ try_partial_hashjoin_path_gp(PlannerInfo *root,
 
 
 	/* 
-	 * Second, if join has restriction info, try redistribute
+	 * Third, if join has restriction info, try redistribute
 	 * both partial outer and inner path with restriction info
 	 */
 	foreach(lc, extra->redistribution_clauses)
@@ -762,17 +801,25 @@ try_partial_hashjoin_path_gp(PlannerInfo *root,
 
 		if (bms_is_subset(rinfo->right_relids, outerrel->relids))
 		{
-			outer_distkeys = makeDistributionKeyForEC(rinfo->right_ec,
-												linitial_oid(rinfo->right_ec->ec_opfamilies));
-			inner_distkeys = makeDistributionKeyForEC(rinfo->left_ec,
-												linitial_oid(rinfo->left_ec->ec_opfamilies));
+			outer_distkeys =
+				lappend(outer_distkeys,
+						makeDistributionKeyForEC(rinfo->right_ec,
+												 linitial_oid(rinfo->right_ec->ec_opfamilies)));
+			inner_distkeys =
+				lappend(inner_distkeys,
+						makeDistributionKeyForEC(rinfo->left_ec,
+												 linitial_oid(rinfo->left_ec->ec_opfamilies)));
 		}
 		else
 		{
-			outer_distkeys = makeDistributionKeyForEC(rinfo->left_ec,
-												linitial_oid(rinfo->right_ec->ec_opfamilies));
-			inner_distkeys = makeDistributionKeyForEC(rinfo->right_ec,
-												linitial_oid(rinfo->left_ec->ec_opfamilies));
+			outer_distkeys =
+				lappend(outer_distkeys,
+						makeDistributionKeyForEC(rinfo->left_ec,
+												 linitial_oid(rinfo->right_ec->ec_opfamilies)));
+			inner_distkeys =
+				lappend(inner_distkeys,
+						makeDistributionKeyForEC(rinfo->right_ec,
+												 linitial_oid(rinfo->left_ec->ec_opfamilies)));
 		}
 
 		CdbPathLocus_MakeHashed(&outer_targetlocus,
