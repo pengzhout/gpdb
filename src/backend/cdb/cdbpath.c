@@ -624,7 +624,7 @@ typedef struct
 /*
  * A helper function to create a DistributionKey for an EquivalenceClass.
  */
-static DistributionKey *
+DistributionKey *
 makeDistributionKeyForEC(EquivalenceClass *eclass, Oid opfamily)
 {
 	DistributionKey *dk = makeNode(DistributionKey);

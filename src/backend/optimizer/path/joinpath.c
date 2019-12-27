@@ -658,6 +658,142 @@ try_partial_hashjoin_path(PlannerInfo *root,
 										  hashclauses));
 }
 
+static void
+try_partial_hashjoin_path_pg(PlannerInfo *root,
+							 RelOptInfo *joinrel,
+							 RelOptInfo *outerrel,
+							 RelOptInfo *innerrel,
+							 List *hashclauses,
+							 JoinType jointype,
+							 JoinPathExtraData *extra)
+{
+	Path	   *cheapest_partial_outer;
+	Path	   *cheapest_safe_inner = NULL;
+	Path	   *cheapest_total_inner = innerrel->cheapest_total_path;
+
+	cheapest_partial_outer =
+		(Path *) linitial(outerrel->partial_pathlist);
+
+	/*
+	 * Normally, given that the joinrel is parallel-safe, the cheapest
+	 * total inner path will also be parallel-safe, but if not, we'll
+	 * have to search cheapest_parameterized_paths for the cheapest
+	 * unparameterized inner path.
+	 */
+	if (cheapest_total_inner->parallel_safe)
+		cheapest_safe_inner = cheapest_total_inner;
+	else
+	{
+		ListCell   *lc;
+
+		foreach(lc, innerrel->cheapest_parameterized_paths)
+		{
+			Path	   *innerpath = (Path *) lfirst(lc);
+
+			if (innerpath->parallel_safe &&
+				bms_is_empty(PATH_REQ_OUTER(innerpath)))
+			{
+				cheapest_safe_inner = innerpath;
+				break;
+			}
+		}
+	}
+
+	if (cheapest_safe_inner != NULL)
+		try_partial_hashjoin_path(root, joinrel,
+								  cheapest_partial_outer,
+								  cheapest_safe_inner,
+								  hashclauses, jointype, extra);
+}
+
+/* 
+ * in GPDB, we have redistribution and broadcase motion,
+ * so we can do more about partial path
+ */
+static void
+try_partial_hashjoin_path_gp(PlannerInfo *root,
+							 RelOptInfo *joinrel,
+							 RelOptInfo *outerrel,
+							 RelOptInfo *innerrel,
+							 List *hashclauses,
+							 JoinType jointype,
+							 JoinPathExtraData *extra)
+{
+	Path	   *cheapest_partial_outer;
+	Path	   *cheapest_partial_inner;
+	CdbPathLocus	outer_targetlocus;
+	CdbPathLocus	inner_targetlocus;
+	List			*outer_distkeys;
+	List			*inner_distkeys;
+	ListCell		*lc;
+	int				target_numsegments;
+
+	cheapest_partial_outer =
+		(Path *) linitial(outerrel->partial_pathlist);
+	cheapest_partial_inner =
+		(Path *) linitial(outerrel->partial_pathlist);
+	target_numsegments = cheapest_partial_outer->locus.numsegments;
+
+	if (cheapest_partial_inner == NULL)
+		return;
+
+	/* First, try broadcast cheapest partial inner path */
+	CdbPathLocus_MakeReplicated(&inner_targetlocus,
+								target_numsegments);
+
+	cheapest_partial_inner =
+		cdbpath_create_motion_path(root, cheapest_partial_inner, NIL, false, inner_targetlocus);
+
+	try_partial_hashjoin_path(root, joinrel,
+							  cheapest_partial_outer,
+							  cheapest_partial_inner,
+							  hashclauses, jointype, extra);
+
+
+	/* 
+	 * Second, if join has restriction info, try redistribute
+	 * both partial outer and inner path with restriction info
+	 */
+	foreach(lc, extra->redistribution_clauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		update_mergeclause_eclasses(root, rinfo);
+
+		if (bms_is_subset(rinfo->right_relids, outerrel->relids))
+		{
+			outer_distkeys = makeDistributionKeyForEC(rinfo->right_ec,
+												linitial_oid(rinfo->right_ec->ec_opfamilies));
+			inner_distkeys = makeDistributionKeyForEC(rinfo->left_ec,
+												linitial_oid(rinfo->left_ec->ec_opfamilies));
+		}
+		else
+		{
+			outer_distkeys = makeDistributionKeyForEC(rinfo->left_ec,
+												linitial_oid(rinfo->right_ec->ec_opfamilies));
+			inner_distkeys = makeDistributionKeyForEC(rinfo->right_ec,
+												linitial_oid(rinfo->left_ec->ec_opfamilies));
+		}
+
+		CdbPathLocus_MakeHashed(&outer_targetlocus,
+								outer_distkeys,
+								target_numsegments);
+		CdbPathLocus_MakeHashed(&inner_targetlocus,
+								inner_distkeys,
+								target_numsegments);
+
+		cheapest_partial_inner =
+			cdbpath_create_motion_path(root, cheapest_partial_inner, NIL, false, inner_targetlocus);
+		cheapest_partial_outer =
+			cdbpath_create_motion_path(root, cheapest_partial_outer, NIL, false, outer_targetlocus);
+
+		try_partial_hashjoin_path(root, joinrel,
+								  cheapest_partial_outer,
+								  cheapest_partial_inner,
+								  hashclauses, jointype, extra);
+	}
+}
+
 /*
  * clause_sides_match_join
  *	  Determine whether a join clause is of the right form to use in this join.
@@ -1561,44 +1697,20 @@ hash_inner_and_outer(PlannerInfo *root,
 			outerrel->partial_pathlist != NIL &&
 			bms_is_empty(joinrel->lateral_relids))
 		{
-			Path	   *cheapest_partial_outer;
-			Path	   *cheapest_safe_inner = NULL;
-
-			cheapest_partial_outer =
-				(Path *) linitial(outerrel->partial_pathlist);
-
-			/*
-			 * Normally, given that the joinrel is parallel-safe, the cheapest
-			 * total inner path will also be parallel-safe, but if not, we'll
-			 * have to search cheapest_parameterized_paths for the cheapest
-			 * unparameterized inner path.
-			 */
 			if (joinrel->mpp)
-				cheapest_safe_inner = cheapest_total_inner;
-			else if (cheapest_total_inner->parallel_safe)
-				cheapest_safe_inner = cheapest_total_inner;
+				try_partial_hashjoin_path_gp(root, joinrel,
+											 outerrel,
+											 innerrel,
+											 hashclauses,
+											 jointype,
+											 extra);
 			else
-			{
-				ListCell   *lc;
-
-				foreach(lc, innerrel->cheapest_parameterized_paths)
-				{
-					Path	   *innerpath = (Path *) lfirst(lc);
-
-					if (innerpath->parallel_safe &&
-						bms_is_empty(PATH_REQ_OUTER(innerpath)))
-					{
-						cheapest_safe_inner = innerpath;
-						break;
-					}
-				}
-			}
-
-			if (cheapest_safe_inner != NULL)
-				try_partial_hashjoin_path(root, joinrel,
-										  cheapest_partial_outer,
-										  cheapest_safe_inner,
-										  hashclauses, jointype, extra);
+				try_partial_hashjoin_path_pg(root, joinrel,
+											 outerrel,
+											 innerrel,
+											 hashclauses,
+											 jointype,
+											 extra);
 		}
 	}
 }

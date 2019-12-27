@@ -2536,4 +2536,6 @@ typedef struct JoinCostWorkspace
 	int			numbatches;
 } JoinCostWorkspace;
 
+
+extern DistributionKey* makeDistributionKeyForEC(EquivalenceClass *eclass, Oid opfamily);
 #endif   /* RELATION_H */
