@@ -3582,15 +3582,24 @@ create_hashjoin_path(PlannerInfo *root,
 	bool		inner_must_be_local = !bms_is_empty(PATH_REQ_OUTER(inner_path));
 
 	/* Add motion nodes above subpaths and decide where to join. */
-	join_locus = cdbpath_motion_for_join(root,
-										 jointype,
-										 &outer_path,       /* INOUT */
-										 &inner_path,       /* INOUT */
-										 redistribution_clauses,
-										 NIL,   /* don't care about ordering */
-										 NIL,
-										 outer_must_be_local,
-										 inner_must_be_local);
+	if (!gp_enable_mpp_plan)
+	{
+		join_locus = cdbpath_motion_for_join(root,
+											 jointype,
+											 &outer_path,       /* INOUT */
+											 &inner_path,       /* INOUT */
+											 redistribution_clauses,
+											 NIL,   /* don't care about ordering */
+											 NIL,
+											 outer_must_be_local,
+											 inner_must_be_local);
+	}
+	else
+	{
+		Assert(cdbpathlocus_equal(outer_path->locus, inner_path->locus));
+		join_locus = outer_path->locus;
+	}
+
 	if (CdbPathLocus_IsNull(join_locus))
 		return NULL;
 
