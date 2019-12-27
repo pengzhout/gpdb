@@ -1573,7 +1573,9 @@ hash_inner_and_outer(PlannerInfo *root,
 			 * have to search cheapest_parameterized_paths for the cheapest
 			 * unparameterized inner path.
 			 */
-			if (cheapest_total_inner->parallel_safe)
+			if (joinrel->mpp)
+				cheapest_safe_inner = cheapest_total_inner;
+			else if (cheapest_total_inner->parallel_safe)
 				cheapest_safe_inner = cheapest_total_inner;
 			else
 			{
