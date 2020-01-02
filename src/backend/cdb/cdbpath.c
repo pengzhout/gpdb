@@ -436,7 +436,13 @@ cdbpath_create_motion_path(PlannerInfo *root,
 	/* Motion doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
 	pathnode->path.locus = locus;
-	pathnode->path.rows = subpath->rows;
+
+	if (gp_enable_mpp_plan &&
+		CdbPathLocus_IsBottleneck(locus) &&
+		CdbPathLocus_IsPartitioned(subpath->locus))
+		pathnode->path.rows = subpath->rows * subpath->locus.numsegments;
+	else
+		pathnode->path.rows = subpath->rows;
 	pathnode->path.pathkeys = pathkeys;
 
 	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried

@@ -593,6 +593,13 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 
 	elog(DEBUG2, "cdb_estimate_rel_size estimated %g tuples, %d pages, and"
 		" %f allvisfrac", *tuples, (int) *pages, *allvisfrac);
+
+    if (gp_enable_mpp_plan &&
+		GpPolicyIsPartitioned(relOptInfo->cdbpolicy))
+    {
+		*tuples = *tuples / relOptInfo->cdbpolicy->numsegments;
+		*pages = *pages / relOptInfo->cdbpolicy->numsegments;
+    }
 }
 
 /*
