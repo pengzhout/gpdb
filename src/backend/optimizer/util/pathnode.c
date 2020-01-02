@@ -20,6 +20,7 @@
 
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
@@ -848,6 +849,15 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			break;
 	}
 
+	if (gp_enable_mpp_plan)
+		elog(WARNING, "        : %s, %s, start_cost: %20lf, total_cost: %20lf, %s",
+			 parent_rel->reloptkind == RELOPT_BASEREL ? "baserel" :
+			 parent_rel->reloptkind == RELOPT_JOINREL ? "joinrel" : "upperel",
+			 plannode_type((Plan *)(&new_path->pathtype)),
+			 new_path->startup_cost, new_path->total_cost,
+			 accept_new ? "accepted" : "rejected"
+			 );
+
 	if (accept_new)
 	{
 		/* Accept the new path: insert it at proper place in pathlist */
@@ -1147,6 +1157,16 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 			break;
 	}
 
+	if (gp_enable_mpp_plan)
+		elog(WARNING, "partial : %s, %s, start_cost: %20lf, total_cost: %20lf, %s",
+			 parent_rel->reloptkind == RELOPT_BASEREL ? "baserel" :
+			 parent_rel->reloptkind == RELOPT_JOINREL ? "joinrel" : "upperel",
+			 plannode_type((Plan*)(&new_path->pathtype)),
+			 new_path->startup_cost, new_path->total_cost,
+			 accept_new ? "accepted" : "rejected"
+			 );
+
+
 	if (accept_new)
 	{
 		/* Accept the new path: insert it at proper place */
@@ -1164,6 +1184,7 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 		/* Reject and recycle the new path */
 		pfree(new_path);
 	}
+
 }
 
 /*
