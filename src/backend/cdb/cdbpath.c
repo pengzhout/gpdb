@@ -78,6 +78,10 @@ cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 
 	if (CdbPathLocus_IsReplicated(motionpath->path.locus))
 		motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(motionpath->path.locus);
+	else if (gp_enable_mpp_plan &&
+			 CdbPathLocus_IsBottleneck(motionpath->path.locus) &&
+			 CdbPathLocus_IsPartitioned(subpath->locus))
+		motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(subpath->locus);
 	else
 		motionpath->path.rows = subpath->rows;
 
@@ -437,12 +441,6 @@ cdbpath_create_motion_path(PlannerInfo *root,
 	pathnode->path.pathtarget = subpath->pathtarget;
 	pathnode->path.locus = locus;
 
-	if (gp_enable_mpp_plan &&
-		CdbPathLocus_IsBottleneck(locus) &&
-		CdbPathLocus_IsPartitioned(subpath->locus))
-		pathnode->path.rows = subpath->rows * subpath->locus.numsegments;
-	else
-		pathnode->path.rows = subpath->rows;
 	pathnode->path.pathkeys = pathkeys;
 
 	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
