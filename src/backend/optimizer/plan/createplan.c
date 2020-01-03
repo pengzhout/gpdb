@@ -335,7 +335,7 @@ create_plan(PlannerInfo *root, Path *best_path)
 	}
 
 	/* Decorate the top node of the plan with a Flow node. */
-	plan->flow = cdbpathtoplan_create_flow(root, best_path->locus, plan);
+	plan->flow = cdbpathtoplan_create_flow(root, best_path->locus, plan, best_path->parallel_workers);
 
 	/*
 	 * Attach any initPlans created in this query level to the topmost plan
@@ -727,7 +727,7 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 	}
 
 	/* Decorate the top node of the plan with a Flow node. */
-	plan->flow = cdbpathtoplan_create_flow(root, best_path->locus, plan);
+	plan->flow = cdbpathtoplan_create_flow(root, best_path->locus, plan, best_path->parallel_workers);
 
 	/*
 	 * If there are any pseudoconstant clauses attached to this node, insert a
@@ -1013,7 +1013,7 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 		best_path->outerjoinpath->motionHazard)
 		((Join *) plan)->prefetch_joinqual = true;
 
-	plan->flow = cdbpathtoplan_create_flow(root, best_path->path.locus, plan);
+	plan->flow = cdbpathtoplan_create_flow(root, best_path->path.locus, plan, best_path->path.parallel_workers);
 
 	/*
 	 * If there are any pseudoconstant clauses attached to this node, insert a
@@ -1109,7 +1109,8 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path)
 
 	plan->plan.flow = cdbpathtoplan_create_flow(root,
 												best_path->path.locus,
-												&plan->plan);
+												&plan->plan,
+												best_path->path.parallel_workers);
 
 	return (Plan *) plan;
 }
@@ -1221,7 +1222,8 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path)
 
 	node->plan.flow = cdbpathtoplan_create_flow(root,
 												best_path->path.locus,
-												&node->plan);
+												&node->plan,
+												best_path->path.parallel_workers);
 
 	return (Plan *) node;
 }
@@ -1253,7 +1255,8 @@ create_result_plan(PlannerInfo *root, ResultPath *best_path)
 	/* Decorate the top node of the plan with a Flow node. */
 	plan->plan.flow = cdbpathtoplan_create_flow(root,
 												best_path->path.locus,
-												(Plan *) plan);
+												(Plan *) plan,
+												best_path->path.parallel_workers);
 
 	return plan;
 }
@@ -2392,7 +2395,8 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 
 	plan->plan.flow = cdbpathtoplan_create_flow(root,
 												best_path->path.locus,
-												&plan->plan);
+												&plan->plan,
+												best_path->path.parallel_workers);
 
 	/*
 	 * GPDB_96_MERGE_FIXME: is this needed here? I think we set directDispatch later in the
@@ -2691,7 +2695,8 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 
 	scan_plan->plan.flow = cdbpathtoplan_create_flow(root,
 													 best_path->locus,
-													 &scan_plan->plan);
+													 &scan_plan->plan,
+													 best_path->parallel_workers);
 
 	return scan_plan;
 }
@@ -8273,10 +8278,12 @@ cdbpathtoplan_create_motion_plan(PlannerInfo *root,
      */
     subplan->flow = cdbpathtoplan_create_flow(root,
                                               subpath->locus,
-                                              subplan);
+                                              subplan,
+											  subpath->parallel_workers);
 
 	/* Remember that this subtree contains a Motion */
 	root->numMotions++;
 
+	motion->plan.flow->parallel_workers = path->path.parallel_workers;
 	return motion;
 }								/* cdbpathtoplan_create_motion_plan */

@@ -407,7 +407,8 @@ create_motion_for_top_plan(PlannerInfo *root, Path *best_path, bool *needToAssig
 												   best_path,
 												   NIL,
 												   false,
-												   replicatedLocus);
+												   replicatedLocus,
+												   0);
 		}
 		else
 		{
@@ -447,7 +448,8 @@ create_motion_for_top_plan(PlannerInfo *root, Path *best_path, bool *needToAssig
 												   best_path,
 												   NIL,
 												   false,
-												   broadcastLocus);
+												   broadcastLocus,
+												   0);
 		}
 		else
 		{
@@ -517,7 +519,8 @@ create_motion_for_top_plan(PlannerInfo *root, Path *best_path, bool *needToAssig
 											   best_path,
 											   root->sort_pathkeys,
 											   false,
-											   entryLocus);
+											   entryLocus,
+											   0);
 	}
 
 	return best_path;
@@ -976,6 +979,7 @@ pull_up_Flow(Plan *plan, Plan *subplan)
 		new_flow->segindex = model_flow->segindex;
 
 	new_flow->locustype = model_flow->locustype;
+	new_flow->parallel_workers = model_flow->parallel_workers;
 
 	return new_flow;
 }

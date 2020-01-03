@@ -1978,7 +1978,7 @@ set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
 		}
 		else
 		{
-			subpath = cdbpath_create_motion_path(root, subpath, pathkeys, false, targetlocus);
+			subpath = cdbpath_create_motion_path(root, subpath, pathkeys, false, targetlocus, 0);
 		}
 
 		pathnode->sameslice_relids = bms_union(pathnode->sameslice_relids, subpath->sameslice_relids);
@@ -2147,7 +2147,7 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 		}
 
 		locus = cdbpathlocus_from_exprs(root, sjinfo->semi_rhs_exprs, opfamilies, sortrefs, numsegments);
-        subpath = cdbpath_create_motion_path(root, subpath, NIL, false, locus);
+        subpath = cdbpath_create_motion_path(root, subpath, NIL, false, locus, 0);
 		/*
 		 * We probably add agg/sort node above the added motion node, but it is
 		 * possible to add an agg/sort node below this motion node also,

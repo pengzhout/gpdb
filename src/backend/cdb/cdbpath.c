@@ -77,7 +77,11 @@ cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 	double		sendrows;
 
 	if (CdbPathLocus_IsReplicated(motionpath->path.locus))
+	{
 		motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(motionpath->path.locus);
+		if (motionpath->path.parallel_workers > 0)
+			motionpath->path.rows = motionpath->path.rows * motionpath->path.parallel_workers;
+	}
 	else if (gp_enable_mpp_plan &&
 			 CdbPathLocus_IsBottleneck(motionpath->path.locus) &&
 			 CdbPathLocus_IsPartitioned(subpath->locus))
@@ -121,13 +125,17 @@ cdbpath_create_motion_path(PlannerInfo *root,
 						   Path *subpath,
 						   List *pathkeys,
 						   bool require_existing_order,
-						   CdbPathLocus locus)
+						   CdbPathLocus locus,
+						   int parallel_workers)
 {
 	CdbMotionPath *pathnode;
 	int numsegments;
 
 	Assert(cdbpathlocus_is_valid(locus) &&
 		   cdbpathlocus_is_valid(subpath->locus));
+
+	AssertImply(parallel_workers > 0, CdbPathLocus_IsPartitioned(locus) ||
+									  CdbPathLocus_IsReplicated(locus));
 
 	numsegments = CdbPathLocus_CommonSegments(subpath->locus, locus);
 	Assert(numsegments > 0);
@@ -450,7 +458,7 @@ cdbpath_create_motion_path(PlannerInfo *root,
 	 */
 	pathnode->path.parallel_aware = false;
 	pathnode->path.parallel_safe = subpath->parallel_safe;
-	pathnode->path.parallel_workers = subpath->parallel_workers;
+	pathnode->path.parallel_workers = parallel_workers;
 
 	pathnode->subpath = subpath;
 	pathnode->is_explicit_motion = false;
@@ -1774,7 +1782,9 @@ cdbpath_motion_for_join(PlannerInfo *root,
 												outer.path,
 												outer_pathkeys,
 												outer.require_existing_order,
-												outer.move_to);
+												outer.move_to,
+												Max(inner.path->parallel_workers,
+													outer.path->parallel_workers));
 		if (!outer.path)		/* fail if outer motion not feasible */
 			goto fail;
 	}
@@ -1788,7 +1798,9 @@ cdbpath_motion_for_join(PlannerInfo *root,
 												inner.path,
 												inner_pathkeys,
 												inner.require_existing_order,
-												inner.move_to);
+												inner.move_to,
+												Max(inner.path->parallel_workers,
+													outer.path->parallel_workers));
 		if (!inner.path)		/* fail if inner motion not feasible */
 			goto fail;
 	}
@@ -1973,7 +1985,8 @@ cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx
 														 uniquePath->subpath,
 														 NIL,
 														 false,
-														 locus);
+														 locus,
+														 0);
 		Insist(uniquePath->subpath);
 		uniquePath->path.locus = uniquePath->subpath->locus;
 		uniquePath->path.motionHazard = uniquePath->subpath->motionHazard;
@@ -2480,7 +2493,7 @@ create_motion_path_for_ctas(PlannerInfo *root, GpPolicy *policy, Path *subpath)
 		CdbPathLocus targetLocus;
 
 		CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments);
-		return cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
+		return cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus, 0);
 	}
 	else
 		return create_motion_path_for_insert(root, policy, subpath);
@@ -2530,7 +2543,7 @@ create_motion_path_for_insert(PlannerInfo *root, GpPolicy *policy,
 			if(targetLocus.numsegments != subpath->locus.numsegments)
 			{
 				CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments);
-				subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
+				subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus, 0);
 			}
 		}
 		else if (CdbPathLocus_IsNull(targetLocus))
@@ -2542,7 +2555,7 @@ create_motion_path_for_insert(PlannerInfo *root, GpPolicy *policy,
 		}
 		else
 		{
-			subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
+			subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus, 0);
 		}
 	}
 	else if (policyType == POLICYTYPE_ENTRY)
@@ -2551,7 +2564,7 @@ create_motion_path_for_insert(PlannerInfo *root, GpPolicy *policy,
 		 * Query result needs to be brought back to the QD.
 		 */
 		CdbPathLocus_MakeEntry(&targetLocus);
-		subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
+		subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus, 0);
 	}
 	else if (policyType == POLICYTYPE_REPLICATED)
 	{
@@ -2635,7 +2648,7 @@ create_motion_path_for_delete(PlannerInfo *root, GpPolicy *policy,
 	{
 		/* Master-only table */
 		CdbPathLocus_MakeEntry(&targetLocus);
-		subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
+		subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus, 0);
 	}
 	else if (policyType == POLICYTYPE_REPLICATED)
 	{
@@ -2668,7 +2681,7 @@ create_motion_path_for_update(PlannerInfo *root, GpPolicy *policy,
 	{
 		/* Master-only table */
 		CdbPathLocus_MakeEntry(&targetLocus);
-		subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
+		subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus, 0);
 	}
 	else if (policyType == POLICYTYPE_REPLICATED)
 	{
@@ -2766,7 +2779,7 @@ create_split_update_path(PlannerInfo *root, Index rti, GpPolicy *policy, Path *s
 	{
 		/* Master-only table */
 		CdbPathLocus_MakeEntry(&targetLocus);
-		subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
+		subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus, 0);
 	}
 	else if (policyType == POLICYTYPE_REPLICATED)
 	{

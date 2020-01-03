@@ -498,7 +498,7 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 
 		pathkeys = sorted_path->pathkeys;
 		sorted_path = cdbpath_create_motion_path(root, sorted_path, sorted_path->pathkeys,
-												 false, singleQE);
+												 false, singleQE, 0);
 		/*
 		 * Sanity check that order was preserved. (Given how cdbpath_create_motion_path() is
 		 * implemented, pointer equality is enough here, but in principle we should be

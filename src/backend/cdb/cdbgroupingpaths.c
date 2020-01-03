@@ -267,7 +267,8 @@ add_twostage_group_agg_path(PlannerInfo *root,
 									  initial_agg_path,
 									  initial_agg_path->pathkeys,
 									  false,
-									  singleQE_locus);
+									  singleQE_locus,
+									  0);
 
 	path = (Path *) create_agg_path(root,
 									output_rel,
@@ -330,7 +331,7 @@ add_twostage_hash_agg_path(PlannerInfo *root,
 	 * HashAgg -> Redistribute or Gather Motion -> HashAgg.
 	 */
 	path = cdbpath_create_motion_path(root, initial_agg_path, NIL, false,
-									  group_locus);
+									  group_locus, 0);
 
 	path = (Path *) create_agg_path(root,
 									output_rel,
@@ -579,7 +580,7 @@ add_single_dqa_hash_agg_path(PlannerInfo *root,
 
 		if (group_need_redistribute)
 			path = cdbpath_create_motion_path(root, path, NIL, false,
-											  group_locus);
+											  group_locus, 0);
 
 		path = (Path *) create_agg_path(root,
 										output_rel,
@@ -623,7 +624,7 @@ add_single_dqa_hash_agg_path(PlannerInfo *root,
 											&hash_info);
 
 		path = cdbpath_create_motion_path(root, path, NIL, false,
-										  group_locus);
+										  group_locus, 0);
 		path = (Path *) create_agg_path(root,
 										output_rel,
 										path,
@@ -676,7 +677,7 @@ add_single_dqa_hash_agg_path(PlannerInfo *root,
 										&hash_info);
 
 		path = cdbpath_create_motion_path(root, path, NIL, false,
-										  distinct_locus);
+										  distinct_locus, 0);
 		path = (Path *) create_agg_path(root,
 										output_rel,
 										path,
@@ -703,7 +704,7 @@ add_single_dqa_hash_agg_path(PlannerInfo *root,
 										ctx->dNumGroups * getgpsegmentCount(),
 										&hash_info);
 		path = cdbpath_create_motion_path(root, path, NIL, false,
-										  group_locus);
+										  group_locus, 0);
 
 		path = (Path *) create_agg_path(root,
 										output_rel,

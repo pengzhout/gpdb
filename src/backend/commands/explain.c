@@ -1481,6 +1481,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					{
 						/* Otherwise find out sender size from outer plan */
 						motion_snd = plan->lefttree->flow->numsegments;
+
+						if (plan->lefttree->flow->parallel_workers > 0)
+							motion_snd = motion_snd * plan->lefttree->flow->parallel_workers;
 					}
 
 					if (pMotion->motionType == MOTIONTYPE_GATHER ||
@@ -1493,6 +1496,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					{
 						/* Otherwise find out receiver size from plan */
 						motion_recv = plan->flow->numsegments;
+
+						if (plan->flow->parallel_workers > 0)
+							motion_recv = motion_recv * plan->flow->parallel_workers;
 					}
 				}
 

@@ -462,7 +462,8 @@ bring_to_outer_query(PlannerInfo *root, RelOptInfo *rel, List *outer_quals)
 											  origpath,
 											  NIL, // DESTROY pathkeys
 											  false,
-											  outerquery_locus);
+											  outerquery_locus,
+											  0);
 		}
 		else
 			path = origpath;
