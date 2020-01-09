@@ -2380,6 +2380,27 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 
 	}							/* end of if (setOperations) */
 
+	if (gp_enable_mpp_plan &&
+		current_rel->partial_pathlist &&
+		(current_rel->reloptkind == RELOPT_BASEREL ||
+		 current_rel->reloptkind == RELOPT_JOINREL))
+	{
+		CdbPathLocus singleLocus;
+		Path *gather_path;
+		Path *cheapest_partial_path = linitial(current_rel->partial_pathlist);
+
+		CdbPathLocus_MakeSingleQE(&singleLocus, getgpsegmentCount());	
+		gather_path = (Path *)
+			cdbpath_create_motion_path(root,
+									   cheapest_partial_path,
+									   cheapest_partial_path->pathkeys,
+									   false,
+									   singleLocus,
+									   0);
+		add_path(current_rel, gather_path);
+		set_cheapest(current_rel);
+	}
+
 	/*
 	 * Deal with explicit redistribution requirements for TableValueExpr
 	 * subplans with a SCATTER BY clause. But if there's a LIMIT, we must

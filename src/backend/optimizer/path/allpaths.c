@@ -2496,24 +2496,13 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel)
 	 */
 	cheapest_partial_path = linitial(rel->partial_pathlist);
 
-	if (cheapest_partial_path->parallel_safe)
-	{
-		simple_gather_path = (Path *)
-			create_gather_path(root, rel, cheapest_partial_path, rel->reltarget,
-							   NULL, NULL);
-	}
-	else
-	{
-		CdbPathLocus singleLocus;
-		CdbPathLocus_MakeSingleQE(&singleLocus, getgpsegmentCount());	
-		simple_gather_path = (Path *)
-			cdbpath_create_motion_path(root,
-									   cheapest_partial_path,
-									   cheapest_partial_path->pathkeys,
-									   false,
-									   singleLocus,
-									   0);
-	}
+	if (gp_enable_mpp_plan &&
+		!cheapest_partial_path->parallel_safe)
+		return;
+
+	simple_gather_path = (Path *)
+		create_gather_path(root, rel, cheapest_partial_path, rel->reltarget,
+						   NULL, NULL);
 
 	add_path(rel, simple_gather_path);
 }
