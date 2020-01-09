@@ -1268,6 +1268,7 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->parentIndex = -1;
 		slice->children = NIL;
 		slice->primaryProcesses = NIL;
+		slice->parallel_workers = 0;
 
 		table->slices = lappend(table->slices, slice);
 	}
