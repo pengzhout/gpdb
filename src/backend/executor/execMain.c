@@ -4978,9 +4978,16 @@ FillSliceGangInfo(Slice *slice, int numsegments)
 			if (slice->directDispatch.isDirectDispatch)
 			{
 				int i;
+				ListCell *lc;
 				slice->gangSize = list_length(slice->directDispatch.contentIds) * factor;
-				for (i = 0; i < factor; i++)
-					slice->segments = list_concat(slice->segments, slice->directDispatch.contentIds);
+
+				foreach(lc, slice->directDispatch.contentIds)
+				{
+					int segment = lfirst_int(lc);
+
+					for (i = 0; i < factor; i++)
+						slice->segments = lappend_int(slice->segments, segment);
+				}
 			}
 			else
 			{

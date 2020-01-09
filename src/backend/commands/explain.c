@@ -1471,6 +1471,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					{
 						/* Special handling on direct dispatch */
 						motion_snd = list_length(slice->directDispatch.contentIds);
+						if (plan->lefttree->flow->parallel_workers > 0)
+							motion_snd = motion_snd * plan->lefttree->flow->parallel_workers;
+
 					}
 					else if (plan->lefttree->flow->flotype == FLOW_SINGLETON)
 					{
