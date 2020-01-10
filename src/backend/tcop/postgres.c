@@ -5238,6 +5238,11 @@ PostgresMain(int argc, char *argv[],
 					if (cuid > 0)
 						SetUserIdAndContext(cuid, false); /* Set current userid */
 
+					if (serializedPlantreelen)
+					{
+					//	setupQEParallelContext(serializedPlantree);
+					}
+
 					if (serializedQuerytreelen==0 && serializedPlantreelen==0)
 					{
 						if (strncmp(query_string, "BEGIN", 5) == 0)

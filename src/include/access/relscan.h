@@ -39,6 +39,13 @@ typedef struct ParallelHeapScanDescData
 	slock_t		phs_mutex;		/* mutual exclusion for block number fields */
 	BlockNumber phs_startblock; /* starting block number */
 	BlockNumber phs_cblock;		/* current block number */
+	/* 
+	 * CDB: we have two ways to implememt parallel scan, this
+	 * flag indicates wether way to clean the shared desc 
+	 */
+	bool		clean_yourself;
+	CommandId	command_id;
+	int			plan_node_id;
 	char		phs_snapshot_data[FLEXIBLE_ARRAY_MEMBER];
 }	ParallelHeapScanDescData;
 

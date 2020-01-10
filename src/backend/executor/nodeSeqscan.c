@@ -36,6 +36,7 @@
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
 #include "utils/snapmgr.h"
+#include "cdb/cdbvars.h"
 
 static void InitScanRelation(SeqScanState *node, EState *estate, int eflags, Relation currentRelation);
 static TupleTableSlot *SeqNext(SeqScanState *node);
@@ -123,9 +124,23 @@ SeqNext(SeqScanState *node)
 		}
 		else
 		{
-			node->ss_currentScanDesc_heap = heap_beginscan(currentRelation,
-														   estate->es_snapshot,
-														   0, NULL);
+			if (node->ss.ps.plan->parallel_aware)
+			{
+				ParallelHeapScanDesc parallel_scan =
+					heap_fetch_parallelscan(gp_command_count,
+											node->ss.ps.plan->plan_node_id,
+											currentRelation);
+
+				node->ss_currentScanDesc_heap =
+					heap_beginscan_parallel_gp(currentRelation,
+											   estate->es_snapshot,
+											   parallel_scan);
+			}
+			else
+				node->ss_currentScanDesc_heap =
+					heap_beginscan(currentRelation,
+								   estate->es_snapshot,
+								   0, NULL);
 		}
 	}
 
@@ -449,7 +464,8 @@ ExecSeqScanInitializeDSM(SeqScanState *node,
 	pscan = shm_toc_allocate(pcxt->toc, node->pscan_len);
 	heap_parallelscan_initialize(pscan,
 								 node->ss.ss_currentRelation,
-								 estate->es_snapshot);
+								 estate->es_snapshot,
+								 false);
 	shm_toc_insert(pcxt->toc, node->ss.ps.plan->plan_node_id, pscan);
 	node->ss_currentScanDesc_heap =
 		heap_beginscan_parallel(node->ss.ss_currentRelation, pscan);

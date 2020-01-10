@@ -359,6 +359,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 
 	GpExpandVersionShmemInit();
 
+	GpParallelScanShmemInit();
+
 	FtsProbeShmemInit();
 
 #ifdef EXEC_BACKEND

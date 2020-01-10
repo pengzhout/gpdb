@@ -14,6 +14,7 @@
 #define SHAREDSNAPSHOT_H
 
 #include "storage/proc.h"
+#include "storage/shm_mq.h"
 #include "utils/combocid.h"
 #include "utils/tqual.h"
 
@@ -31,6 +32,9 @@ typedef struct SharedSnapshotSlot
 	ComboCidKeyData combocids[MaxComboCids];
 	SnapshotData	snapshot;
 	LWLock		   *slotLock;
+
+	/* for parallel scan between QEs */
+	dsm_segment		*seg;
 
 	/* for debugging only */
 	TransactionId	xid;

@@ -1650,6 +1650,20 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo,
 	SharedLocalSnapshotSlot->segmateSync = dtxContextInfo->segmateSync;
 	SharedLocalSnapshotSlot->ready = true;
 
+	/* 
+	 * walker through the plan tree to find and parallel scan node,
+	 * and estimated the size to hold ParallelHeapScanDesc. writer
+	 * did the initialize here, the reader will fetch the parallel
+	 * ParallelHeapScanDesc in SeqNext.
+	 *
+	 * 1. walker through the plan tree to find parallel scan node
+	 *    and estimate the shm size
+	 * 2. create a dsm_segment
+	 * 3. create a shm_toc
+	 * 4. walker through the plan tree again to insert
+	 * <node id, ParallelHeapScanDesc>
+	 */
+
 	ereport((Debug_print_full_dtm ? LOG : DEBUG5),
 			(errmsg("updateSharedLocalSnapshot for DistributedTransactionContext = '%s' setting shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u",
 					DtxContextToString(distributedTransactionContext),

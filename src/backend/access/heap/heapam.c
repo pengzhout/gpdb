@@ -1895,6 +1895,10 @@ heap_endscan(HeapScanDesc scan)
 	if (scan->rs_temp_snap)
 		UnregisterSnapshot(scan->rs_snapshot);
 
+	if (scan->rs_parallel &&
+		scan->rs_parallel->clean_yourself)
+		heap_release_parallelscan(scan->rs_parallel);
+
 	pfree(scan);
 }
 
@@ -1922,7 +1926,7 @@ heap_parallelscan_estimate(Snapshot snapshot)
  */
 void
 heap_parallelscan_initialize(ParallelHeapScanDesc target, Relation relation,
-							 Snapshot snapshot)
+							 Snapshot snapshot, bool clean_yourself)
 {
 	target->phs_relid = RelationGetRelid(relation);
 	target->phs_nblocks = RelationGetNumberOfBlocks(relation);
@@ -1933,7 +1937,10 @@ heap_parallelscan_initialize(ParallelHeapScanDesc target, Relation relation,
 	SpinLockInit(&target->phs_mutex);
 	target->phs_cblock = InvalidBlockNumber;
 	target->phs_startblock = InvalidBlockNumber;
-	SerializeSnapshot(snapshot, target->phs_snapshot_data);
+	target->clean_yourself = clean_yourself;
+
+	if (snapshot)
+		SerializeSnapshot(snapshot, target->phs_snapshot_data);
 }
 
 /* ----------------
@@ -1954,6 +1961,17 @@ heap_beginscan_parallel(Relation relation, ParallelHeapScanDesc parallel_scan)
 	return heap_beginscan_internal(relation, snapshot, 0, NULL, parallel_scan,
 								   true, true, true, false, false, true);
 }
+
+HeapScanDesc
+heap_beginscan_parallel_gp(Relation relation, Snapshot snapshot,
+						   ParallelHeapScanDesc parallel_scan)
+{
+	Assert(RelationGetRelid(relation) == parallel_scan->phs_relid);
+
+	return heap_beginscan_internal(relation, snapshot, 0, NULL, parallel_scan,
+								   true, true, true, false, false, false);
+}
+
 
 /* ----------------
  *		heap_parallelscan_nextpage - get the next page to scan
@@ -9779,5 +9797,143 @@ heap_mask(char *pagedata, BlockNumber blkno)
 			if (padlen > 0)
 				memset(page_item + len, MASK_MARKER, padlen);
 		}
+	}
+}
+
+struct GpParallelScanEntry
+{
+	struct GpParallelScanEntry *next;
+	ParallelHeapScanDescData parallel_scan;
+	CommandId	command_id;
+	int			plan_id;
+	int			reference;
+} GpParallelScanEntry;
+
+typedef struct GpParallelScanHdr
+{
+	slock_t		ps_lock;	
+	struct GpParallelScanEntry	*freelist;
+	struct GpParallelScanEntry	*allocated;
+} GpParallelScanHdr;
+
+GpParallelScanHdr *gp_parallelscan_hdr;
+
+/* FIXME: we need to reset the parallel scan entry in error cases */
+ParallelHeapScanDesc
+heap_fetch_parallelscan(CommandId command_id, int plan_node_id,
+						Relation relation)
+{
+	ParallelHeapScanDesc desc = NULL;
+	struct GpParallelScanEntry *entry = NULL;
+
+	Assert(gp_parallelscan_hdr);
+	SpinLockAcquire(&gp_parallelscan_hdr->ps_lock);
+	
+	entry = gp_parallelscan_hdr->allocated;
+
+	while(entry)
+	{
+		if (entry->parallel_scan.command_id == command_id &&
+			entry->parallel_scan.plan_node_id == plan_node_id)
+			break;
+		entry = entry->next;
+	}
+
+	if (!entry)
+	{
+		if (!gp_parallelscan_hdr->freelist)
+			elog(ERROR, "no free parallel scan entry");	
+
+		/* get one from freelist */
+		entry = gp_parallelscan_hdr->freelist;	
+		gp_parallelscan_hdr->freelist = entry->next;	
+
+		/* put it to allocated */
+		entry->next = gp_parallelscan_hdr->allocated;
+		gp_parallelscan_hdr->allocated = entry;
+
+		/* initialize parallel scan entry */	
+		heap_parallelscan_initialize(&entry->parallel_scan,
+									 relation,
+									 NULL, true);
+
+		entry->parallel_scan.command_id = command_id;
+		entry->parallel_scan.plan_node_id = plan_node_id;
+	}
+
+	entry->reference++;
+
+	SpinLockRelease(&gp_parallelscan_hdr->ps_lock);
+
+	return &entry->parallel_scan;
+}
+
+void
+heap_release_parallelscan(ParallelHeapScanDesc desc)
+{
+	struct GpParallelScanEntry *entry = NULL;
+	struct GpParallelScanEntry *prev = NULL;
+
+	Assert(gp_parallelscan_hdr);
+	SpinLockAcquire(&gp_parallelscan_hdr->ps_lock);
+	
+	entry = gp_parallelscan_hdr->allocated;
+	while(entry)
+	{
+		if (entry->parallel_scan.command_id == desc->command_id &&
+			entry->parallel_scan.plan_node_id == desc->plan_node_id)
+			break;
+		prev = entry;
+		entry = entry->next;
+	}
+
+	if (!entry)
+		elog(ERROR, "no free parallel scan entry");	
+
+	entry->reference--;
+
+	if (!entry->reference)
+	{
+		/* remove from allocated list */
+		if (prev)
+			prev->next = entry->next;
+		else
+			 gp_parallelscan_hdr->allocated = NULL;	
+
+		MemSet(entry, 0, sizeof(GpParallelScanEntry));	
+
+		/* move to freelist */
+		entry->next = gp_parallelscan_hdr->freelist;
+		gp_parallelscan_hdr->freelist = entry;
+	}
+
+	SpinLockRelease(&gp_parallelscan_hdr->ps_lock);
+
+	return &entry->parallel_scan;
+}
+void
+GpParallelScanShmemInit(void)
+{
+	int		i;
+	bool	found;
+	struct GpParallelScanEntry *entries;
+	struct GpParallelScanEntry *entry;
+
+	gp_parallelscan_hdr = (GpParallelScanHdr *)
+		ShmemInitStruct("Gp Parallel Scan Header", sizeof(GpParallelScanHdr), &found);
+	Assert(!found);
+
+	gp_parallelscan_hdr->freelist = NULL;
+	gp_parallelscan_hdr->allocated = NULL;
+	SpinLockInit(&gp_parallelscan_hdr->ps_lock);
+
+	entries = ShmemAlloc(MaxConnections * sizeof(struct GpParallelScanEntry));
+	MemSet(entries, 0, MaxConnections * sizeof(struct GpParallelScanEntry));
+
+	for (i = 0; i < MaxConnections; i++)
+	{
+		entry = &entries[i];
+		entry->next = gp_parallelscan_hdr->freelist;
+		gp_parallelscan_hdr->freelist = entry;
 	}
 }
