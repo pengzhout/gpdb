@@ -1547,7 +1547,8 @@ hash_inner_and_outer(PlannerInfo *root,
 			bms_is_empty(joinrel->lateral_relids))
 		{
 			Path	   *cheapest_partial_outer;
-			Path	   *cheapest_safe_inner = NULL;
+			Path	   *cheapest_partial_inner;
+			List	   *cheapest_safe_inners = NIL;
 
 			cheapest_partial_outer =
 				(Path *) linitial(outerrel->partial_pathlist);
@@ -1559,9 +1560,21 @@ hash_inner_and_outer(PlannerInfo *root,
 			 * unparameterized inner path.
 			 */
 			if (gp_enable_mpp_plan)
-				cheapest_safe_inner = cheapest_total_inner;
+			{
+				cheapest_safe_inners = lappend(cheapest_safe_inners,
+											   cheapest_total_inner);
+
+				/* also consider cheapest partial_inner */
+				if (innerrel->partial_pathlist)
+				{
+					cheapest_partial_inner = (Path *) linitial(innerrel->partial_pathlist);
+					cheapest_safe_inners = lappend(cheapest_safe_inners,
+												   cheapest_partial_inner);
+				}
+			}
 			else if (cheapest_total_inner->parallel_safe)
-				cheapest_safe_inner = cheapest_total_inner;
+				cheapest_safe_inners = lappend(cheapest_safe_inners, 
+											   cheapest_total_inner);
 			else
 			{
 				ListCell   *lc;
@@ -1573,18 +1586,23 @@ hash_inner_and_outer(PlannerInfo *root,
 					if (innerpath->parallel_safe &&
 						bms_is_empty(PATH_REQ_OUTER(innerpath)))
 					{
-						cheapest_safe_inner = innerpath;
+						cheapest_safe_inners = lappend(cheapest_safe_inners, 
+													   innerpath);
 						break;
 					}
 				}
 			}
 
-			if (cheapest_safe_inner != NULL)
+			ListCell *lc;
+			foreach(lc, cheapest_safe_inners)
+			{
+				Path *inner = (Path *) lfirst(lc);	
+
 				try_partial_hashjoin_path(root, joinrel,
 										  cheapest_partial_outer,
-										  cheapest_safe_inner,
+										  inner,
 										  hashclauses, jointype, extra);
-
+			}
 		}
 	}
 }
