@@ -1611,6 +1611,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 		/* Redistribute both rels on equijoin cols. */
 		else if (!other_immovable &&
+				 single->path->parallel_workers == 0 &&
+				 other->path->parallel_workers == 0 &&
 				 cdbpath_distkeys_from_preds(root,
 											 redistribution_clauses,
 											 single->path,
@@ -1731,6 +1733,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 				 !small_rel->has_wts &&
 				 !large_rel->require_existing_order &&
 				 !large_rel->has_wts &&
+				 small_rel->path->parallel_workers == 0 &&
+				 large_rel->path->parallel_workers == 0 &&
 				 cdbpath_distkeys_from_preds(root,
 											 redistribution_clauses,
 											 large_rel->path,

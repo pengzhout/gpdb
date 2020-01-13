@@ -141,8 +141,7 @@ extern HeapTuple heap_getnext(HeapScanDesc scan, ScanDirection direction);
 
 extern Size heap_parallelscan_estimate(Snapshot snapshot);
 extern void heap_parallelscan_initialize(ParallelHeapScanDesc target,
-							 Relation relation, Snapshot snapshot,
-							 bool clean_yourself);
+							 Relation relation, Snapshot snapshot);
 extern HeapScanDesc heap_beginscan_parallel(Relation, ParallelHeapScanDesc);
 extern HeapScanDesc heap_beginscan_parallel_gp(Relation,
 											   Snapshot,

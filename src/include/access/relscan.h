@@ -43,7 +43,6 @@ typedef struct ParallelHeapScanDescData
 	 * CDB: we have two ways to implememt parallel scan, this
 	 * flag indicates wether way to clean the shared desc 
 	 */
-	bool		clean_yourself;
 	CommandId	command_id;
 	int			plan_node_id;
 	char		phs_snapshot_data[FLEXIBLE_ARRAY_MEMBER];
@@ -78,6 +77,7 @@ typedef struct HeapScanDescData
 	Buffer		rs_cbuf;		/* current buffer in scan, if any */
 	/* NB: if rs_cbuf is not InvalidBuffer, we hold a pin on that buffer */
 	ParallelHeapScanDesc rs_parallel;	/* parallel scan information */
+	bool	gp_parallel;
 
 	/* these fields only used in page-at-a-time mode and for bitmap scans */
 	int			rs_cindex;		/* current tuple's index in vistuples */

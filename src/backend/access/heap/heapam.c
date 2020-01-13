@@ -1760,6 +1760,7 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 	scan->rs_allow_sync = allow_sync;
 	scan->rs_temp_snap = temp_snap;
 	scan->rs_parallel = parallel_scan;
+	scan->gp_parallel = false;
 
 	/*
 	 * we can use page-at-a-time mode if it's an MVCC-safe snapshot
@@ -1895,8 +1896,8 @@ heap_endscan(HeapScanDesc scan)
 	if (scan->rs_temp_snap)
 		UnregisterSnapshot(scan->rs_snapshot);
 
-	if (scan->rs_parallel &&
-		scan->rs_parallel->clean_yourself)
+	if (scan->gp_parallel &&
+		scan->rs_parallel)
 		heap_release_parallelscan(scan->rs_parallel);
 
 	pfree(scan);
@@ -1926,7 +1927,7 @@ heap_parallelscan_estimate(Snapshot snapshot)
  */
 void
 heap_parallelscan_initialize(ParallelHeapScanDesc target, Relation relation,
-							 Snapshot snapshot, bool clean_yourself)
+							 Snapshot snapshot)
 {
 	target->phs_relid = RelationGetRelid(relation);
 	target->phs_nblocks = RelationGetNumberOfBlocks(relation);
@@ -1937,7 +1938,6 @@ heap_parallelscan_initialize(ParallelHeapScanDesc target, Relation relation,
 	SpinLockInit(&target->phs_mutex);
 	target->phs_cblock = InvalidBlockNumber;
 	target->phs_startblock = InvalidBlockNumber;
-	target->clean_yourself = clean_yourself;
 
 	if (snapshot)
 		SerializeSnapshot(snapshot, target->phs_snapshot_data);
@@ -1966,10 +1966,14 @@ HeapScanDesc
 heap_beginscan_parallel_gp(Relation relation, Snapshot snapshot,
 						   ParallelHeapScanDesc parallel_scan)
 {
+	HeapScanDesc desc;
 	Assert(RelationGetRelid(relation) == parallel_scan->phs_relid);
 
-	return heap_beginscan_internal(relation, snapshot, 0, NULL, parallel_scan,
+	desc = heap_beginscan_internal(relation, snapshot, 0, NULL, parallel_scan,
 								   true, true, true, false, false, false);
+	desc->gp_parallel = true;
+
+	return desc;
 }
 
 
@@ -9823,7 +9827,6 @@ ParallelHeapScanDesc
 heap_fetch_parallelscan(CommandId command_id, int plan_node_id,
 						Relation relation)
 {
-	ParallelHeapScanDesc desc = NULL;
 	struct GpParallelScanEntry *entry = NULL;
 
 	Assert(gp_parallelscan_hdr);
@@ -9842,7 +9845,7 @@ heap_fetch_parallelscan(CommandId command_id, int plan_node_id,
 	if (!entry)
 	{
 		if (!gp_parallelscan_hdr->freelist)
-			elog(ERROR, "no free parallel scan entry");	
+			elog(WARNING, "no free parallel scan entry");	
 
 		/* get one from freelist */
 		entry = gp_parallelscan_hdr->freelist;	
@@ -9855,7 +9858,7 @@ heap_fetch_parallelscan(CommandId command_id, int plan_node_id,
 		/* initialize parallel scan entry */	
 		heap_parallelscan_initialize(&entry->parallel_scan,
 									 relation,
-									 NULL, true);
+									 NULL);
 
 		entry->parallel_scan.command_id = command_id;
 		entry->parallel_scan.plan_node_id = plan_node_id;
@@ -9908,8 +9911,6 @@ heap_release_parallelscan(ParallelHeapScanDesc desc)
 	}
 
 	SpinLockRelease(&gp_parallelscan_hdr->ps_lock);
-
-	return &entry->parallel_scan;
 }
 void
 GpParallelScanShmemInit(void)

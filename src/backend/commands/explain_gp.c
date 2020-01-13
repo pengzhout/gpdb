@@ -906,7 +906,7 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr *hdr,
 	iworker = hdr->segindex - ss->segindex0;
 	ssw = &ss->workers[iworker];
 	Insist(iworker >= 0 && iworker < ss->nworker);
-	Insist(ssw->peakmemused == 0);	/* each worker should be seen just once */
+//	Insist(ssw->peakmemused == 0);	/* each worker should be seen just once */
 	*ssw = hdr->worker;
 
 	const char *originalSerializedMemoryAccountingStartAddress = ((const char *) hdr) +
