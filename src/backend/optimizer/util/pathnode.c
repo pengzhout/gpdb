@@ -58,6 +58,7 @@ typedef enum
  */
 #define STD_FUZZ_FACTOR 1.01
 
+static void gp_print_path(StringInfo msg, Path *path, int indent);
 static List *translate_sub_tlist(List *tlist, int relid);
 
 static void set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
@@ -850,13 +851,19 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 	}
 
 	if (gp_enable_mpp_plan)
-		elog(WARNING, "        : %s, %s, start_cost: %20lf, total_cost: %20lf, %s",
-			 parent_rel->reloptkind == RELOPT_BASEREL ? "baserel" :
-			 parent_rel->reloptkind == RELOPT_JOINREL ? "joinrel" : "upperel",
-			 plannode_type((Plan *)(&new_path->pathtype)),
-			 new_path->startup_cost, new_path->total_cost,
-			 accept_new ? "accepted" : "rejected"
-			 );
+	{
+		StringInfo msg = makeStringInfo();
+		gp_print_path(msg, new_path, 1);
+
+		ereport(WARNING, 
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg("Adding paths"),
+				 errdetail("start %15.1lf,total %15.1lf   \n%s%s\033[0m",
+						   new_path->startup_cost,
+						   new_path->total_cost,
+						   accept_new ? "\033[0;32m" : "\033[0;31m",
+						   msg->data)));
+	}
 
 	if (accept_new)
 	{
@@ -1158,14 +1165,19 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 	}
 
 	if (gp_enable_mpp_plan)
-		elog(WARNING, "partial : %s, %s, start_cost: %20lf, total_cost: %20lf, %s",
-			 parent_rel->reloptkind == RELOPT_BASEREL ? "baserel" :
-			 parent_rel->reloptkind == RELOPT_JOINREL ? "joinrel" : "upperel",
-			 plannode_type((Plan*)(&new_path->pathtype)),
-			 new_path->startup_cost, new_path->total_cost,
-			 accept_new ? "accepted" : "rejected"
-			 );
+	{
+		StringInfo msg = makeStringInfo();
+		gp_print_path(msg, new_path, 1);
 
+		ereport(WARNING, 
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg("Adding partial paths"),
+				 errdetail("start %15.1lf,total %15.1lf   \n%s%s\033[0m",
+						   new_path->startup_cost,
+						   new_path->total_cost,
+						   accept_new ? "\033[0;36m" : "\033[0;35m",
+						   msg->data)));
+	}
 
 	if (accept_new)
 	{
@@ -5041,4 +5053,281 @@ reparameterize_path(PlannerInfo *root, Path *path,
 			break;
 	}
 	return NULL;
+}
+
+static void
+gp_print_path(StringInfo msg, Path *path, int indent)
+{
+	const char *ptype;
+	const char *ltype;
+	bool		join = false;
+	Path	   *subpath = NULL;
+	int			i;
+
+	switch (nodeTag(path))
+	{
+		case T_Path:
+			switch (path->pathtype)
+			{
+				case T_SeqScan:
+					ptype = "SeqScan";
+					break;
+				case T_SampleScan:
+					ptype = "SampleScan";
+					break;
+				case T_SubqueryScan:
+					ptype = "SubqueryScan";
+					break;
+				case T_FunctionScan:
+					ptype = "FunctionScan";
+					break;
+				case T_ValuesScan:
+					ptype = "ValuesScan";
+					break;
+				case T_CteScan:
+					ptype = "CteScan";
+					break;
+				case T_WorkTableScan:
+					ptype = "WorkTableScan";
+					break;
+				default:
+					ptype = "???Path";
+					break;
+			}
+			break;
+		case T_IndexPath:
+			ptype = "IdxScan";
+			break;
+		case T_BitmapHeapPath:
+			ptype = "BitmapHeapScan";
+			break;
+		case T_BitmapAndPath:
+			ptype = "BitmapAndPath";
+			break;
+		case T_BitmapOrPath:
+			ptype = "BitmapOrPath";
+			break;
+		case T_TidPath:
+			ptype = "TidScan";
+			break;
+		case T_SubqueryScanPath:
+			ptype = "SubqueryScanScan";
+			break;
+		case T_ForeignPath:
+			ptype = "ForeignScan";
+			break;
+		case T_AppendPath:
+			ptype = "Append";
+			break;
+		case T_MergeAppendPath:
+			ptype = "MergeAppend";
+			break;
+		case T_ResultPath:
+			ptype = "Result";
+			break;
+		case T_MaterialPath:
+			ptype = "Material";
+			subpath = ((MaterialPath *) path)->subpath;
+			break;
+		case T_UniquePath:
+			ptype = "Unique";
+			subpath = ((UniquePath *) path)->subpath;
+			break;
+		case T_GatherPath:
+			ptype = "Gather";
+			subpath = ((GatherPath *) path)->subpath;
+			break;
+		case T_ProjectionPath:
+			ptype = "Projection";
+			subpath = ((ProjectionPath *) path)->subpath;
+			break;
+		case T_SortPath:
+			ptype = "Sort";
+			subpath = ((SortPath *) path)->subpath;
+			break;
+		case T_GroupPath:
+			ptype = "Group";
+			subpath = ((GroupPath *) path)->subpath;
+			break;
+		case T_UpperUniquePath:
+			ptype = "UpperUnique";
+			subpath = ((UpperUniquePath *) path)->subpath;
+			break;
+		case T_AggPath:
+			ptype = "Agg";
+			subpath = ((AggPath *) path)->subpath;
+			break;
+		case T_GroupingSetsPath:
+			ptype = "GroupingSets";
+			subpath = ((GroupingSetsPath *) path)->subpath;
+			break;
+		case T_MinMaxAggPath:
+			ptype = "MinMaxAgg";
+			break;
+		case T_WindowAggPath:
+			ptype = "WindowAgg";
+			subpath = ((WindowAggPath *) path)->subpath;
+			break;
+		case T_SetOpPath:
+			ptype = "SetOp";
+			subpath = ((SetOpPath *) path)->subpath;
+			break;
+		case T_RecursiveUnionPath:
+			ptype = "RecursiveUnion";
+			break;
+		case T_LockRowsPath:
+			ptype = "LockRows";
+			subpath = ((LockRowsPath *) path)->subpath;
+			break;
+		case T_ModifyTablePath:
+			ptype = "ModifyTable";
+			break;
+		case T_LimitPath:
+			ptype = "Limit";
+			subpath = ((LimitPath *) path)->subpath;
+			break;
+		case T_NestPath:
+			ptype = "NestLoop";
+			join = true;
+			break;
+		case T_MergePath:
+			ptype = "MergeJoin";
+			join = true;
+			break;
+		case T_HashPath:
+			ptype = "HashJoin";
+			join = true;
+			break;
+		case T_CdbMotionPath:
+			if (path->locus.locustype ==
+				CdbLocusType_Entry)
+				ptype = "Gather Motion";
+			else if (path->locus.locustype ==
+					 CdbLocusType_SingleQE)
+				ptype = "Gather Motion";
+			else if (path->locus.locustype == 
+					 CdbLocusType_Replicated)
+				ptype = "Broadcast Motion";
+			else if (path->locus.locustype == 
+					 CdbLocusType_Hashed)
+				ptype = "Redistribute Motion";
+			else
+				ptype = "Motion";
+			subpath = ((CdbMotionPath *) path)->subpath;
+			break;
+		default:
+			ptype = "???Path";
+			break;
+	}
+
+	for (i = 0; i < indent; i++)
+		appendStringInfo(msg, "\t");
+	appendStringInfo(msg, "%s", ptype);
+
+	if (path->parent)
+	{
+		appendStringInfo(msg, "(");
+		int	x;
+		x = -1;
+		x = bms_next_member(path->parent->relids, x);
+
+		while (x >= 0)
+		{
+			appendStringInfo(msg, "%d", x);
+			x = bms_next_member(path->parent->relids, x);
+			if (x >= 0)
+				appendStringInfo(msg, ",");
+		}
+		appendStringInfo(msg, ")");
+	}
+
+	appendStringInfo(msg, " parallel_workers: %d", path->parallel_workers);
+
+#if 0
+	switch (path->locus.locustype)
+	{
+		case CdbLocusType_Entry:
+			ltype = "Entry";
+			break;
+		case CdbLocusType_SingleQE:
+			ltype = "SingleQE";
+			break;
+		case CdbLocusType_General:
+			ltype = "General";
+			break;
+		case CdbLocusType_SegmentGeneral:
+			ltype = "SegmentGeneral";
+			break;
+		case CdbLocusType_Replicated:
+			ltype = "Replicated";
+			break;
+		case CdbLocusType_Hashed:
+			ltype = "Hashed";
+			break;
+		case CdbLocusType_HashedOJ:
+			ltype = "HashedOJ";
+			break;
+		case CdbLocusType_Strewn:
+			ltype = "Strewn";
+			break;
+		default:
+			ltype = "???CdbLocus";
+			break;
+	}
+	appendStringInfo(msg, " locus=%s", ltype);
+	if (path->param_info)
+	{
+		appendStringInfo(msg, " required_outer (");
+		print_relids(root, path->param_info->ppi_req_outer);
+		appendStringInfo(msg, ")");
+	}
+#endif
+	appendStringInfo(msg, " rows=%.0f cost=%.2f..%.2f\n",
+		   path->rows, path->startup_cost, path->total_cost);
+
+#if 0
+	if (path->pathkeys)
+	{
+		for (i = 0; i < indent; i++)
+			appendStringInfo(msg, "\t");
+		appendStringInfo(msg, "  pathkeys: ");
+		print_pathkeys(path->pathkeys, root->parse->rtable);
+	}
+#endif
+
+	if (join)
+	{
+		JoinPath   *jp = (JoinPath *) path;
+
+#if 0
+		for (i = 0; i < indent; i++)
+			appendStringInfo(msg, "\t");
+		appendStringInfo(msg, "  clauses: ");
+		print_restrictclauses(root, jp->joinrestrictinfo);
+#endif
+		appendStringInfo(msg, "\n");
+
+#if 0
+		if (IsA(path, MergePath))
+		{
+			MergePath  *mp = (MergePath *) path;
+
+			for (i = 0; i < indent; i++)
+				appendStringInfo(msg, "\t");
+			appendStringInfo(msg, "  sortouter=%d sortinner=%d materializeinner=%d\n",
+				   ((mp->outersortkeys) ? 1 : 0),
+				   ((mp->innersortkeys) ? 1 : 0),
+				   ((mp->materialize_inner) ? 1 : 0));
+		}
+#endif
+		gp_print_path(msg, jp->outerjoinpath, indent + 1);
+		appendStringInfo(msg, "\n");
+		gp_print_path(msg, jp->innerjoinpath, indent + 1);
+	}
+
+	if (subpath)
+	{
+		appendStringInfo(msg, "\n");
+		gp_print_path(msg, subpath, indent + 1);
+	}
 }

@@ -3763,3 +3763,4 @@ debug_print_rel(PlannerInfo *root, RelOptInfo *rel)
 }
 
 #endif   /* OPTIMIZER_DEBUG */
+
