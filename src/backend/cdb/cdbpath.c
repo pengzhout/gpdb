@@ -62,6 +62,24 @@ static bool try_redistribute(PlannerInfo *root, CdbpathMfjRel *g,
 
 static SplitUpdatePath *make_splitupdate_path(PlannerInfo *root, Path *subpath, Index rti);
 
+static int
+cdbpath_parallel_workers(Path *path)
+{
+	int workers;
+
+	if (CdbPathLocus_IsPartitioned(path->locus) ||
+		CdbPathLocus_IsReplicated(path->locus))
+	{
+		workers = CdbPathLocus_NumSegments(path->locus);	
+
+		if (path->parallel_workers)
+			workers = workers * path->parallel_workers;
+	}
+	else
+		workers = 1;
+
+	return workers;
+}
 
 /*
  * cdbpath_cost_motion
@@ -76,31 +94,60 @@ cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 	double		recvrows;
 	double		sendrows;
 
-	if (CdbPathLocus_IsReplicated(motionpath->path.locus))
+	if (gp_enable_mpp_plan)
 	{
-		motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(motionpath->path.locus);
-		if (motionpath->path.parallel_workers > 0)
-			motionpath->path.rows = motionpath->path.rows * motionpath->path.parallel_workers;
+		double startup_cost;
+		double run_cost;
+
+		sendrows = subpath->rows * cdbpath_parallel_workers(subpath);
+
+		if (CdbPathLocus_IsPartitioned(motionpath->path.locus))
+		{
+			recvrows = sendrows / cdbpath_parallel_workers(&motionpath->path);
+			if (recvrows < 1.0)
+				recvrows = 1.0;
+		}
+		else if (CdbPathLocus_IsReplicated(motionpath->path.locus))
+			recvrows = sendrows * cdbpath_parallel_workers(&motionpath->path);
+		else
+			recvrows = sendrows; 
+
+		motionpath->path.rows = recvrows; 
+
+		startup_cost = subpath->startup_cost;
+		run_cost = subpath->total_cost - subpath->startup_cost;
+
+		/* Parallel motion setup and communication cost. */
+		startup_cost += 1.5 *
+			(parallel_setup_cost / max_parallel_workers_per_gather) *
+			cdbpath_parallel_workers(subpath);
+
+		run_cost += recvrows * 1.5 * parallel_tuple_cost;
+
+		motionpath->path.startup_cost = startup_cost;
+		motionpath->path.total_cost = startup_cost + run_cost;
+		motionpath->path.memory = subpath->memory;
 	}
-	else if (gp_enable_mpp_plan &&
-			 CdbPathLocus_IsBottleneck(motionpath->path.locus) &&
-			 CdbPathLocus_IsPartitioned(subpath->locus))
-		motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(subpath->locus);
 	else
-		motionpath->path.rows = subpath->rows;
+	{
+		if (CdbPathLocus_IsReplicated(motionpath->path.locus))
+			motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(motionpath->path.locus);
+		else
+			motionpath->path.rows = subpath->rows;
 
-	cost_per_row = (gp_motion_cost_per_row > 0.0)
-		? gp_motion_cost_per_row
-		: 2.0 * cpu_tuple_cost;
-	sendrows = subpath->rows;
-	recvrows = motionpath->path.rows;
-	motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
+		sendrows = subpath->rows;
+		recvrows = motionpath->path.rows;
 
-	motionpath->path.total_cost = motioncost + subpath->total_cost;
-	motionpath->path.startup_cost = subpath->startup_cost;
-	motionpath->path.memory = subpath->memory;
+		cost_per_row = (gp_motion_cost_per_row > 0.0)
+			? gp_motion_cost_per_row
+			: 2.0 * cpu_tuple_cost;
+		motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
+
+		motionpath->path.total_cost = motioncost + subpath->total_cost;
+		motionpath->path.startup_cost = subpath->startup_cost;
+		motionpath->path.memory = subpath->memory;
+	}
 }								/* cdbpath_cost_motion */
-
 
 /*
  * cdbpath_create_motion_path

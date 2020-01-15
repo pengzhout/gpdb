@@ -857,7 +857,9 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 
 		ereport(WARNING, 
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg("Adding paths"),
+				 errmsg("Adding paths, path length: %d",
+						accept_new ? list_length(parent_rel->pathlist) + 1:
+						list_length(parent_rel->pathlist)),
 				 errdetail("start %15.1lf,total %15.1lf   \n%s%s\033[0m",
 						   new_path->startup_cost,
 						   new_path->total_cost,
@@ -1171,7 +1173,9 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 
 		ereport(WARNING, 
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg("Adding partial paths"),
+				 errmsg("Adding partial paths, path length: %d",
+						accept_new ? list_length(parent_rel->partial_pathlist) + 1:
+						list_length(parent_rel->partial_pathlist)),
 				 errdetail("start %15.1lf,total %15.1lf   \n%s%s\033[0m",
 						   new_path->startup_cost,
 						   new_path->total_cost,
