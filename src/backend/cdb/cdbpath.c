@@ -99,6 +99,7 @@ cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 	{
 		double startup_cost;
 		double run_cost;
+		double startup_cost_per_bgworker;
 
 		sendrows = subpath->rows * cdbpath_parallel_workers(subpath);
 
@@ -119,8 +120,10 @@ cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 		run_cost = subpath->total_cost - subpath->startup_cost;
 
 		/* Parallel motion setup and communication cost. */
-		startup_cost += 1.5 *
-			(parallel_setup_cost / max_parallel_workers_per_gather) *
+		startup_cost_per_bgworker = max_parallel_workers_per_gather ?
+			parallel_setup_cost / max_parallel_workers_per_gather : 
+			1.0;
+		startup_cost += 1.5 * startup_cost_per_bgworker *
 			cdbpath_parallel_workers(subpath);
 
 		run_cost += recvrows * 1.5 * parallel_tuple_cost;
