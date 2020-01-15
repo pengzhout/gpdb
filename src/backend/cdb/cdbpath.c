@@ -268,13 +268,10 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			pathnode->path.locus = locus;
 			pathnode->path.rows = subpath->rows;
 
-			/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-			 * setting this to 'false' initially, to play it safe, but somehow
-			 * the Paths with motions ended up in gather plans anyway, and tripped
-			 * assertion failures.
-			 */
+			/* A Gather node cannot have a subpaths contains motions, set*/
 			pathnode->path.parallel_aware = false;
-			pathnode->path.parallel_safe = subpath->parallel_safe;
+			/* A motion is not parallel safe, it cannot underneath the Gather node */
+			pathnode->path.parallel_safe = false;
 			pathnode->path.parallel_workers = subpath->parallel_workers;
 			pathnode->path.pathkeys = pathkeys;
 
@@ -314,13 +311,9 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			pathnode->path.rows = subpath->rows;
 			pathnode->path.pathkeys = pathkeys;
 
-			/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-			 * setting this to 'false' initially, to play it safe, but somehow
-			 * the Paths with motions ended up in gather plans anyway, and tripped
-			 * assertion failures.
-			 */
 			pathnode->path.parallel_aware = false;
-			pathnode->path.parallel_safe = subpath->parallel_safe;
+			/* A motion is not parallel safe, it cannot underneath the Gather node */
+			pathnode->path.parallel_safe = false;
 			pathnode->path.parallel_workers = subpath->parallel_workers;
 
 			pathnode->subpath = subpath;
@@ -501,13 +494,9 @@ cdbpath_create_motion_path(PlannerInfo *root,
 
 	pathnode->path.pathkeys = pathkeys;
 
-	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-	 * setting this to 'false' initially, to play it safe, but somehow
-	 * the Paths with motions ended up in gather plans anyway, and tripped
-	 * assertion failures.
-	 */
 	pathnode->path.parallel_aware = false;
-	pathnode->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = parallel_workers;
 
 	pathnode->subpath = subpath;
@@ -556,13 +545,9 @@ cdbpath_create_explicit_motion_path(PlannerInfo *root,
 	pathnode->path.rows = subpath->rows;
 	pathnode->path.pathkeys = NIL;
 
-	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-	 * setting this to 'false' initially, to play it safe, but somehow
-	 * the Paths with motions ended up in gather plans anyway, and tripped
-	 * assertion failures.
-	 */
 	pathnode->path.parallel_aware = false;
-	pathnode->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 
 	pathnode->subpath = subpath;
@@ -595,13 +580,9 @@ cdbpath_create_broadcast_motion_path(PlannerInfo *root,
 	pathnode->path.rows = subpath->rows;
 	pathnode->path.pathkeys = NIL;
 
-	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-	 * setting this to 'false' initially, to play it safe, but somehow
-	 * the Paths with motions ended up in gather plans anyway, and tripped
-	 * assertion failures.
-	 */
 	pathnode->path.parallel_aware = false;
-	pathnode->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 
 	pathnode->subpath = subpath;
@@ -637,13 +618,9 @@ make_motion_path(PlannerInfo *root, Path *subpath,
 	pathnode->path.rows = subpath->rows;
 	pathnode->path.pathkeys = NIL;
 
-	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-	 * setting this to 'false' initially, to play it safe, but somehow
-	 * the Paths with motions ended up in gather plans anyway, and tripped
-	 * assertion failures.
-	 */
 	pathnode->path.parallel_aware = false;
-	pathnode->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 
 	pathnode->subpath = subpath;
@@ -2872,7 +2849,8 @@ make_splitupdate_path(PlannerInfo *root, Path *subpath, Index rti)
 	splitupdatepath->path.pathtarget = splitUpdatePathTarget;
 	splitupdatepath->path.param_info = NULL;
 	splitupdatepath->path.parallel_aware = false;
-	splitupdatepath->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	splitupdatepath->path.parallel_safe = false;
 	splitupdatepath->path.parallel_workers = subpath->parallel_workers;
 	splitupdatepath->path.rows = 2 * subpath->rows;
 	splitupdatepath->path.startup_cost = subpath->startup_cost;
