@@ -869,29 +869,7 @@ ExecInitMotion(Motion *node, EState *estate, int eflags)
 			motionstate->hashExprs = (List *) ExecInitExpr((Expr *) node->hashExprs,
 														   (PlanState *) motionstate);
 
-		/*
-		 * Create hash API reference
-		 */
-		if (estate->es_plannedstmt->planGen == PLANGEN_PLANNER)
-		{
-			Assert(node->plan.flow);
-			Assert(node->plan.flow->numsegments > 0);
-
-			/*
-			 * For planner generated plan the size of receiver slice can be
-			 * determined from flow.
-			 */
-			numsegments = node->plan.flow->numsegments;
-		}
-		else
-		{
-			/*
-			 * For ORCA generated plan we could distribute to ALL as partially
-			 * distributed tables are not supported by ORCA yet.
-			 */
-			numsegments = getgpsegmentCount();
-		}
-
+		numsegments = list_length(recvSlice->primaryProcesses);
 		motionstate->cdbhash = makeCdbHash(numsegments, nkeys, node->hashFuncs);
 	}
 

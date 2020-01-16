@@ -4992,7 +4992,7 @@ FillSliceGangInfo(Slice *slice, int numsegments)
 			else
 			{
 				int i, j;
-				slice->gangSize = numsegments;
+				slice->gangSize = numsegments * factor;
 				slice->segments = NIL;
 				for (i = 0; i < numsegments; i++)
 					for (j = 0; j < factor; j++)
