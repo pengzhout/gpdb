@@ -223,29 +223,7 @@ add_twostage_group_agg_path(PlannerInfo *root,
 	 * is not applicable.
 	 */
 	if (!need_redistribute)
-	{
-		if (!is_sorted)
-			path = (Path *) create_sort_path(root,
-											 output_rel,
-											 path,
-											 root->group_pathkeys,
-											 -1.0);
-
-		add_path(output_rel, (Path *)
-				 create_agg_path(root,
-								 output_rel,
-								 path,
-								 ctx->target,
-								 parse->groupClause ? AGG_SORTED : AGG_PLAIN,
-								 AGGSPLIT_SIMPLE,
-								 false, /* streaming */
-								 parse->groupClause,
-								 (List *) parse->havingQual,
-								 ctx->agg_costs,
-								 ctx->dNumGroups,
-								 NULL));
 		return;
-	}
 
 	if (ctx->agg_costs->distinctAggrefs)
 	{
@@ -342,38 +320,22 @@ add_twostage_hash_agg_path(PlannerInfo *root,
 	bool		need_redistribute;
 	HashAggTableSizes hash_info;
 
+	group_locus = cdb_choose_grouping_locus(root, path, ctx->target,
+											parse->groupClause, NIL, NIL,
+											&need_redistribute);
+	/*
+	 * If the distribution of this path is suitable, two-stage aggregation
+	 * is not applicable.
+	 */
+	if (!need_redistribute)
+		return;
+
 	if (!calcHashAggTableSizes(work_mem * 1024L,
 							   ctx->dNumGroups,
 							   path->pathtarget->width,
 							   false,	/* force */
 							   &hash_info))
 		return;	/* don't try to hash */
-
-	group_locus = cdb_choose_grouping_locus(root, path, ctx->target,
-											parse->groupClause, NIL, NIL,
-											&need_redistribute);
-
-	/*
-	 * If the distribution of this path is suitable, two-stage aggregation
-	 * is not applicable.
-	 */
-	if (!need_redistribute)
-	{
-		add_path(output_rel, (Path *)
-				 create_agg_path(root,
-								 output_rel,
-								 path,
-								 ctx->target,
-								 AGG_HASHED,
-								 AGGSPLIT_SIMPLE,
-								 false, /* streaming */
-								 parse->groupClause,
-								 (List *) parse->havingQual,
-								 ctx->agg_costs,
-								 ctx->dNumGroups,
-								 NULL));
-		return;
-	}
 
 	initial_agg_path = (Path *) create_agg_path(root,
 												output_rel,
