@@ -131,6 +131,8 @@ SeqNext(SeqScanState *node)
 											node->ss.ps.plan->plan_node_id,
 											currentRelation);
 
+				if (!parallel_scan)
+					elog(ERROR, "failed to get free parallel entry");
 				node->ss_currentScanDesc_heap =
 					heap_beginscan_parallel_gp(currentRelation,
 											   estate->es_snapshot,

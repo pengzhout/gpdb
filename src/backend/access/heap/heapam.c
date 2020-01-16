@@ -1898,7 +1898,10 @@ heap_endscan(HeapScanDesc scan)
 
 	if (scan->gp_parallel &&
 		scan->rs_parallel)
+	{
 		heap_release_parallelscan(scan->rs_parallel);
+		scan->rs_parallel = NULL;
+	}
 
 	pfree(scan);
 }
@@ -9845,7 +9848,11 @@ heap_fetch_parallelscan(CommandId command_id, int plan_node_id,
 	if (!entry)
 	{
 		if (!gp_parallelscan_hdr->freelist)
+		{
+			SpinLockRelease(&gp_parallelscan_hdr->ps_lock);
 			elog(WARNING, "no free parallel scan entry");	
+			return NULL;
+		}
 
 		/* get one from freelist */
 		entry = gp_parallelscan_hdr->freelist;	
@@ -9891,7 +9898,11 @@ heap_release_parallelscan(ParallelHeapScanDesc desc)
 	}
 
 	if (!entry)
-		elog(ERROR, "no free parallel scan entry");	
+	{
+		SpinLockRelease(&gp_parallelscan_hdr->ps_lock);
+		elog(WARNING, "release parallel scan context: cannot find myself, command_id: %d, node_id: %d", desc->command_id, desc->plan_node_id);	
+		return;
+	}
 
 	entry->reference--;
 
@@ -9901,7 +9912,7 @@ heap_release_parallelscan(ParallelHeapScanDesc desc)
 		if (prev)
 			prev->next = entry->next;
 		else
-			 gp_parallelscan_hdr->allocated = NULL;	
+			gp_parallelscan_hdr->allocated = NULL;	
 
 		MemSet(entry, 0, sizeof(GpParallelScanEntry));	
 
