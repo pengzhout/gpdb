@@ -152,6 +152,19 @@ cdb_create_twostage_grouping_paths(PlannerInfo *root,
 											output_rel);
 			}
 		}
+
+		/* also consider partial paths */
+		if (input_rel->partial_pathlist)
+		{
+			Path	*path = (Path *) linitial(input_rel->partial_pathlist);
+			bool	is_sorted = pathkeys_contained_in(root->group_pathkeys,
+													  path->pathkeys);
+			add_twostage_group_agg_path(root,
+										path,
+										is_sorted,
+										&cxt,
+										output_rel);
+		}
 	}
 
 	if (can_hash && list_length(agg_costs->distinctAggrefs) == 0)
@@ -160,6 +173,16 @@ cdb_create_twostage_grouping_paths(PlannerInfo *root,
 								   cheapest_path,
 								   &cxt,
 								   output_rel);
+
+		/* also consider partial paths */
+		if (input_rel->partial_pathlist)
+		{
+			Path	*path = (Path *) linitial(input_rel->partial_pathlist);
+			add_twostage_hash_agg_path(root,
+									   path,
+									   &cxt,
+									   output_rel);
+		}
 	}
 
 	if ((can_hash || parse->groupClause == NIL) && list_length(agg_costs->distinctAggrefs) > 0)

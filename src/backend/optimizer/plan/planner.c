@@ -4102,6 +4102,37 @@ create_grouping_paths(PlannerInfo *root,
 		try_parallel_aggregation = true;
 	}
 
+	/* 
+	 * CDB: we only consider parallel aggregation when the data
+	 * distribution of input partial paths match the grouping
+	 * clause.
+	 * Path like Partial AGG  + Gather + Final AGG is created.
+	 *
+	 * cdb_create_twostage_grouping_paths will try mpp multistage
+	 * aggreagtion when locus is not match, like:
+	 * Partial AGG  + Gather Motion + Final AGG
+	 * Partial AGG  + Redistributed Motion + Final AGG
+	 */	
+	if (input_rel->partial_pathlist)
+	{
+		CdbPathLocus locus;
+		bool		need_redistribute;
+
+		/* only consider cheapest partial list */
+		Path	   *path = (Path *) linitial(input_rel->partial_pathlist);
+
+		locus = cdb_choose_grouping_locus(root, path, target,
+										  parse->groupClause,
+										  rollup_lists, rollup_groupclauses,
+										  &need_redistribute);
+
+		if (need_redistribute)
+			try_parallel_aggregation = false;
+		/* Gather node cannot on the top of non parallel safe path */
+		if (!path->parallel_safe)
+			try_parallel_aggregation = false;
+	}
+
 	/*
 	 * In PostgreSQL, partial_grouping_target and the partial/final agg
 	 * costs are only needed for parallel aggregation. In GPDB we also use
@@ -4424,11 +4455,9 @@ create_grouping_paths(PlannerInfo *root,
 		 */
 		if (grouped_rel->partial_pathlist)
 		{
-			CdbPathLocus gatherLocus;
 			Path	   *path = (Path *) linitial(grouped_rel->partial_pathlist);
 			double		total_groups = path->rows * path->parallel_workers;
 
-#if 0
 			path = (Path *) create_gather_path(root,
 											   grouped_rel,
 											   path,
@@ -4446,16 +4475,6 @@ create_grouping_paths(PlannerInfo *root,
 												 path,
 												 root->group_pathkeys,
 												 -1.0);
-#endif
-
-			CdbPathLocus_MakeSingleQE(&gatherLocus, getgpsegmentCount());
-
-			path = cdbpath_create_motion_path(root,
-											  path,
-											  root->group_pathkeys,
-											  false,
-											  gatherLocus,
-											  0);
 
 			if (parse->hasAggs || parse->groupClause)
 				add_path(grouped_rel, (Path *)
@@ -4556,25 +4575,15 @@ create_grouping_paths(PlannerInfo *root,
 									  false, /* force */
 									  &hash_info))
 			{
-				CdbPathLocus gatherLocus;
 				double		total_groups = path->rows * path->parallel_workers;
 
-				CdbPathLocus_MakeSingleQE(&gatherLocus, getgpsegmentCount());
-
-				path = cdbpath_create_motion_path(root,
-												  path,
-												  NIL,
-												  false,
-												  gatherLocus,
-												  0);
-#if 0
 				path = (Path *) create_gather_path(root,
 												   grouped_rel,
 												   path,
 												   partial_grouping_target,
 												   NULL,
 												   &total_groups);
-#endif
+
 				add_path(grouped_rel, (Path *)
 						 create_agg_path(root,
 										 grouped_rel,
