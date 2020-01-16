@@ -1564,6 +1564,7 @@ hash_inner_and_outer(PlannerInfo *root,
 				cheapest_safe_inners = lappend(cheapest_safe_inners,
 											   cheapest_total_inner);
 
+			#if 0
 				/* also consider cheapest partial_inner */
 				if (innerrel->partial_pathlist)
 				{
@@ -1571,6 +1572,7 @@ hash_inner_and_outer(PlannerInfo *root,
 					cheapest_safe_inners = lappend(cheapest_safe_inners,
 												   cheapest_partial_inner);
 				}
+			#endif
 			}
 			else if (cheapest_total_inner->parallel_safe)
 				cheapest_safe_inners = lappend(cheapest_safe_inners, 
