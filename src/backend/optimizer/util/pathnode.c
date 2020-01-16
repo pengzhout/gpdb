@@ -1078,6 +1078,19 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 	CHECK_FOR_INTERRUPTS();
 
 	/*
+	 * CDB: In GPDB, add_partial_path() not always have a input path with
+	 * parallel_workers > 0, eg: join between partial_pathlist and pathlist
+	 * may redistribute partial_pathlist to pathlist whose parallel_workers
+	 * is zero. If input path's parallel_workers is zero, we prefer to add
+	 * it to pathlist instead.
+	 */
+	if (!new_path->parallel_workers)
+	{
+		add_path(parent_rel, new_path);
+		return;
+	}
+
+	/*
 	 * As in add_path, throw out any paths which are dominated by the new
 	 * path, but throw out the new path if some existing path dominates it.
 	 */
