@@ -2351,6 +2351,18 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 												&agg_costs,
 												rollup_lists,
 												rollup_groupclauses);
+
+			/*
+			 * ParallelScan_FIXME:
+			 * grouped_rel->partial_pathlist is a place to store partial paths
+			 * that have been partially aggregate, but that's really not correct,
+			 * because a partial path for a relation is supposed to be one which
+			 * produces the correct results with the addition of only a Gather
+			 * node, and for grouped_rel, it's partial paths also require a
+			 * Finalize Aggregate step. This line can be removed once upstream
+			 * commit 3bf05e096b9 is merged.
+			 */
+			current_rel->partial_pathlist = NIL;
 		}
 
 		/*
@@ -2378,28 +2390,44 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 												current_rel);
 		}
 
+		/* 
+		 * CDB: In GPDB, A Gather node is not always added on the
+		 * top of partial_pathlist, if it is not parallel safe, An
+		 * example is that the partial_pathlist contians Motion
+		 * nodes. For distributed relations, pathlist and
+		 * partial_pathlist both contain part of data from the
+		 * view of cluster, so we need to compare pathlist with
+		 * partial_pathlist to decide which one is better path
+		 * from the view of cluster.
+		 *
+		 * Why here? Because in current codebase, planner will
+		 * not touch partial_pathlist anymore from this point.
+		 *
+		 * A problem to compare the cost of partial_pathlist
+		 * and pathlist here is: both partial_pathlist and
+		 * pathlist need a Gather Motion node to bring data
+		 * to the QD, the number of parallel workers affect
+		 * the startup cost of Gather Motion node, see
+		 * cdbpath_cost_motion(), so at this moment,
+		 * partial_pathlist has a cheaper cost than pathlist,
+		 * but it is uncertain after the Gather Motion is
+		 * added later. Luckily, the following operations
+		 * like LIMIT, ORDERED BY will all get benifit from
+		 * large parallel workers, so in the worse case, we
+		 * only suffer a loss of QE startup cost.
+		 */
+		if (gp_enable_mpp_plan &&
+			current_rel->partial_pathlist)
+		{
+			Path *cheapest_partial_path = (Path *)
+				linitial(current_rel->partial_pathlist);
+
+			add_path(current_rel, cheapest_partial_path);
+			set_cheapest(current_rel);
+			/* empty the partial_pathlist */
+			current_rel->partial_pathlist = NIL;
+		}
 	}							/* end of if (setOperations) */
-
-	if (gp_enable_mpp_plan &&
-		current_rel->partial_pathlist &&
-		(current_rel->reloptkind == RELOPT_BASEREL ||
-		 current_rel->reloptkind == RELOPT_JOINREL))
-	{
-		CdbPathLocus singleLocus;
-		Path *gather_path;
-		Path *cheapest_partial_path = linitial(current_rel->partial_pathlist);
-
-		CdbPathLocus_MakeSingleQE(&singleLocus, getgpsegmentCount());	
-		gather_path = (Path *)
-			cdbpath_create_motion_path(root,
-									   cheapest_partial_path,
-									   cheapest_partial_path->pathkeys,
-									   false,
-									   singleLocus,
-									   0);
-		add_path(current_rel, gather_path);
-		set_cheapest(current_rel);
-	}
 
 	/*
 	 * Deal with explicit redistribution requirements for TableValueExpr
