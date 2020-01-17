@@ -2455,6 +2455,7 @@ _copyFlow(const Flow *from)
 	COPY_SCALAR_FIELD(locustype);
 	COPY_SCALAR_FIELD(segindex);
 	COPY_SCALAR_FIELD(numsegments);
+	COPY_SCALAR_FIELD(parallel_workers);
 
 	return newnode;
 }

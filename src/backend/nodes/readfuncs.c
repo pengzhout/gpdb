@@ -1138,6 +1138,7 @@ _readFlow(void)
        READ_ENUM_FIELD(locustype, CdbLocusType);
        READ_INT_FIELD(segindex);
        READ_INT_FIELD(numsegments);
+       READ_INT_FIELD(parallel_workers);
 
        READ_DONE();
 }
