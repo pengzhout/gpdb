@@ -1084,7 +1084,9 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 	 * is zero. If input path's parallel_workers is zero, we prefer to add
 	 * it to pathlist instead.
 	 */
-	if (!new_path->parallel_workers)
+	if (!new_path->parallel_workers ||
+		(new_path->locus.parallel_workers > 0 &&
+		 new_path->locus.distkey_parallel_valid))
 	{
 		add_path(parent_rel, new_path);
 		return;
@@ -1304,7 +1306,7 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = parallel_workers;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
 
-	pathnode->locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->locus = cdbpathlocus_from_baserel(root, rel, parallel_workers);
 	pathnode->motionHazard = false;
 	pathnode->rescannable = true;
 	pathnode->sameslice_relids = rel->relids;
@@ -1329,7 +1331,7 @@ create_external_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer)
 													 required_outer);
 	pathnode->path.pathkeys = NIL;	/* external scan has unordered result */
 
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->path.motionHazard = false;
 
 	/*
@@ -1364,7 +1366,7 @@ create_samplescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* samplescan has unordered result */
 
-	pathnode->locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->motionHazard = false;
 	pathnode->rescannable = true;
 	pathnode->sameslice_relids = rel->relids;
@@ -1440,7 +1442,7 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexscandir = indexscandir;
 
 	/* Distribution is same as the base table. */
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = true;
 	pathnode->path.sameslice_relids = rel->relids;
@@ -1482,7 +1484,7 @@ create_bitmap_heap_path(PlannerInfo *root,
 	pathnode->path.pathkeys = NIL;		/* always unordered */
 
 	/* Distribution is same as the base table. */
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = true;
 	pathnode->path.sameslice_relids = rel->relids;
@@ -1591,7 +1593,7 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals,
 	pathnode->tidquals = tidquals;
 
 	/* Distribution is same as the base table. */
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = true;
 	pathnode->path.sameslice_relids = rel->relids;
@@ -2007,7 +2009,7 @@ set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
 		}
 		else
 		{
-			subpath = cdbpath_create_motion_path(root, subpath, pathkeys, false, targetlocus, 0);
+			subpath = cdbpath_create_motion_path(root, subpath, pathkeys, false, targetlocus);
 		}
 
 		pathnode->sameslice_relids = bms_union(pathnode->sameslice_relids, subpath->sameslice_relids);
@@ -2175,8 +2177,13 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 			sortrefs = lappend_int(sortrefs, 0);
 		}
 
-		locus = cdbpathlocus_from_exprs(root, sjinfo->semi_rhs_exprs, opfamilies, sortrefs, numsegments);
-        subpath = cdbpath_create_motion_path(root, subpath, NIL, false, locus, 0);
+		locus = cdbpathlocus_from_exprs(root,
+										sjinfo->semi_rhs_exprs,
+										opfamilies,
+										sortrefs,
+										numsegments,
+										subpath->parallel_workers);
+        subpath = cdbpath_create_motion_path(root, subpath, NIL, false, locus);
 		/*
 		 * We probably add agg/sort node above the added motion node, but it is
 		 * possible to add an agg/sort node below this motion node also,
@@ -2744,6 +2751,9 @@ create_gather_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 
 	/* GPDB_96_MERGE_FIXME: how do data distribution locus and parallelism work together? */
 	pathnode->path.locus = subpath->locus;
+	/* reset locus parallel_workers and distkey_parallel_valid */
+	pathnode->path.locus.parallel_workers = 0;
+	pathnode->path.locus.distkey_parallel_valid = 0;
 
 	return pathnode;
 }
@@ -3415,7 +3425,8 @@ create_nestloop_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = joinrel->consider_parallel &&
 		outer_path->parallel_safe && inner_path->parallel_safe;
 	/* This is a foolish way to estimate parallel_workers, but for now... */
-	pathnode->path.parallel_workers = outer_path->parallel_workers;
+	pathnode->path.parallel_workers = Max(outer_path->parallel_workers,
+										  inner_path->parallel_workers);
 	pathnode->path.pathkeys = pathkeys;
 	pathnode->jointype = jointype;
 	pathnode->outerjoinpath = outer_path;
@@ -3691,7 +3702,8 @@ create_hashjoin_path(PlannerInfo *root,
 	pathnode->jpath.path.parallel_safe = joinrel->consider_parallel &&
 		outer_path->parallel_safe && inner_path->parallel_safe;
 	/* This is a foolish way to estimate parallel_workers, but for now... */
-	pathnode->jpath.path.parallel_workers = outer_path->parallel_workers;
+	pathnode->jpath.path.parallel_workers = Max(outer_path->parallel_workers,
+												inner_path->parallel_workers);
 
 	/*
 	 * A hashjoin never has pathkeys, since its output ordering is
@@ -4858,7 +4870,7 @@ adjust_modifytable_subpaths(PlannerInfo *root, CmdType operation,
 	{
 		CdbPathLocus resultLocus;
 
-		CdbPathLocus_MakeReplicated(&resultLocus, numsegments);
+		CdbPathLocus_MakeReplicated(&resultLocus, numsegments, 0);
 		return resultLocus;
 	}
 	else
@@ -5076,7 +5088,6 @@ static void
 gp_print_path(StringInfo msg, Path *path, int indent)
 {
 	const char *ptype;
-	const char *ltype;
 	bool		join = false;
 	Path	   *subpath = NULL;
 	int			i;
@@ -5260,83 +5271,14 @@ gp_print_path(StringInfo msg, Path *path, int indent)
 
 	appendStringInfo(msg, " parallel_workers: %d", path->parallel_workers);
 
-#if 0
-	switch (path->locus.locustype)
-	{
-		case CdbLocusType_Entry:
-			ltype = "Entry";
-			break;
-		case CdbLocusType_SingleQE:
-			ltype = "SingleQE";
-			break;
-		case CdbLocusType_General:
-			ltype = "General";
-			break;
-		case CdbLocusType_SegmentGeneral:
-			ltype = "SegmentGeneral";
-			break;
-		case CdbLocusType_Replicated:
-			ltype = "Replicated";
-			break;
-		case CdbLocusType_Hashed:
-			ltype = "Hashed";
-			break;
-		case CdbLocusType_HashedOJ:
-			ltype = "HashedOJ";
-			break;
-		case CdbLocusType_Strewn:
-			ltype = "Strewn";
-			break;
-		default:
-			ltype = "???CdbLocus";
-			break;
-	}
-	appendStringInfo(msg, " locus=%s", ltype);
-	if (path->param_info)
-	{
-		appendStringInfo(msg, " required_outer (");
-		print_relids(root, path->param_info->ppi_req_outer);
-		appendStringInfo(msg, ")");
-	}
-#endif
 	appendStringInfo(msg, " rows=%.0f cost=%.2f..%.2f\n",
 		   path->rows, path->startup_cost, path->total_cost);
-
-#if 0
-	if (path->pathkeys)
-	{
-		for (i = 0; i < indent; i++)
-			appendStringInfo(msg, "\t");
-		appendStringInfo(msg, "  pathkeys: ");
-		print_pathkeys(path->pathkeys, root->parse->rtable);
-	}
-#endif
 
 	if (join)
 	{
 		JoinPath   *jp = (JoinPath *) path;
-
-#if 0
-		for (i = 0; i < indent; i++)
-			appendStringInfo(msg, "\t");
-		appendStringInfo(msg, "  clauses: ");
-		print_restrictclauses(root, jp->joinrestrictinfo);
-#endif
 		appendStringInfo(msg, "\n");
 
-#if 0
-		if (IsA(path, MergePath))
-		{
-			MergePath  *mp = (MergePath *) path;
-
-			for (i = 0; i < indent; i++)
-				appendStringInfo(msg, "\t");
-			appendStringInfo(msg, "  sortouter=%d sortinner=%d materializeinner=%d\n",
-				   ((mp->outersortkeys) ? 1 : 0),
-				   ((mp->innersortkeys) ? 1 : 0),
-				   ((mp->materialize_inner) ? 1 : 0));
-		}
-#endif
 		gp_print_path(msg, jp->outerjoinpath, indent + 1);
 		appendStringInfo(msg, "\n");
 		gp_print_path(msg, jp->innerjoinpath, indent + 1);

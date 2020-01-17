@@ -484,7 +484,7 @@ generate_recursion_path(SetOperationStmt *setOp, PlannerInfo *root,
 		CdbPathLocus gather_locus;
 
 		CdbPathLocus_MakeSingleQE(&gather_locus, lpath->locus.numsegments);
-		lpath = cdbpath_create_motion_path(root, lpath, NIL, false, gather_locus, 0);
+		lpath = cdbpath_create_motion_path(root, lpath, NIL, false, gather_locus);
 	}
 
 	/* The right path will want to look at the left one ... */

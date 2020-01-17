@@ -2622,7 +2622,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 														make_tlist_from_pathtarget(path->pathtarget));
 
 			CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
-			path = cdbpath_create_motion_path(root, path, pathkeys, false, locus, 0);
+			path = cdbpath_create_motion_path(root, path, pathkeys, false, locus);
 		}
 
 		/*
@@ -4372,7 +4372,7 @@ create_grouping_paths(PlannerInfo *root,
 					 * do a order-preserving motion to merge the inputs.
 					 */
 					if (need_redistribute && CdbPathLocus_IsPartitioned(locus))
-						path = cdbpath_create_motion_path(root, path, NIL, false, locus, 0);
+						path = cdbpath_create_motion_path(root, path, NIL, false, locus);
 
 					path = (Path *) create_sort_path(root,
 													 grouped_rel,
@@ -4381,7 +4381,7 @@ create_grouping_paths(PlannerInfo *root,
 													 -1.0);
 
 					if (need_redistribute && !CdbPathLocus_IsPartitioned(locus))
-						path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus, 0);
+						path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);
 				}
 				else
 				{
@@ -4403,11 +4403,11 @@ create_grouping_paths(PlannerInfo *root,
 							CdbPathLocus locus;
 
 							CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
-							path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus, 0);
+							path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);
 						}
 						else
 						{
-							path = cdbpath_create_motion_path(root, path, NIL, false, locus, 0);
+							path = cdbpath_create_motion_path(root, path, NIL, false, locus);
 						}
 					}
 				}
@@ -4568,7 +4568,7 @@ create_grouping_paths(PlannerInfo *root,
 			 */
 			if (need_redistribute)
 				cheapest_path = cdbpath_create_motion_path(root, cheapest_path,
-														   NIL /* pathkeys */, false, locus, 0);
+														   NIL /* pathkeys */, false, locus);
 
 			/*
 			 * We just need an Agg over the cheapest-total input path, since
@@ -4737,7 +4737,8 @@ choose_one_window_locus(PlannerInfo *root, Path *path,
 											partition_dist_exprs,
 											partition_dist_opfamilies,
 											partition_dist_sortrefs,
-											getgpsegmentCount());
+											path->locus.numsegments,
+											path->locus.parallel_workers);
 			need_redistribute = true;
 		}
 	}
@@ -4899,7 +4900,7 @@ create_one_window_path(PlannerInfo *root,
 		 */
 		locus = choose_one_window_locus(root, path, wc, &need_redistribute);
 		if (need_redistribute && CdbPathLocus_IsPartitioned(locus))
-			path = cdbpath_create_motion_path(root, path, NIL, false, locus, 0);
+			path = cdbpath_create_motion_path(root, path, NIL, false, locus);
 
 		/* Sort if necessary */
 		if (!pathkeys_contained_in(window_pathkeys, path->pathkeys))
@@ -4921,7 +4922,7 @@ create_one_window_path(PlannerInfo *root,
 			List	   *pathkeys =
 				cdbpullup_truncatePathKeysForTargetList(path->pathkeys,
 														make_tlist_from_pathtarget(path->pathtarget));
-			path = cdbpath_create_motion_path(root, path, pathkeys, false, locus, 0);
+			path = cdbpath_create_motion_path(root, path, pathkeys, false, locus);
 		}
 
 		if (lnext(l))
@@ -5172,14 +5173,15 @@ create_distinct_paths(PlannerInfo *root,
 														distinct_dist_exprs,
 														distinct_dist_opfamilies,
 														distinct_dist_sortrefs,
-														getgpsegmentCount());
+														path->locus.numsegments,
+														path->locus.parallel_workers);
 					}
 					else
 					{
 						CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
 					}
 
-					path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus, 0);
+					path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);
 				}
 
 				add_path(distinct_rel, (Path *)
@@ -5216,14 +5218,15 @@ create_distinct_paths(PlannerInfo *root,
 													distinct_dist_exprs,
 													distinct_dist_opfamilies,
 													distinct_dist_sortrefs,
-													getgpsegmentCount());
+													path->locus.numsegments,
+													path->locus.parallel_workers);
 				}
 				else
 				{
 					CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
 				}
 				/* we're about to sort the data, so don't try preserving any existing order. */
-				path = cdbpath_create_motion_path(root, path, NIL, false, locus, 0);
+				path = cdbpath_create_motion_path(root, path, NIL, false, locus);
 			}
 
 			path = (Path *) create_sort_path(root, distinct_rel,
@@ -5244,14 +5247,15 @@ create_distinct_paths(PlannerInfo *root,
 													distinct_dist_exprs,
 													distinct_dist_opfamilies,
 													distinct_dist_sortrefs,
-													getgpsegmentCount());
+													path->locus.numsegments,
+													path->locus.parallel_workers);
 				}
 				else
 				{
 					CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
 				}
 				/* preserve any existing order */
-				path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus, 0);
+				path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);
 			}
 		}
 
@@ -5333,14 +5337,15 @@ create_distinct_paths(PlannerInfo *root,
 												distinct_dist_exprs,
 												distinct_dist_opfamilies,
 												distinct_dist_sortrefs,
-												getgpsegmentCount());
+												path->locus.numsegments,
+												path->locus.parallel_workers);
 			}
 			else
 			{
 				CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
 			}
 
-			path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus, 0);
+			path = cdbpath_create_motion_path(root, path, path->pathkeys, false, locus);
 		}
 
 		add_path(distinct_rel, (Path *)
@@ -5531,7 +5536,9 @@ create_scatter_path(PlannerInfo *root, List *scatterClause, Path *path)
 			sortrefs = lappend_int(sortrefs, 0);
 		}
 
-		locus = cdbpathlocus_from_exprs(root, scatterClause, opfamilies, sortrefs, getgpsegmentCount());
+		locus = cdbpathlocus_from_exprs(root, scatterClause, opfamilies, sortrefs,
+										path->locus.numsegments,
+										path->locus.parallel_workers);
 	}
 
 	/*
@@ -5542,8 +5549,7 @@ create_scatter_path(PlannerInfo *root, List *scatterClause, Path *path)
 									  path,
 									  NIL,
 									  false,
-									  locus,
-									  0);
+									  locus);
 
 	return path;
 }

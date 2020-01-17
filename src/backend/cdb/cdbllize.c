@@ -401,14 +401,14 @@ create_motion_for_top_plan(PlannerInfo *root, Path *best_path, bool *needToAssig
 			CdbPathLocus replicatedLocus;
 
 			CdbPathLocus_MakeReplicated(&replicatedLocus,
-										targetPolicy->numsegments);
+										targetPolicy->numsegments,
+										0 /* no parallel workers */);
 
 			best_path = cdbpath_create_motion_path(root,
 												   best_path,
 												   NIL,
 												   false,
-												   replicatedLocus,
-												   0);
+												   replicatedLocus);
 		}
 		else
 		{
@@ -448,8 +448,7 @@ create_motion_for_top_plan(PlannerInfo *root, Path *best_path, bool *needToAssig
 												   best_path,
 												   NIL,
 												   false,
-												   broadcastLocus,
-												   0);
+												   broadcastLocus);
 		}
 		else
 		{
@@ -519,8 +518,7 @@ create_motion_for_top_plan(PlannerInfo *root, Path *best_path, bool *needToAssig
 											   best_path,
 											   root->sort_pathkeys,
 											   false,
-											   entryLocus,
-											   0);
+											   entryLocus);
 	}
 
 	return best_path;

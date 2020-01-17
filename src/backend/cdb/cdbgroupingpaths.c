@@ -290,8 +290,7 @@ add_twostage_group_agg_path(PlannerInfo *root,
 									  initial_agg_path,
 									  initial_agg_path->pathkeys,
 									  false,
-									  singleQE_locus,
-									  0);
+									  singleQE_locus);
 
 	path = (Path *) create_agg_path(root,
 									output_rel,
@@ -354,7 +353,7 @@ add_twostage_hash_agg_path(PlannerInfo *root,
 	 * HashAgg -> Redistribute or Gather Motion -> HashAgg.
 	 */
 	path = cdbpath_create_motion_path(root, initial_agg_path, NIL, false,
-									  group_locus, 0);
+									  group_locus);
 
 	path = (Path *) create_agg_path(root,
 									output_rel,
@@ -603,7 +602,7 @@ add_single_dqa_hash_agg_path(PlannerInfo *root,
 
 		if (group_need_redistribute)
 			path = cdbpath_create_motion_path(root, path, NIL, false,
-											  group_locus, 0);
+											  group_locus);
 
 		path = (Path *) create_agg_path(root,
 										output_rel,
@@ -647,7 +646,7 @@ add_single_dqa_hash_agg_path(PlannerInfo *root,
 											&hash_info);
 
 		path = cdbpath_create_motion_path(root, path, NIL, false,
-										  group_locus, 0);
+										  group_locus);
 		path = (Path *) create_agg_path(root,
 										output_rel,
 										path,
@@ -700,7 +699,7 @@ add_single_dqa_hash_agg_path(PlannerInfo *root,
 										&hash_info);
 
 		path = cdbpath_create_motion_path(root, path, NIL, false,
-										  distinct_locus, 0);
+										  distinct_locus);
 		path = (Path *) create_agg_path(root,
 										output_rel,
 										path,
@@ -727,7 +726,7 @@ add_single_dqa_hash_agg_path(PlannerInfo *root,
 										ctx->dNumGroups * getgpsegmentCount(),
 										&hash_info);
 		path = cdbpath_create_motion_path(root, path, NIL, false,
-										  group_locus, 0);
+										  group_locus);
 
 		path = (Path *) create_agg_path(root,
 										output_rel,
@@ -841,8 +840,7 @@ cdb_choose_grouping_locus(PlannerInfo *root, Path *path,
 		if (!group_tles)
 			need_redistribute = true;
 		else
-			need_redistribute = path->parallel_workers ? true :
-				!cdbpathlocus_is_hashed_on_tlist(path->locus, group_tles, true);
+			need_redistribute = !cdbpathlocus_is_hashed_on_tlist(path->locus, group_tles, true);
 
 		hash_exprs = NIL;
 		hash_opfamilies = NIL;
@@ -874,7 +872,10 @@ cdb_choose_grouping_locus(PlannerInfo *root, Path *path,
 		if (need_redistribute)
 		{
 			if (hash_exprs)
-				locus = cdbpathlocus_from_exprs(root, hash_exprs, hash_opfamilies, hash_sortrefs, getgpsegmentCount());
+				locus = cdbpathlocus_from_exprs(root, hash_exprs, hash_opfamilies,
+												hash_sortrefs,
+												path->locus.numsegments,
+												path->locus.parallel_workers);
 			else
 				CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
 		}

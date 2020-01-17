@@ -24,8 +24,7 @@ extern Path *cdbpath_create_motion_path(PlannerInfo     *root,
                            Path            *subpath,
                            List            *pathkeys,
                            bool             require_existing_order,
-                           CdbPathLocus     locus,
-						   int				parallel_workers);
+                           CdbPathLocus     locus);
 
 extern Path *cdbpath_create_explicit_motion_path(PlannerInfo *root,
 									Path *subpath,

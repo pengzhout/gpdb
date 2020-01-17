@@ -159,7 +159,7 @@ adjust_setop_arguments(PlannerInfo *root, List *pathlist, List *tlist_list, GpSe
 					case CdbLocusType_Strewn:
 						CdbPathLocus_MakeEntry(&locus);
 						adjusted_path = cdbpath_create_motion_path(root, subpath, NULL, false,
-																   locus, 0);
+																   locus);
 						break;
 
 					case CdbLocusType_SingleQE:
@@ -172,7 +172,7 @@ adjust_setop_arguments(PlannerInfo *root, List *pathlist, List *tlist_list, GpSe
 						 */
 						CdbPathLocus_MakeEntry(&locus);
 						adjusted_path = cdbpath_create_motion_path(root, subpath, NULL, false,
-																   locus, 0);
+																   locus);
 						break;
 
 					case CdbLocusType_Entry:
@@ -199,7 +199,7 @@ adjust_setop_arguments(PlannerInfo *root, List *pathlist, List *tlist_list, GpSe
 						/* Gather to QE.  No need to keep ordering. */
 						CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
 						adjusted_path = cdbpath_create_motion_path(root, subpath, NULL, false,
-																   locus, 0);
+																   locus);
 						break;
 
 					case CdbLocusType_SingleQE:
@@ -213,7 +213,7 @@ adjust_setop_arguments(PlannerInfo *root, List *pathlist, List *tlist_list, GpSe
 						/* Gather to QE.  No need to keep ordering. */
 						CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
 						adjusted_path = cdbpath_create_motion_path(root, subpath, NULL, false,
-																   locus, 0);
+																   locus);
 						break;
 
 					case CdbLocusType_Entry:
@@ -288,7 +288,8 @@ make_motion_hash_all_targets(PlannerInfo *root, Path *subpath, List *tlist)
 										hashexprs,
 										hashopfamilies,
 										hashsortrefs,
-										getgpsegmentCount());
+										getgpsegmentCount(),
+										subpath->parallel_workers);
 	}
 	else
 	{
@@ -303,7 +304,7 @@ make_motion_hash_all_targets(PlannerInfo *root, Path *subpath, List *tlist)
 	}
 
 	return cdbpath_create_motion_path(root, subpath, subpath->pathkeys,
-									  false, locus, 0);
+									  false, locus);
 }
 
 /*

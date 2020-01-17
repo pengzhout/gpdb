@@ -73,6 +73,16 @@ cdbpathlocus_equal(CdbPathLocus a, CdbPathLocus b)
 		list_length(a.distkey) != list_length(b.distkey))
 		return false;
 
+	if (a.parallel_workers != b.parallel_workers)
+		return false;
+	else if (a.distkey_parallel_valid != b.distkey_parallel_valid)
+		return false;
+
+	/* we cannot compare two hash locus both has invalid distkey also */
+	if (!cdbpathlocus_precheck_hash(a) &&
+		!cdbpathlocus_precheck_hash(b))
+		return false;
+
 	if ((CdbPathLocus_IsHashed(a) || CdbPathLocus_IsHashedOJ(a)) &&
 		(CdbPathLocus_IsHashed(b) || CdbPathLocus_IsHashedOJ(b)))
 	{
@@ -281,7 +291,10 @@ cdbpathlocus_for_insert(PlannerInfo *root, GpPolicy *policy,
 			CdbPathLocus_MakeNull(&targetLocus, policy->numsegments);
 		}
 		else if (distkeys)
-			CdbPathLocus_MakeHashed(&targetLocus, distkeys, policy->numsegments);
+			CdbPathLocus_MakeHashed(&targetLocus, distkeys,
+									policy->numsegments,
+									0 /* parallel_workers */,
+									false /* distkey_parallel_valid */);
 		else
 		{
 			/* DISTRIBUTED RANDOMLY */
@@ -294,7 +307,7 @@ cdbpathlocus_for_insert(PlannerInfo *root, GpPolicy *policy,
 	}
 	else if (policy->ptype == POLICYTYPE_REPLICATED)
 	{
-		CdbPathLocus_MakeReplicated(&targetLocus, policy->numsegments);
+		CdbPathLocus_MakeReplicated(&targetLocus, policy->numsegments, 0);
 	}
 	else
 		elog(ERROR, "unrecognized policy type %u", policy->ptype);
@@ -309,7 +322,8 @@ cdbpathlocus_for_insert(PlannerInfo *root, GpPolicy *policy,
  */
 CdbPathLocus
 cdbpathlocus_from_baserel(struct PlannerInfo *root,
-						  struct RelOptInfo *rel)
+						  struct RelOptInfo *rel,
+						  int parallel_workers)
 {
 	CdbPathLocus result;
 	GpPolicy   *policy = rel->cdbpolicy;
@@ -330,7 +344,9 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 															   policy);
 
 			if (distkeys)
-				CdbPathLocus_MakeHashed(&result, distkeys, policy->numsegments);
+				CdbPathLocus_MakeHashed(&result, distkeys, policy->numsegments,
+										parallel_workers,
+										false /* distkey_parallel_valid*/);
 			else
 			{
 				/*
@@ -367,7 +383,8 @@ cdbpathlocus_from_exprs(struct PlannerInfo *root,
 						List *hash_on_exprs,
 						List *hash_opfamilies,
 						List *hash_sortrefs,
-						int numsegments)
+						int numsegments,
+						int parallel_workers)
 {
 	CdbPathLocus locus;
 	List	   *distkeys = NIL;
@@ -384,7 +401,8 @@ cdbpathlocus_from_exprs(struct PlannerInfo *root,
 		distkeys = lappend(distkeys, distkey);
 	}
 
-	CdbPathLocus_MakeHashed(&locus, distkeys, numsegments);
+	CdbPathLocus_MakeHashed(&locus, distkeys, numsegments,
+							parallel_workers, true);
 	return locus;
 }								/* cdbpathlocus_from_exprs */
 
@@ -474,11 +492,15 @@ cdbpathlocus_from_subquery(struct PlannerInfo *root,
 		if (failed)
 			CdbPathLocus_MakeStrewn(&locus, numsegments);
 		else if (CdbPathLocus_IsHashed(subpath->locus))
-			CdbPathLocus_MakeHashed(&locus, distkeys, numsegments);
+			CdbPathLocus_MakeHashed(&locus, distkeys, numsegments,
+									subpath->locus.parallel_workers,
+									subpath->locus.distkey_parallel_valid);
 		else
 		{
 			Assert(CdbPathLocus_IsHashedOJ(subpath->locus));
-			CdbPathLocus_MakeHashedOJ(&locus, distkeys, numsegments);
+			CdbPathLocus_MakeHashedOJ(&locus, distkeys, numsegments,
+									  subpath->locus.parallel_workers,
+									  subpath->locus.distkey_parallel_valid);
 		}
 	}
 	else
@@ -634,9 +656,13 @@ cdbpathlocus_pull_above_projection(struct PlannerInfo *root,
 
 		/* Build new locus. */
 		if (CdbPathLocus_IsHashed(locus))
-			CdbPathLocus_MakeHashed(&newlocus, newdistkeys, numsegments);
+			CdbPathLocus_MakeHashed(&newlocus, newdistkeys, numsegments,
+									locus.parallel_workers,
+									locus.distkey_parallel_valid);
 		else
-			CdbPathLocus_MakeHashedOJ(&newlocus, newdistkeys, numsegments);
+			CdbPathLocus_MakeHashedOJ(&newlocus, newdistkeys, numsegments,
+									  locus.parallel_workers,
+									  locus.distkey_parallel_valid);
 		return newlocus;
 	}
 	else
@@ -660,6 +686,7 @@ cdbpathlocus_join(JoinType jointype, CdbPathLocus a, CdbPathLocus b)
 
 	Assert(cdbpathlocus_is_valid(a));
 	Assert(cdbpathlocus_is_valid(b));
+	Assert(a.parallel_workers == b.parallel_workers);
 
 	/* Do both input rels have same locus? */
 	if (cdbpathlocus_equal(a, b))
@@ -777,7 +804,7 @@ cdbpathlocus_join(JoinType jointype, CdbPathLocus a, CdbPathLocus b)
 
 			newdistkeys = lappend(newdistkeys, newdistkey);
 		}
-		CdbPathLocus_MakeHashedOJ(&resultlocus, newdistkeys, numsegments);
+		CdbPathLocus_MakeHashedOJ(&resultlocus, newdistkeys, numsegments, a.parallel_workers, true);
 	}
 	Assert(cdbpathlocus_is_valid(resultlocus));
 	return resultlocus;
@@ -804,6 +831,10 @@ cdbpathlocus_is_hashed_on_exprs(CdbPathLocus locus, List *exprlist,
 
 	if (CdbPathLocus_IsHashed(locus) || CdbPathLocus_IsHashedOJ(locus))
 	{
+		/* do hash locus precheck first */
+		if (!cdbpathlocus_precheck_hash(locus))
+			return false;
+
 		foreach(distkeycell, locus.distkey)
 		{
 			DistributionKey *distkey = (DistributionKey *) lfirst(distkeycell);
@@ -866,6 +897,10 @@ cdbpathlocus_is_hashed_on_eclasses(CdbPathLocus locus, List *eclasses,
 
 	if (CdbPathLocus_IsHashed(locus) || CdbPathLocus_IsHashedOJ(locus))
 	{
+		/* do hash locus precheck first */
+		if (!cdbpathlocus_precheck_hash(locus))
+			return false;
+
 		foreach(distkeycell, locus.distkey)
 		{
 			DistributionKey *distkey = (DistributionKey *) lfirst(distkeycell);
@@ -934,6 +969,10 @@ cdbpathlocus_is_hashed_on_tlist(CdbPathLocus locus, List *tlist,
 
 	if (CdbPathLocus_IsHashed(locus) || CdbPathLocus_IsHashedOJ(locus))
 	{
+		/* first do hash locus validation */
+		if (!cdbpathlocus_precheck_hash(locus))
+			return false;
+
 		foreach(distkeycell, locus.distkey)
 		{
 			DistributionKey *distkey = (DistributionKey *) lfirst(distkeycell);
@@ -1102,3 +1141,21 @@ cdbpathlocus_is_valid(CdbPathLocus locus)
 bad:
 	return false;
 }								/* cdbpathlocus_is_valid */
+
+/* 
+ * This function check whether the distkey of hash locus is
+ * valid. This function should be called before we decide
+ * whether need a redistribute motion using distkey.
+ */
+bool
+cdbpathlocus_precheck_hash(CdbPathLocus locus)
+{
+	if (!CdbPathLocus_IsHashed(locus) &&
+		!CdbPathLocus_IsHashedOJ(locus))
+		return true;
+
+	if (locus.parallel_workers > 0 &&
+		!locus.distkey_parallel_valid)
+		return false;
+	return true;
+}
