@@ -318,6 +318,7 @@ extern bool gp_create_table_random_default_distribution;
 extern bool gp_allow_non_uniform_partitioning_ddl;
 extern bool gp_enable_exchange_default_partition;
 extern bool gp_enable_parallelscan;
+extern bool gp_debug_add_path;
 extern int  dtx_phase2_retry_count;
 
 /* WAL replication debug gucs */

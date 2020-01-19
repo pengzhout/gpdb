@@ -20,6 +20,7 @@
 
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/print.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
@@ -57,6 +58,7 @@ typedef enum
  */
 #define STD_FUZZ_FACTOR 1.01
 
+static void gp_print_path(StringInfo msg, Path *path, int indent);
 static List *translate_sub_tlist(List *tlist, int relid);
 
 static void set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
@@ -848,6 +850,21 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			break;
 	}
 
+	if (gp_debug_add_path)
+	{
+		StringInfo msg = makeStringInfo();
+		gp_print_path(msg, new_path, 1);
+
+		ereport(WARNING, 
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg("Adding paths"),
+				 errdetail("start %15.1lf,total %15.1lf   \n%s%s\033[0m",
+						   new_path->startup_cost,
+						   new_path->total_cost,
+						   accept_new ? "\033[0;32m" : "\033[0;31m",
+						   msg->data)));
+	}
+
 	if (accept_new)
 	{
 		/* Accept the new path: insert it at proper place in pathlist */
@@ -1142,6 +1159,21 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 		 */
 		if (!accept_new)
 			break;
+	}
+
+	if (gp_debug_add_path)
+	{
+		StringInfo msg = makeStringInfo();
+		gp_print_path(msg, new_path, 1);
+
+		ereport(WARNING, 
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg("Adding partial paths"),
+				 errdetail("start %15.1lf,total %15.1lf   \n%s%s\033[0m",
+						   new_path->startup_cost,
+						   new_path->total_cost,
+						   accept_new ? "\033[0;36m" : "\033[0;35m",
+						   msg->data)));
 	}
 
 	if (accept_new)
@@ -5013,4 +5045,213 @@ reparameterize_path(PlannerInfo *root, Path *path,
 			break;
 	}
 	return NULL;
+}
+
+static void
+gp_print_path(StringInfo msg, Path *path, int indent)
+{
+	const char *ptype;
+	const char *ltype;
+	bool		join = false;
+	Path	   *subpath = NULL;
+	int			i;
+
+	switch (nodeTag(path))
+	{
+		case T_Path:
+			switch (path->pathtype)
+			{
+				case T_SeqScan:
+					ptype = "SeqScan";
+					break;
+				case T_SampleScan:
+					ptype = "SampleScan";
+					break;
+				case T_SubqueryScan:
+					ptype = "SubqueryScan";
+					break;
+				case T_FunctionScan:
+					ptype = "FunctionScan";
+					break;
+				case T_ValuesScan:
+					ptype = "ValuesScan";
+					break;
+				case T_CteScan:
+					ptype = "CteScan";
+					break;
+				case T_WorkTableScan:
+					ptype = "WorkTableScan";
+					break;
+				default:
+					ptype = "???Path";
+					break;
+			}
+			break;
+		case T_IndexPath:
+			ptype = "IdxScan";
+			break;
+		case T_BitmapHeapPath:
+			ptype = "BitmapHeapScan";
+			break;
+		case T_BitmapAndPath:
+			ptype = "BitmapAndPath";
+			break;
+		case T_BitmapOrPath:
+			ptype = "BitmapOrPath";
+			break;
+		case T_TidPath:
+			ptype = "TidScan";
+			break;
+		case T_SubqueryScanPath:
+			ptype = "SubqueryScanScan";
+			break;
+		case T_ForeignPath:
+			ptype = "ForeignScan";
+			break;
+		case T_AppendPath:
+			ptype = "Append";
+			break;
+		case T_MergeAppendPath:
+			ptype = "MergeAppend";
+			break;
+		case T_ResultPath:
+			ptype = "Result";
+			break;
+		case T_MaterialPath:
+			ptype = "Material";
+			subpath = ((MaterialPath *) path)->subpath;
+			break;
+		case T_UniquePath:
+			ptype = "Unique";
+			subpath = ((UniquePath *) path)->subpath;
+			break;
+		case T_GatherPath:
+			ptype = "Gather";
+			subpath = ((GatherPath *) path)->subpath;
+			break;
+		case T_ProjectionPath:
+			ptype = "Projection";
+			subpath = ((ProjectionPath *) path)->subpath;
+			break;
+		case T_SortPath:
+			ptype = "Sort";
+			subpath = ((SortPath *) path)->subpath;
+			break;
+		case T_GroupPath:
+			ptype = "Group";
+			subpath = ((GroupPath *) path)->subpath;
+			break;
+		case T_UpperUniquePath:
+			ptype = "UpperUnique";
+			subpath = ((UpperUniquePath *) path)->subpath;
+			break;
+		case T_AggPath:
+			ptype = "Agg";
+			subpath = ((AggPath *) path)->subpath;
+			break;
+		case T_GroupingSetsPath:
+			ptype = "GroupingSets";
+			subpath = ((GroupingSetsPath *) path)->subpath;
+			break;
+		case T_MinMaxAggPath:
+			ptype = "MinMaxAgg";
+			break;
+		case T_WindowAggPath:
+			ptype = "WindowAgg";
+			subpath = ((WindowAggPath *) path)->subpath;
+			break;
+		case T_SetOpPath:
+			ptype = "SetOp";
+			subpath = ((SetOpPath *) path)->subpath;
+			break;
+		case T_RecursiveUnionPath:
+			ptype = "RecursiveUnion";
+			break;
+		case T_LockRowsPath:
+			ptype = "LockRows";
+			subpath = ((LockRowsPath *) path)->subpath;
+			break;
+		case T_ModifyTablePath:
+			ptype = "ModifyTable";
+			break;
+		case T_LimitPath:
+			ptype = "Limit";
+			subpath = ((LimitPath *) path)->subpath;
+			break;
+		case T_NestPath:
+			ptype = "NestLoop";
+			join = true;
+			break;
+		case T_MergePath:
+			ptype = "MergeJoin";
+			join = true;
+			break;
+		case T_HashPath:
+			ptype = "HashJoin";
+			join = true;
+			break;
+		case T_CdbMotionPath:
+			if (path->locus.locustype ==
+				CdbLocusType_Entry)
+				ptype = "Gather Motion";
+			else if (path->locus.locustype ==
+					 CdbLocusType_SingleQE)
+				ptype = "Gather Motion";
+			else if (path->locus.locustype == 
+					 CdbLocusType_Replicated)
+				ptype = "Broadcast Motion";
+			else if (path->locus.locustype == 
+					 CdbLocusType_Hashed)
+				ptype = "Redistribute Motion";
+			else
+				ptype = "Motion";
+			subpath = ((CdbMotionPath *) path)->subpath;
+			break;
+		default:
+			ptype = "???Path";
+			break;
+	}
+
+	for (i = 0; i < indent; i++)
+		appendStringInfo(msg, "\t");
+	appendStringInfo(msg, "%s", ptype);
+
+	if (path->parent)
+	{
+		appendStringInfo(msg, "(");
+		int	x;
+		x = -1;
+		x = bms_next_member(path->parent->relids, x);
+
+		while (x >= 0)
+		{
+			appendStringInfo(msg, "%d", x);
+			x = bms_next_member(path->parent->relids, x);
+			if (x >= 0)
+				appendStringInfo(msg, ",");
+		}
+		appendStringInfo(msg, ")");
+	}
+
+	appendStringInfo(msg, " parallel_workers: %d", path->parallel_workers);
+
+	appendStringInfo(msg, " rows=%.0f cost=%.2f..%.2f\n",
+		   path->rows, path->startup_cost, path->total_cost);
+
+	if (join)
+	{
+		JoinPath   *jp = (JoinPath *) path;
+
+		appendStringInfo(msg, "\n");
+
+		gp_print_path(msg, jp->outerjoinpath, indent + 1);
+		appendStringInfo(msg, "\n");
+		gp_print_path(msg, jp->innerjoinpath, indent + 1);
+	}
+
+	if (subpath)
+	{
+		appendStringInfo(msg, "\n");
+		gp_print_path(msg, subpath, indent + 1);
+	}
 }
