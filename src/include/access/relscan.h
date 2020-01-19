@@ -39,6 +39,12 @@ typedef struct ParallelHeapScanDescData
 	slock_t		phs_mutex;		/* mutual exclusion for block number fields */
 	BlockNumber phs_startblock; /* starting block number */
 	BlockNumber phs_cblock;		/* current block number */
+	/* 
+	 * CDB: we have two ways to implememt parallel scan, this
+	 * flag indicates wether way to clean the shared desc 
+	 */
+	CommandId	command_id;
+	int			plan_node_id;
 	char		phs_snapshot_data[FLEXIBLE_ARRAY_MEMBER];
 }	ParallelHeapScanDescData;
 
@@ -76,6 +82,9 @@ typedef struct HeapScanDescData
 	int			rs_cindex;		/* current tuple's index in vistuples */
 	int			rs_ntuples;		/* number of visible tuples on page */
 	OffsetNumber rs_vistuples[MaxHeapTuplesPerPage];	/* their offsets */
+
+	/* CDB: whether we using a QE parallel scan */
+	bool		gp_parallel_scan;
 }	HeapScanDescData;
 
 /*

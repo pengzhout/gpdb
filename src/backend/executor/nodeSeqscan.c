@@ -36,6 +36,7 @@
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
 #include "utils/snapmgr.h"
+#include "cdb/cdbvars.h"
 
 static void InitScanRelation(SeqScanState *node, EState *estate, int eflags, Relation currentRelation);
 static TupleTableSlot *SeqNext(SeqScanState *node);
@@ -123,9 +124,24 @@ SeqNext(SeqScanState *node)
 		}
 		else
 		{
-			node->ss_currentScanDesc_heap = heap_beginscan(currentRelation,
-														   estate->es_snapshot,
-														   0, NULL);
+			if (node->ss.ps.plan->parallel_aware)
+			{
+				ParallelHeapScanDesc parallel_scan =
+					heap_fetch_parallelscan(gp_command_count,
+											node->ss.ps.plan->plan_node_id,
+											currentRelation);
+				Assert(parallel_scan);
+
+				node->ss_currentScanDesc_heap =
+					heap_beginscan_parallel_gp(currentRelation,
+											   estate->es_snapshot,
+											   parallel_scan);
+			}
+			else
+				node->ss_currentScanDesc_heap =
+					heap_beginscan(currentRelation,
+								   estate->es_snapshot,
+								   0, NULL);
 		}
 	}
 
