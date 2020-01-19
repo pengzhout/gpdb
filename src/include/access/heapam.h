@@ -143,6 +143,9 @@ extern Size heap_parallelscan_estimate(Snapshot snapshot);
 extern void heap_parallelscan_initialize(ParallelHeapScanDesc target,
 							 Relation relation, Snapshot snapshot);
 extern HeapScanDesc heap_beginscan_parallel(Relation, ParallelHeapScanDesc);
+extern HeapScanDesc heap_beginscan_parallel_gp(Relation,
+											   Snapshot,
+											   ParallelHeapScanDesc);
 
 extern bool heap_fetch(Relation relation, Snapshot snapshot,
 		   HeapTuple tuple, Buffer *userbuf, bool keep_buf,
@@ -210,4 +213,11 @@ extern BlockNumber ss_get_location(Relation rel, BlockNumber relnblocks);
 extern void SyncScanShmemInit(void);
 extern Size SyncScanShmemSize(void);
 
+extern void GpParallelScanShmemInit(void);
+
+extern void heap_release_parallelscan(ParallelHeapScanDesc);
+
+extern ParallelHeapScanDesc
+heap_fetch_parallelscan(CommandId command_id, int plan_id,
+						Relation relation);
 #endif   /* HEAPAM_H */
