@@ -154,6 +154,7 @@ bool		gp_create_table_random_default_distribution = true;
 bool		gp_allow_non_uniform_partitioning_ddl = true;
 bool		gp_enable_exchange_default_partition = false;
 bool		gp_enable_parallelscan = false;
+bool		gp_debug_add_path = false;
 int			dtx_phase2_retry_count = 0;
 
 bool		log_dispatch_stats = false;
@@ -1911,6 +1912,16 @@ struct config_bool ConfigureNamesBool_gp[] =
 			NULL
 		},
 		&gp_enable_parallelscan,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"gp_debug_add_path", PGC_USERSET, COMPAT_OPTIONS,
+			gettext_noop("Enable debug message for paths added in GPDB"),
+			NULL
+		},
+		&gp_debug_add_path,
 		false,
 		NULL, NULL, NULL
 	},
