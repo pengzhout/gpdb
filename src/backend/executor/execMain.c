@@ -5033,7 +5033,8 @@ FillSliceTable_walker(Node *node, void *context)
 	{
 		ModifyTable *mt = (ModifyTable *) node;
 
-		if (list_length(mt->resultRelations) > 0)
+		if (list_length(mt->resultRelations) > 0 &&
+			!mt->returningLists)
 		{
 			ListCell   *lc = list_head(mt->resultRelations);
 			int			idx = lfirst_int(lc);
