@@ -2069,6 +2069,7 @@ _outFlow(StringInfo str, const Flow *node)
 	WRITE_ENUM_FIELD(locustype, CdbLocusType);
 	WRITE_INT_FIELD(segindex);
 	WRITE_INT_FIELD(numsegments);
+	WRITE_INT_FIELD(parallel_workers);
 }
 
 /*****************************************************************************
