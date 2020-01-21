@@ -25,7 +25,8 @@
 Flow *
 cdbpathtoplan_create_flow(PlannerInfo *root,
 						  CdbPathLocus locus,
-						  Plan *plan)
+						  Plan *plan,
+						  int parallel_workers)
 {
 	Flow	   *flow = NULL;
 
@@ -73,5 +74,6 @@ cdbpathtoplan_create_flow(PlannerInfo *root,
 		Insist(0);
 
 	flow->locustype = locus.locustype;
+	flow->parallel_workers = parallel_workers;
 	return flow;
 }								/* cdbpathtoplan_create_flow */
