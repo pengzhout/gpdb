@@ -211,6 +211,8 @@ static bool RecoveryConflictPending = false;
 static bool RecoveryConflictRetryable = true;
 static ProcSignalReason RecoveryConflictReason;
 
+int serializedDtxContextInfolen;
+const char *serializedDtxContextInfo;
 static DtxContextInfo TempDtxContextInfo = DtxContextInfo_StaticInit;
 
 
@@ -5285,8 +5287,6 @@ PostgresMain(int argc, char *argv[],
 					const char *loggingStr;
 					int gidLen;
 					const char *gid;
-					int serializedDtxContextInfolen;
-					const char *serializedDtxContextInfo;
 
 					if (Gp_role != GP_ROLE_EXECUTE)
 						ereport(ERROR,
