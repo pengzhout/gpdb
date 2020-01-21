@@ -1710,7 +1710,7 @@ copyLocalSnapshot(Snapshot snapshot)
 	memcpy(snapshot->xip, SharedLocalSnapshotSlot->snapshot.xip, snapshot->xcnt * sizeof(TransactionId));
 
 	snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
-	snapshot->subxcnt = -1;
+	snapshot->subxcnt = 0;
 
 	/* combocid */
 	usedComboCids = SharedLocalSnapshotSlot->combocidcnt;
