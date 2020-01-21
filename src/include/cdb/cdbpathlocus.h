@@ -415,4 +415,6 @@ cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids);
 bool
 cdbpathlocus_is_valid(CdbPathLocus locus);
 
+bool
+cdbpathlocus_precheck_hash(CdbPathLocus locus);
 #endif   /* CDBPATHLOCUS_H */
