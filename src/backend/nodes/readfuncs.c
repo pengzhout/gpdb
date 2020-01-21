@@ -1128,6 +1128,21 @@ _readRenameStmt(void)
 	READ_DONE();
 }
 
+#ifndef COMPILING_BINARY_FUNCS
+static Flow *
+_readFlow(void)
+{
+       READ_LOCALS(Flow);
+
+       READ_ENUM_FIELD(flotype, FlowType);
+       READ_ENUM_FIELD(locustype, CdbLocusType);
+       READ_INT_FIELD(segindex);
+       READ_INT_FIELD(numsegments);
+       READ_INT_FIELD(parallel_workers);
+
+       READ_DONE();
+}
+#endif /* COMPILING_BINARY_FUNCS */
 
 /*
  * _readFuncCall
@@ -4352,6 +4367,8 @@ parseNodeString(void)
 		return_value = _readDropStmt();
 	else if (MATCHX("EXTTABLETYPEDESC"))
 		return_value = _readExtTableTypeDesc();
+	else if (MATCHX("FLOW"))
+		return_value = _readFlow();
 	else if (MATCHX("FUNCCALL"))
 		return_value = _readFuncCall();
 	else if (MATCHX("FUNCTIONPARAMETER"))

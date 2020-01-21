@@ -524,6 +524,8 @@ extern void ExceptionalCondition(const char *conditionName,
 					 const char *errorType,
 			   const char *fileName, int lineNumber) pg_attribute_noreturn();
 
+extern int serializedDtxContextInfolen;
+extern const char *serializedDtxContextInfo;
 
 #ifdef __cplusplus
 }   /* extern "C" */
