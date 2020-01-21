@@ -882,6 +882,8 @@ ExecInitMotion(Motion *node, EState *estate, int eflags)
 			 * determined from flow.
 			 */
 			numsegments = node->plan.flow->numsegments;
+			if (node->plan.flow->parallel_workers)	
+				numsegments = numsegments * node->plan.flow->parallel_workers;
 		}
 		else
 		{
@@ -891,7 +893,6 @@ ExecInitMotion(Motion *node, EState *estate, int eflags)
 			 */
 			numsegments = getgpsegmentCount();
 		}
-
 		motionstate->cdbhash = makeCdbHash(numsegments, nkeys, node->hashFuncs);
 	}
 
@@ -1306,7 +1307,9 @@ doSendTuple(Motion *motion, MotionState *node, TupleTableSlot *outerTupleSlot)
 #ifdef USE_ASSERT_CHECKING
 		if (node->ps.state->es_plannedstmt->planGen == PLANGEN_PLANNER)
 		{
-			Assert(hval < node->ps.plan->flow->numsegments &&
+			Assert(hval < node->ps.plan->flow->numsegments *
+				   (!node->ps.plan->flow->parallel_workers ? 1 :
+					node->ps.plan->flow->parallel_workers) &&
 				   "redistribute destination outside segment array");
 		}
 		else
