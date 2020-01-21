@@ -4178,6 +4178,7 @@ create_grouping_paths(PlannerInfo *root,
 
 				is_sorted = pathkeys_contained_in(root->group_pathkeys,
 												  path->pathkeys);
+
 				if (path == cheapest_partial_path || is_sorted)
 				{
 					/* Sort the cheapest partial path, if it isn't already */
@@ -4411,7 +4412,6 @@ create_grouping_paths(PlannerInfo *root,
 											   partial_grouping_target,
 											   NULL,
 											   &total_groups);
-
 			/*
 			 * Gather is always unsorted, so we'll need to sort, unless
 			 * there's no GROUP BY clause, in which case there will only be a
@@ -4657,7 +4657,8 @@ choose_one_window_locus(PlannerInfo *root, Path *path,
 											partition_dist_exprs,
 											partition_dist_opfamilies,
 											partition_dist_sortrefs,
-											getgpsegmentCount());
+											path->locus.numsegments,
+											path->locus.parallel_workers);
 			need_redistribute = true;
 		}
 	}
@@ -5092,7 +5093,8 @@ create_distinct_paths(PlannerInfo *root,
 														distinct_dist_exprs,
 														distinct_dist_opfamilies,
 														distinct_dist_sortrefs,
-														getgpsegmentCount());
+														path->locus.numsegments,
+														path->locus.parallel_workers);
 					}
 					else
 					{
@@ -5136,7 +5138,8 @@ create_distinct_paths(PlannerInfo *root,
 													distinct_dist_exprs,
 													distinct_dist_opfamilies,
 													distinct_dist_sortrefs,
-													getgpsegmentCount());
+													path->locus.numsegments,
+													path->locus.parallel_workers);
 				}
 				else
 				{
@@ -5164,7 +5167,8 @@ create_distinct_paths(PlannerInfo *root,
 													distinct_dist_exprs,
 													distinct_dist_opfamilies,
 													distinct_dist_sortrefs,
-													getgpsegmentCount());
+													path->locus.numsegments,
+													path->locus.parallel_workers);
 				}
 				else
 				{
@@ -5253,7 +5257,8 @@ create_distinct_paths(PlannerInfo *root,
 												distinct_dist_exprs,
 												distinct_dist_opfamilies,
 												distinct_dist_sortrefs,
-												getgpsegmentCount());
+												path->locus.numsegments,
+												path->locus.parallel_workers);
 			}
 			else
 			{
@@ -5431,7 +5436,8 @@ create_scatter_path(PlannerInfo *root, List *scatterClause, Path *path)
 	/* Deal with the special case of SCATTER RANDOMLY */
 	if (list_length(scatterClause) == 1 && linitial(scatterClause) == NULL)
 	{
-		CdbPathLocus_MakeStrewn(&locus, getgpsegmentCount());
+		CdbPathLocus_MakeStrewn(&locus, getgpsegmentCount(),
+								path->parallel_workers);
 	}
 	else
 	{
@@ -5451,7 +5457,9 @@ create_scatter_path(PlannerInfo *root, List *scatterClause, Path *path)
 			sortrefs = lappend_int(sortrefs, 0);
 		}
 
-		locus = cdbpathlocus_from_exprs(root, scatterClause, opfamilies, sortrefs, getgpsegmentCount());
+		locus = cdbpathlocus_from_exprs(root, scatterClause, opfamilies, sortrefs,
+										path->locus.numsegments,
+										path->locus.parallel_workers);
 	}
 
 	/*

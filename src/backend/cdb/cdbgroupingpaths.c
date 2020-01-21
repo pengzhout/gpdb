@@ -849,7 +849,10 @@ cdb_choose_grouping_locus(PlannerInfo *root, Path *path,
 		if (need_redistribute)
 		{
 			if (hash_exprs)
-				locus = cdbpathlocus_from_exprs(root, hash_exprs, hash_opfamilies, hash_sortrefs, getgpsegmentCount());
+				locus = cdbpathlocus_from_exprs(root, hash_exprs, hash_opfamilies,
+												hash_sortrefs,
+												path->locus.numsegments,
+												path->locus.parallel_workers);
 			else
 				CdbPathLocus_MakeSingleQE(&locus, getgpsegmentCount());
 		}

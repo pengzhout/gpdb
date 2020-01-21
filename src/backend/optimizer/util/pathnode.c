@@ -1193,6 +1193,7 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 	{
 		/* we should not see IndexPaths here, so always safe to delete */
 		Assert(!IsA(new_path, IndexPath));
+
 		/* Reject and recycle the new path */
 		pfree(new_path);
 	}
@@ -1286,7 +1287,7 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = parallel_workers;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
 
-	pathnode->locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->locus = cdbpathlocus_from_baserel(root, rel, parallel_workers);
 	pathnode->motionHazard = false;
 	pathnode->rescannable = true;
 	pathnode->sameslice_relids = rel->relids;
@@ -1311,7 +1312,7 @@ create_external_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer)
 													 required_outer);
 	pathnode->path.pathkeys = NIL;	/* external scan has unordered result */
 
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->path.motionHazard = false;
 
 	/*
@@ -1346,7 +1347,7 @@ create_samplescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* samplescan has unordered result */
 
-	pathnode->locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->motionHazard = false;
 	pathnode->rescannable = true;
 	pathnode->sameslice_relids = rel->relids;
@@ -1422,7 +1423,7 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexscandir = indexscandir;
 
 	/* Distribution is same as the base table. */
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = true;
 	pathnode->path.sameslice_relids = rel->relids;
@@ -1464,7 +1465,7 @@ create_bitmap_heap_path(PlannerInfo *root,
 	pathnode->path.pathkeys = NIL;		/* always unordered */
 
 	/* Distribution is same as the base table. */
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = true;
 	pathnode->path.sameslice_relids = rel->relids;
@@ -1573,7 +1574,7 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals,
 	pathnode->tidquals = tidquals;
 
 	/* Distribution is same as the base table. */
-	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel, 0);
 	pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = true;
 	pathnode->path.sameslice_relids = rel->relids;
@@ -1968,7 +1969,8 @@ set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
 				 */
 				CdbPathLocus_MakeStrewn(&targetlocus,
 										Max(CdbPathLocus_NumSegments(targetlocus),
-											CdbPathLocus_NumSegments(projectedlocus)));
+											CdbPathLocus_NumSegments(projectedlocus)),
+										pathnode->parallel_workers);
 				break;
 			}
 		}
@@ -2157,7 +2159,12 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 			sortrefs = lappend_int(sortrefs, 0);
 		}
 
-		locus = cdbpathlocus_from_exprs(root, sjinfo->semi_rhs_exprs, opfamilies, sortrefs, numsegments);
+		locus = cdbpathlocus_from_exprs(root,
+										sjinfo->semi_rhs_exprs,
+										opfamilies,
+										sortrefs,
+										numsegments,
+										subpath->parallel_workers);
         subpath = cdbpath_create_motion_path(root, subpath, NIL, false, locus);
 		/*
 		 * We probably add agg/sort node above the added motion node, but it is
@@ -2613,7 +2620,8 @@ create_unique_rowid_path(PlannerInfo *root,
 
         /* Set a fake locus.  Repartitioning key won't be built until later. */
         CdbPathLocus_MakeStrewn(&pathnode->path.locus,
-								CdbPathLocus_NumSegments(subpath->locus));
+								CdbPathLocus_NumSegments(subpath->locus),
+								subpath->parallel_workers);
 		pathnode->path.sameslice_relids = NULL;
 
         /* Estimate repartitioning cost. */
@@ -2726,6 +2734,9 @@ create_gather_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 
 	/* GPDB_96_MERGE_FIXME: how do data distribution locus and parallelism work together? */
 	pathnode->path.locus = subpath->locus;
+	/* reset locus parallel_workers */
+	pathnode->path.locus.parallel_workers = 0;
+	pathnode->path.locus.hashflag |= HASHED_ON_WORKERS;
 
 	return pathnode;
 }
@@ -2902,7 +2913,8 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 			if (contain_outer_params)
 				elog(ERROR, "cannot execute EXECUTE ON ALL SEGMENTS function in a subquery with arguments from outer query");
 			CdbPathLocus_MakeStrewn(&pathnode->locus,
-									getgpsegmentCount());
+									getgpsegmentCount(),
+									0);
 			break;
 		default:
 			elog(ERROR, "unrecognized proexeclocation '%c'", exec_location);
@@ -2963,7 +2975,8 @@ create_tablefunction_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	/* Mark the output as random if the input is partitioned */
 	if (CdbPathLocus_IsPartitioned(pathnode->path.locus))
 		CdbPathLocus_MakeStrewn(&pathnode->path.locus,
-								CdbPathLocus_NumSegments(pathnode->path.locus));
+								CdbPathLocus_NumSegments(pathnode->path.locus),
+								0);
 	pathnode->path.sameslice_relids = NULL;
 
 	cost_tablefunction(pathnode, root, rel, pathnode->path.param_info);
@@ -3184,7 +3197,7 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 			CdbPathLocus_MakeGeneral(&(pathnode->path.locus), getgpsegmentCount());
 			break;
 		case FTEXECLOCATION_ALL_SEGMENTS:
-			CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
+			CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount(), 0);
 			break;
 		case FTEXECLOCATION_MASTER:
 			CdbPathLocus_MakeEntry(&(pathnode->path.locus));
@@ -3302,6 +3315,7 @@ create_nestloop_path(PlannerInfo *root,
 										 NIL,
 										 outer_must_be_local,
 										 inner_must_be_local);
+
 	if (CdbPathLocus_IsNull(join_locus))
 		return NULL;
 
@@ -3628,6 +3642,7 @@ create_hashjoin_path(PlannerInfo *root,
 										 NIL,
 										 outer_must_be_local,
 										 inner_must_be_local);
+
 	if (CdbPathLocus_IsNull(join_locus))
 		return NULL;
 
@@ -4838,14 +4853,14 @@ adjust_modifytable_subpaths(PlannerInfo *root, CmdType operation,
 	{
 		CdbPathLocus resultLocus;
 
-		CdbPathLocus_MakeReplicated(&resultLocus, numsegments);
+		CdbPathLocus_MakeReplicated(&resultLocus, numsegments, 0);
 		return resultLocus;
 	}
 	else
 	{
 		CdbPathLocus resultLocus;
 
-		CdbPathLocus_MakeStrewn(&resultLocus, numsegments);
+		CdbPathLocus_MakeStrewn(&resultLocus, numsegments, 0);
 
 		return resultLocus;
 	}

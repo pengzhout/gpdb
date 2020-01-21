@@ -1974,7 +1974,8 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 
 		if (forceDistRand)
 			CdbPathLocus_MakeStrewn(&locus,
-									CdbPathLocus_NumSegments(subpath->locus));
+									CdbPathLocus_NumSegments(subpath->locus),
+									subpath->parallel_workers);
 		else
 			locus = cdbpathlocus_from_subquery(root, rel, subpath);
 

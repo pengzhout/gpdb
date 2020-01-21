@@ -288,7 +288,8 @@ make_motion_hash_all_targets(PlannerInfo *root, Path *subpath, List *tlist)
 										hashexprs,
 										hashopfamilies,
 										hashsortrefs,
-										getgpsegmentCount());
+										getgpsegmentCount(),
+										subpath->parallel_workers);
 	}
 	else
 	{
@@ -324,7 +325,7 @@ mark_append_locus(Path *path, GpSetOpType optype)
 			CdbPathLocus_MakeGeneral(&path->locus, numsegments);
 			break;
 		case PSETOP_PARALLEL_PARTITIONED:
-			CdbPathLocus_MakeStrewn(&path->locus, numsegments);
+			CdbPathLocus_MakeStrewn(&path->locus, numsegments, path->parallel_workers);
 			break;
 		case PSETOP_SEQUENTIAL_QD:
 			CdbPathLocus_MakeEntry(&path->locus);
