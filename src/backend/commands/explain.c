@@ -1149,6 +1149,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 * number of rows seen by each segment
 			 */
 			scaleFactor = CdbPathLocus_NumSegments(*(plan->flow));
+
+			if (gp_enable_parallelscan)
+				scaleFactor = 1.0;
 		}
 		else
 		{
@@ -1157,6 +1160,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			 * number of rows seen by each segment
 			 */
 			scaleFactor = getgpsegmentCount();
+
+			if (gp_enable_parallelscan)
+				scaleFactor = 1.0;
 		}
 	}
 
