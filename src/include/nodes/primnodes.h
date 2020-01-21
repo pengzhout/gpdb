@@ -1556,6 +1556,7 @@ typedef struct Flow
 	int			segindex;		/* Segment index of singleton flow. */
 	int         numsegments;
 
+	int			parallel_workers;
 } Flow;
 
 /*
