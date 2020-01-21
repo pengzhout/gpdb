@@ -724,6 +724,7 @@ ExecSquelchNode(PlanState *node)
 		case T_TidScanState:
 		case T_TableFunctionState:
 		case T_SampleScanState:
+		case T_GatherState:
 			break;
 
 			/*
