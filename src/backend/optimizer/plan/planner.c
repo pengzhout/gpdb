@@ -4230,9 +4230,52 @@ create_grouping_paths(PlannerInfo *root,
 			{
 				Path	   *path = (Path *) lfirst(lc);
 				bool		is_sorted;
+				bool		need_redistribute;
+				CdbPathLocus locus;
 
 				is_sorted = pathkeys_contained_in(root->group_pathkeys,
 												  path->pathkeys);
+
+				/* 
+				 * CDB: partial_pathlist may also contains paths that do
+				 * not need redistribute, in this case, we can add a simple
+				 * AGG on the top of it.
+				 */	
+				locus = cdb_choose_grouping_locus(root, path, target,
+												  parse->groupClause,
+												  rollup_lists, rollup_groupclauses,
+												  &need_redistribute);
+
+				/* if need_redistribute, leave the work to cdb_create_twostage_grouping_paths */
+				if (need_redistribute)
+					continue;
+				/* do not need redistribute, but it's unsafe to use GATHER */
+				else if (!path->parallel_safe)
+				{
+					if (!is_sorted)
+						path = (Path *) create_sort_path(root,
+														 grouped_rel,
+														 path,
+														 root->group_pathkeys,
+														 -1.0);
+					if (parse->hasAggs || parse->groupClause)
+					{
+						add_path(grouped_rel, (Path *)
+								 create_agg_path(root,
+												 grouped_rel,
+												 path,
+												 target,
+												 parse->groupClause ? AGG_SORTED : AGG_PLAIN,
+												 AGGSPLIT_SIMPLE,
+												 false, /* streaming */
+												 parse->groupClause,
+												 (List *) parse->havingQual,
+												 agg_costs,
+												 dNumPartialGroups,
+												 NULL));
+					}
+					continue;
+				}
 
 				if (path == cheapest_partial_path || is_sorted)
 				{
@@ -4278,14 +4321,52 @@ create_grouping_paths(PlannerInfo *root,
 
 		if (can_hash)
 		{
+			bool		need_redistribute;
+			CdbPathLocus locus;
+
 			/* Checked above */
 			Assert(parse->hasAggs || parse->groupClause);
 
+			/* 
+			 * CDB: partial_pathlist may also contains paths that do
+			 * not need redistribute, in this case, we can add a simple
+			 * AGG on the top of it.
+			 */	
+			locus = cdb_choose_grouping_locus(root, cheapest_partial_path, target,
+											  parse->groupClause,
+											  rollup_lists, rollup_groupclauses,
+											  &need_redistribute);
+
+			if (need_redistribute)
+			{
+				/* do not generate partial + Gather + final agg */
+			}
+			/* do not need redistribute, but it is unsafe to use GATHER */
+			else if (!cheapest_partial_path->parallel_safe &&
+					 calcHashAggTableSizes(work_mem * 1024L,
+										   dNumPartialGroups,
+										   cheapest_partial_path->pathtarget->width,
+										   false, /* force */
+										   &hash_info))
+			{
+				add_path(grouped_rel, (Path *)
+						 create_agg_path(root, grouped_rel,
+										 cheapest_partial_path,
+										 target,
+										 AGG_HASHED,
+										 AGGSPLIT_SIMPLE,
+										 false, /* streaming */
+										 parse->groupClause,
+										 (List *) parse->havingQual,
+										 agg_costs,
+										 dNumPartialGroups,
+										 &hash_info));
+			}
 			/*
 			 * Tentatively produce a partial HashAgg Path, depending on if it
 			 * looks as if the hash table will fit in work_mem.
 			 */
-			if (calcHashAggTableSizes(work_mem * 1024L,
+			else if (calcHashAggTableSizes(work_mem * 1024L,
 									  dNumPartialGroups,
 									  cheapest_partial_path->pathtarget->width,
 									  false, /* force */

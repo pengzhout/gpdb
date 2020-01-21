@@ -28,6 +28,7 @@
 
 #include "executor/nodeHash.h"                  /* ExecHashRowSize() */
 #include "cdb/cdbpath.h"                        /* cdbpath_rows() */
+#include "utils/guc.h"
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
 set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
@@ -1307,9 +1308,12 @@ consider_parallel_nestloop(PlannerInfo *root,
 		{
 			Path	   *innerpath = (Path *) lfirst(lc2);
 
+			/* CDB: In GPDB, we have motion, we can try it */
+#if 0
 			/* Can't join to an inner path that is not parallel-safe */
 			if (!innerpath->parallel_safe)
 				continue;
+#endif
 
 			/*
 			 * Like match_unsorted_outer, we only consider a single nestloop
@@ -1551,6 +1555,12 @@ hash_inner_and_outer(PlannerInfo *root,
 				(Path *) linitial(outerrel->partial_pathlist);
 
 			/*
+			 * CDB: In GPDB, WE also consider the conbination of paths
+			 * even it is not parallel safe because we have motions.
+			 */
+			cheapest_safe_inner = cheapest_total_inner;
+#if 0
+			/*
 			 * Normally, given that the joinrel is parallel-safe, the cheapest
 			 * total inner path will also be parallel-safe, but if not, we'll
 			 * have to search cheapest_parameterized_paths for the cheapest
@@ -1574,12 +1584,23 @@ hash_inner_and_outer(PlannerInfo *root,
 					}
 				}
 			}
+#endif
 
 			if (cheapest_safe_inner != NULL)
 				try_partial_hashjoin_path(root, joinrel,
 										  cheapest_partial_outer,
 										  cheapest_safe_inner,
 										  hashclauses, jointype, extra);
+
+			/* also consider cheapest partial_inner */
+			if (innerrel->partial_pathlist)
+			{
+				cheapest_safe_inner = (Path *) linitial(innerrel->partial_pathlist);
+				try_partial_hashjoin_path(root, joinrel,
+										  cheapest_partial_outer,
+										  cheapest_safe_inner,
+										  hashclauses, jointype, extra);
+			}
 		}
 	}
 }

@@ -3426,7 +3426,8 @@ create_nestloop_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = joinrel->consider_parallel &&
 		outer_path->parallel_safe && inner_path->parallel_safe;
 	/* This is a foolish way to estimate parallel_workers, but for now... */
-	pathnode->path.parallel_workers = outer_path->parallel_workers;
+	pathnode->path.parallel_workers = Max(outer_path->parallel_workers,
+										  inner_path->parallel_workers);
 	pathnode->path.pathkeys = pathkeys;
 	pathnode->jointype = jointype;
 	pathnode->outerjoinpath = outer_path;
@@ -3702,7 +3703,8 @@ create_hashjoin_path(PlannerInfo *root,
 	pathnode->jpath.path.parallel_safe = joinrel->consider_parallel &&
 		outer_path->parallel_safe && inner_path->parallel_safe;
 	/* This is a foolish way to estimate parallel_workers, but for now... */
-	pathnode->jpath.path.parallel_workers = outer_path->parallel_workers;
+	pathnode->jpath.path.parallel_workers = Max(outer_path->parallel_workers,
+												inner_path->parallel_workers);
 
 	/*
 	 * A hashjoin never has pathkeys, since its output ordering is
