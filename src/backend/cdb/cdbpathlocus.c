@@ -281,11 +281,14 @@ cdbpathlocus_for_insert(PlannerInfo *root, GpPolicy *policy,
 			CdbPathLocus_MakeNull(&targetLocus, policy->numsegments);
 		}
 		else if (distkeys)
-			CdbPathLocus_MakeHashed(&targetLocus, distkeys, policy->numsegments);
+			CdbPathLocus_MakeHashed(&targetLocus, distkeys,
+									policy->numsegments,
+									0 /* parallel_workers */,
+									HASHED_ON_WORKERS);
 		else
 		{
 			/* DISTRIBUTED RANDOMLY */
-			CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments);
+			CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments, 0);
 		}
 	}
 	else if (policy->ptype == POLICYTYPE_ENTRY)
@@ -294,7 +297,7 @@ cdbpathlocus_for_insert(PlannerInfo *root, GpPolicy *policy,
 	}
 	else if (policy->ptype == POLICYTYPE_REPLICATED)
 	{
-		CdbPathLocus_MakeReplicated(&targetLocus, policy->numsegments);
+		CdbPathLocus_MakeReplicated(&targetLocus, policy->numsegments, 0);
 	}
 	else
 		elog(ERROR, "unrecognized policy type %u", policy->ptype);
@@ -309,7 +312,8 @@ cdbpathlocus_for_insert(PlannerInfo *root, GpPolicy *policy,
  */
 CdbPathLocus
 cdbpathlocus_from_baserel(struct PlannerInfo *root,
-						  struct RelOptInfo *rel)
+						  struct RelOptInfo *rel,
+						  int parallel_workers)
 {
 	CdbPathLocus result;
 	GpPolicy   *policy = rel->cdbpolicy;
@@ -330,20 +334,23 @@ cdbpathlocus_from_baserel(struct PlannerInfo *root,
 															   policy);
 
 			if (distkeys)
-				CdbPathLocus_MakeHashed(&result, distkeys, policy->numsegments);
+				CdbPathLocus_MakeHashed(&result, distkeys, policy->numsegments,
+										parallel_workers,
+										parallel_workers ? HASHED_ON_SEGMENT :
+										HASHED_ON_SEGMENT | HASHED_ON_WORKERS);
 			else
 			{
 				/*
 				 * It's possible that we fail to build a DistributionKey
 				 * representation for the distribution policy.
 				 */
-				CdbPathLocus_MakeStrewn(&result, policy->numsegments);
+				CdbPathLocus_MakeStrewn(&result, policy->numsegments, parallel_workers);
 			}
 		}
 
 		/* Rows are distributed on an unknown criterion (uniformly, we hope!) */
 		else
-			CdbPathLocus_MakeStrewn(&result, policy->numsegments);
+			CdbPathLocus_MakeStrewn(&result, policy->numsegments, parallel_workers);
 	}
 	else if (GpPolicyIsReplicated(policy))
 	{
@@ -367,7 +374,8 @@ cdbpathlocus_from_exprs(struct PlannerInfo *root,
 						List *hash_on_exprs,
 						List *hash_opfamilies,
 						List *hash_sortrefs,
-						int numsegments)
+						int numsegments,
+						int parallel_workers)
 {
 	CdbPathLocus locus;
 	List	   *distkeys = NIL;
@@ -384,7 +392,9 @@ cdbpathlocus_from_exprs(struct PlannerInfo *root,
 		distkeys = lappend(distkeys, distkey);
 	}
 
-	CdbPathLocus_MakeHashed(&locus, distkeys, numsegments);
+	CdbPathLocus_MakeHashed(&locus, distkeys, numsegments,
+							parallel_workers,
+							HASHED_ON_WORKERS);
 	return locus;
 }								/* cdbpathlocus_from_exprs */
 
@@ -472,13 +482,17 @@ cdbpathlocus_from_subquery(struct PlannerInfo *root,
 		}
 
 		if (failed)
-			CdbPathLocus_MakeStrewn(&locus, numsegments);
+			CdbPathLocus_MakeStrewn(&locus, numsegments, subpath->locus.parallel_workers);
 		else if (CdbPathLocus_IsHashed(subpath->locus))
-			CdbPathLocus_MakeHashed(&locus, distkeys, numsegments);
+			CdbPathLocus_MakeHashed(&locus, distkeys, numsegments,
+									subpath->locus.parallel_workers,
+									HASHED_ON_WORKERS);
 		else
 		{
 			Assert(CdbPathLocus_IsHashedOJ(subpath->locus));
-			CdbPathLocus_MakeHashedOJ(&locus, distkeys, numsegments);
+			CdbPathLocus_MakeHashedOJ(&locus, distkeys, numsegments,
+									  subpath->locus.parallel_workers,
+									  HASHED_ON_WORKERS);
 		}
 	}
 	else
@@ -620,7 +634,7 @@ cdbpathlocus_pull_above_projection(struct PlannerInfo *root,
 			 */
 			if (!new_ec)
 			{
-				CdbPathLocus_MakeStrewn(&newlocus, numsegments);
+				CdbPathLocus_MakeStrewn(&newlocus, numsegments, locus.parallel_workers);
 				return newlocus;
 			}
 
@@ -634,9 +648,13 @@ cdbpathlocus_pull_above_projection(struct PlannerInfo *root,
 
 		/* Build new locus. */
 		if (CdbPathLocus_IsHashed(locus))
-			CdbPathLocus_MakeHashed(&newlocus, newdistkeys, numsegments);
+			CdbPathLocus_MakeHashed(&newlocus, newdistkeys, numsegments,
+									locus.parallel_workers,
+									HASHED_ON_WORKERS);
 		else
-			CdbPathLocus_MakeHashedOJ(&newlocus, newdistkeys, numsegments);
+			CdbPathLocus_MakeHashedOJ(&newlocus, newdistkeys, numsegments,
+									  locus.parallel_workers,
+									  HASHED_ON_WORKERS);
 		return newlocus;
 	}
 	else
@@ -777,7 +795,9 @@ cdbpathlocus_join(JoinType jointype, CdbPathLocus a, CdbPathLocus b)
 
 			newdistkeys = lappend(newdistkeys, newdistkey);
 		}
-		CdbPathLocus_MakeHashedOJ(&resultlocus, newdistkeys, numsegments);
+		CdbPathLocus_MakeHashedOJ(&resultlocus, newdistkeys, numsegments,
+								  a.parallel_workers,
+								  HASHED_ON_WORKERS);
 	}
 	Assert(cdbpathlocus_is_valid(resultlocus));
 	return resultlocus;
