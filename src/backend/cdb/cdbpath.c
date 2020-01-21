@@ -125,6 +125,10 @@ cdbpath_create_motion_path(PlannerInfo *root,
 	Assert(cdbpathlocus_is_valid(locus) &&
 		   cdbpathlocus_is_valid(subpath->locus));
 
+	AssertImply(locus.parallel_workers > 0,
+				CdbPathLocus_IsPartitioned(locus) ||
+				CdbPathLocus_IsReplicated(locus));
+
 	numsegments = CdbPathLocus_CommonSegments(subpath->locus, locus);
 	Assert(numsegments > 0);
 
@@ -672,6 +676,10 @@ cdbpath_match_preds_to_distkey_tail(CdbpathMatchPredsContext *ctx,
 	Assert(CdbPathLocus_IsHashed(ctx->locus) ||
 		   CdbPathLocus_IsHashedOJ(ctx->locus));
 
+	/* do hash locus precheck first */
+	if (!cdbpathlocus_precheck_hash(ctx->locus))
+		return false;
+
 	/*----------------
 	 * Is there a "<distkey item> = <constant expr>" predicate?
 	 *
@@ -842,6 +850,24 @@ cdbpath_match_preds_to_both_distkeys(PlannerInfo *root,
 		   CdbPathLocus_IsHashedOJ(outer_locus));
 	Assert(CdbPathLocus_IsHashed(inner_locus) ||
 		   CdbPathLocus_IsHashedOJ(inner_locus));
+
+	if (outer_locus.parallel_workers == inner_locus.parallel_workers)
+	{
+		if (!(outer_locus.hashflag & HASHED_ON_WORKERS) ||
+			!(inner_locus.hashflag & HASHED_ON_WORKERS))
+			return false;
+	}
+	else if (outer_locus.parallel_workers != 0 &&
+			 inner_locus.parallel_workers != 0)
+	{
+		return false;
+	}
+	else
+	{
+		if (!(outer_locus.hashflag & HASHED_ON_SEGMENT) ||
+			!(inner_locus.hashflag & HASHED_ON_SEGMENT))
+			return false;
+	}
 
 	outer_distkey = outer_locus.distkey;
 	inner_distkey = inner_locus.distkey;
@@ -2358,6 +2384,10 @@ try_redistribute(PlannerInfo *root, CdbpathMfjRel *g, CdbpathMfjRel *o,
 	Assert(CdbPathLocus_IsGeneral(g->locus) ||
 		   CdbPathLocus_IsSegmentGeneral(g->locus));
 	Assert(CdbPathLocus_IsPartitioned(o->locus));
+
+	/* do hash locus precheck first */
+	if (!cdbpathlocus_precheck_hash(o->locus))
+		return false;
 
 	/*
 	 * we cannot add motion if requiring order.
