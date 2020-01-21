@@ -977,6 +977,7 @@ pull_up_Flow(Plan *plan, Plan *subplan)
 		new_flow->segindex = model_flow->segindex;
 
 	new_flow->locustype = model_flow->locustype;
+	new_flow->parallel_workers = model_flow->parallel_workers;
 
 	return new_flow;
 }
