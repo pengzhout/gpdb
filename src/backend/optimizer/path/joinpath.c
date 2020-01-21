@@ -28,6 +28,7 @@
 
 #include "executor/nodeHash.h"                  /* ExecHashRowSize() */
 #include "cdb/cdbpath.h"                        /* cdbpath_rows() */
+#include "utils/guc.h"
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
 set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
@@ -1308,7 +1309,8 @@ consider_parallel_nestloop(PlannerInfo *root,
 			Path	   *innerpath = (Path *) lfirst(lc2);
 
 			/* Can't join to an inner path that is not parallel-safe */
-			if (!innerpath->parallel_safe)
+			if (!innerpath->parallel_safe &&
+				!gp_enable_mpp_plan)
 				continue;
 
 			/*
@@ -1545,19 +1547,38 @@ hash_inner_and_outer(PlannerInfo *root,
 			bms_is_empty(joinrel->lateral_relids))
 		{
 			Path	   *cheapest_partial_outer;
-			Path	   *cheapest_safe_inner = NULL;
+			Path	   *cheapest_partial_inner;
+			List	   *cheapest_safe_inners = NIL;
 
 			cheapest_partial_outer =
 				(Path *) linitial(outerrel->partial_pathlist);
 
+			/*
+			 * CDB: In GPDB, WE also consider the conbination of paths
+			 * even it is not parallel safe because we have motions.
+			 */
+			if (gp_enable_mpp_plan)
+			{
+				cheapest_safe_inners = lappend(cheapest_safe_inners,
+											   cheapest_total_inner);
+
+				/* also consider cheapest partial_inner */
+				if (innerrel->partial_pathlist)
+				{
+					cheapest_partial_inner = (Path *) linitial(innerrel->partial_pathlist);
+					cheapest_safe_inners = lappend(cheapest_safe_inners,
+												   cheapest_partial_inner);
+				}
+			}
 			/*
 			 * Normally, given that the joinrel is parallel-safe, the cheapest
 			 * total inner path will also be parallel-safe, but if not, we'll
 			 * have to search cheapest_parameterized_paths for the cheapest
 			 * unparameterized inner path.
 			 */
-			if (cheapest_total_inner->parallel_safe)
-				cheapest_safe_inner = cheapest_total_inner;
+			else if (cheapest_total_inner->parallel_safe)
+				cheapest_safe_inners = lappend(cheapest_safe_inners, 
+											   cheapest_total_inner);
 			else
 			{
 				ListCell   *lc;
@@ -1569,17 +1590,23 @@ hash_inner_and_outer(PlannerInfo *root,
 					if (innerpath->parallel_safe &&
 						bms_is_empty(PATH_REQ_OUTER(innerpath)))
 					{
-						cheapest_safe_inner = innerpath;
+						cheapest_safe_inners = lappend(cheapest_safe_inners, 
+													   innerpath);
 						break;
 					}
 				}
 			}
 
-			if (cheapest_safe_inner != NULL)
+			ListCell *lc;
+			foreach(lc, cheapest_safe_inners)
+			{
+				Path *inner = (Path *) lfirst(lc);	
+
 				try_partial_hashjoin_path(root, joinrel,
 										  cheapest_partial_outer,
-										  cheapest_safe_inner,
+										  inner,
 										  hashclauses, jointype, extra);
+			}
 		}
 	}
 }

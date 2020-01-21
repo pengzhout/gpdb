@@ -62,6 +62,24 @@ static bool try_redistribute(PlannerInfo *root, CdbpathMfjRel *g,
 
 static SplitUpdatePath *make_splitupdate_path(PlannerInfo *root, Path *subpath, Index rti);
 
+static int
+cdbpath_parallel_workers(Path *path)
+{
+	int workers;
+
+	if (CdbPathLocus_IsPartitioned(path->locus) ||
+		CdbPathLocus_IsReplicated(path->locus))
+	{
+		workers = CdbPathLocus_NumSegments(path->locus);	
+
+		if (path->parallel_workers)
+			workers = workers * path->parallel_workers;
+	}
+	else
+		workers = 1;
+
+	return workers;
+}
 
 /*
  * cdbpath_cost_motion
@@ -76,23 +94,63 @@ cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 	double		recvrows;
 	double		sendrows;
 
-	if (CdbPathLocus_IsReplicated(motionpath->path.locus))
-		motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(motionpath->path.locus);
+	if (gp_enable_mpp_plan)
+	{
+		double startup_cost;
+		double run_cost;
+		double startup_cost_per_bgworker;
+
+		sendrows = subpath->rows * cdbpath_parallel_workers(subpath);
+
+		if (CdbPathLocus_IsPartitioned(motionpath->path.locus))
+		{
+			recvrows = sendrows / cdbpath_parallel_workers(&motionpath->path);
+			if (recvrows < 1.0)
+				recvrows = 1.0;
+		}
+		else if (CdbPathLocus_IsReplicated(motionpath->path.locus))
+			recvrows = sendrows * cdbpath_parallel_workers(&motionpath->path);
+		else
+			recvrows = sendrows; 
+
+		motionpath->path.rows = recvrows; 
+
+		startup_cost = subpath->startup_cost;
+		run_cost = subpath->total_cost - subpath->startup_cost;
+
+		/* Parallel motion setup and communication cost. */
+		startup_cost_per_bgworker = max_parallel_workers_per_gather ?
+			parallel_setup_cost / max_parallel_workers_per_gather : 
+			1.0;
+		startup_cost += 1.5 * startup_cost_per_bgworker *
+			cdbpath_parallel_workers(subpath);
+
+		run_cost += recvrows * 1.5 * parallel_tuple_cost;
+
+		motionpath->path.startup_cost = startup_cost;
+		motionpath->path.total_cost = startup_cost + run_cost;
+		motionpath->path.memory = subpath->memory;
+	}
 	else
-		motionpath->path.rows = subpath->rows;
+	{
+		if (CdbPathLocus_IsReplicated(motionpath->path.locus))
+			motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(motionpath->path.locus);
+		else
+			motionpath->path.rows = subpath->rows;
 
-	cost_per_row = (gp_motion_cost_per_row > 0.0)
-		? gp_motion_cost_per_row
-		: 2.0 * cpu_tuple_cost;
-	sendrows = subpath->rows;
-	recvrows = motionpath->path.rows;
-	motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
+		sendrows = subpath->rows;
+		recvrows = motionpath->path.rows;
 
-	motionpath->path.total_cost = motioncost + subpath->total_cost;
-	motionpath->path.startup_cost = subpath->startup_cost;
-	motionpath->path.memory = subpath->memory;
+		cost_per_row = (gp_motion_cost_per_row > 0.0)
+			? gp_motion_cost_per_row
+			: 2.0 * cpu_tuple_cost;
+		motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
+
+		motionpath->path.total_cost = motioncost + subpath->total_cost;
+		motionpath->path.startup_cost = subpath->startup_cost;
+		motionpath->path.memory = subpath->memory;
+	}
 }								/* cdbpath_cost_motion */
-
 
 /*
  * cdbpath_create_motion_path
@@ -124,6 +182,10 @@ cdbpath_create_motion_path(PlannerInfo *root,
 
 	Assert(cdbpathlocus_is_valid(locus) &&
 		   cdbpathlocus_is_valid(subpath->locus));
+
+	AssertImply(locus.parallel_workers > 0,
+				CdbPathLocus_IsPartitioned(locus) ||
+				CdbPathLocus_IsReplicated(locus));
 
 	numsegments = CdbPathLocus_CommonSegments(subpath->locus, locus);
 	Assert(numsegments > 0);
@@ -208,14 +270,10 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			pathnode->path.locus = locus;
 			pathnode->path.rows = subpath->rows;
 
-			/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-			 * setting this to 'false' initially, to play it safe, but somehow
-			 * the Paths with motions ended up in gather plans anyway, and tripped
-			 * assertion failures.
-			 */
 			pathnode->path.parallel_aware = false;
-			pathnode->path.parallel_safe = subpath->parallel_safe;
-			pathnode->path.parallel_workers = subpath->parallel_workers;
+			/* A motion is not parallel safe, it cannot underneath the Gather node */
+			pathnode->path.parallel_safe = false;
+			pathnode->path.parallel_workers = 0;
 			pathnode->path.pathkeys = pathkeys;
 
 			pathnode->subpath = subpath;
@@ -254,14 +312,10 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			pathnode->path.rows = subpath->rows;
 			pathnode->path.pathkeys = pathkeys;
 
-			/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-			 * setting this to 'false' initially, to play it safe, but somehow
-			 * the Paths with motions ended up in gather plans anyway, and tripped
-			 * assertion failures.
-			 */
 			pathnode->path.parallel_aware = false;
-			pathnode->path.parallel_safe = subpath->parallel_safe;
-			pathnode->path.parallel_workers = subpath->parallel_workers;
+			/* A motion is not parallel safe, it cannot underneath the Gather node */
+			pathnode->path.parallel_safe = false;
+			pathnode->path.parallel_workers = 0;
 
 			pathnode->subpath = subpath;
 
@@ -436,17 +490,13 @@ cdbpath_create_motion_path(PlannerInfo *root,
 	/* Motion doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
 	pathnode->path.locus = locus;
-	pathnode->path.rows = subpath->rows;
+
 	pathnode->path.pathkeys = pathkeys;
 
-	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-	 * setting this to 'false' initially, to play it safe, but somehow
-	 * the Paths with motions ended up in gather plans anyway, and tripped
-	 * assertion failures.
-	 */
 	pathnode->path.parallel_aware = false;
-	pathnode->path.parallel_safe = subpath->parallel_safe;
-	pathnode->path.parallel_workers = subpath->parallel_workers;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	pathnode->path.parallel_safe = false;
+	pathnode->path.parallel_workers = locus.parallel_workers;
 
 	pathnode->subpath = subpath;
 	pathnode->is_explicit_motion = false;
@@ -494,13 +544,9 @@ cdbpath_create_explicit_motion_path(PlannerInfo *root,
 	pathnode->path.rows = subpath->rows;
 	pathnode->path.pathkeys = NIL;
 
-	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-	 * setting this to 'false' initially, to play it safe, but somehow
-	 * the Paths with motions ended up in gather plans anyway, and tripped
-	 * assertion failures.
-	 */
 	pathnode->path.parallel_aware = false;
-	pathnode->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 
 	pathnode->subpath = subpath;
@@ -529,17 +575,13 @@ cdbpath_create_broadcast_motion_path(PlannerInfo *root,
 	pathnode->path.parent = subpath->parent;
 	/* Motion doesn't project, so use source path's pathtarget */
 	pathnode->path.pathtarget = subpath->pathtarget;
-	CdbPathLocus_MakeReplicated(&pathnode->path.locus, numsegments);
+	CdbPathLocus_MakeReplicated(&pathnode->path.locus, numsegments, subpath->parallel_workers);
 	pathnode->path.rows = subpath->rows;
 	pathnode->path.pathkeys = NIL;
 
-	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-	 * setting this to 'false' initially, to play it safe, but somehow
-	 * the Paths with motions ended up in gather plans anyway, and tripped
-	 * assertion failures.
-	 */
 	pathnode->path.parallel_aware = false;
-	pathnode->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 
 	pathnode->subpath = subpath;
@@ -575,13 +617,9 @@ make_motion_path(PlannerInfo *root, Path *subpath,
 	pathnode->path.rows = subpath->rows;
 	pathnode->path.pathkeys = NIL;
 
-	/* GPDB_96_MERGE_FIXME: When is a Motion path parallel-safe? I tried
-	 * setting this to 'false' initially, to play it safe, but somehow
-	 * the Paths with motions ended up in gather plans anyway, and tripped
-	 * assertion failures.
-	 */
 	pathnode->path.parallel_aware = false;
-	pathnode->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 
 	pathnode->subpath = subpath;
@@ -672,6 +710,10 @@ cdbpath_match_preds_to_distkey_tail(CdbpathMatchPredsContext *ctx,
 	Assert(CdbPathLocus_IsHashed(ctx->locus) ||
 		   CdbPathLocus_IsHashedOJ(ctx->locus));
 
+	/* do hash locus precheck first */
+	if (!cdbpathlocus_precheck_hash(ctx->locus))
+		return false;
+
 	/*----------------
 	 * Is there a "<distkey item> = <constant expr>" predicate?
 	 *
@@ -758,7 +800,9 @@ cdbpath_match_preds_to_distkey_tail(CdbpathMatchPredsContext *ctx,
 			*ctx->colocus = ctx->locus;
 		else if (!distkeycell)
 			CdbPathLocus_MakeHashed(ctx->colocus, list_make1(codistkey),
-									CdbPathLocus_NumSegments(ctx->locus));
+									CdbPathLocus_NumSegments(ctx->locus),
+									ctx->locus.parallel_workers,
+									HASHED_ON_WORKERS);
 		else
 		{
 			ctx->colocus->distkey = lcons(codistkey, ctx->colocus->distkey);
@@ -841,6 +885,19 @@ cdbpath_match_preds_to_both_distkeys(PlannerInfo *root,
 	Assert(CdbPathLocus_IsHashed(inner_locus) ||
 		   CdbPathLocus_IsHashedOJ(inner_locus));
 
+	if (outer_locus.parallel_workers == inner_locus.parallel_workers)
+	{
+		if (!(outer_locus.hashflag & HASHED_ON_WORKERS) ||
+			!(inner_locus.hashflag & HASHED_ON_WORKERS))
+			return false;
+	}
+	else
+	{
+		if (!(outer_locus.hashflag & HASHED_ON_SEGMENT) ||
+			!(inner_locus.hashflag & HASHED_ON_SEGMENT))
+			return false;
+	}
+
 	outer_distkey = outer_locus.distkey;
 	inner_distkey = inner_locus.distkey;
 
@@ -920,8 +977,10 @@ static bool
 cdbpath_distkeys_from_preds(PlannerInfo *root,
 							List *mergeclause_list,
 							Path *a_path,
-							CdbPathLocus *a_locus,	/* OUT */
-							CdbPathLocus *b_locus)	/* OUT */
+							int	numsegments,
+							int parallel_workers,
+							CdbPathLocus *a_locus,  /* OUT */
+							CdbPathLocus *b_locus)  /* OUT */
 {
 	List	   *a_distkeys = NIL;
 	List	   *b_distkeys = NIL;
@@ -1069,12 +1128,18 @@ cdbpath_distkeys_from_preds(PlannerInfo *root,
 	/*
 	 * Callers of this functions must correct numsegments themselves
 	 */
-
-	CdbPathLocus_MakeHashed(a_locus, a_distkeys, GP_POLICY_INVALID_NUMSEGMENTS());
+	CdbPathLocus_MakeHashed(a_locus, a_distkeys,
+							numsegments,
+							parallel_workers,
+							HASHED_ON_WORKERS);
 	if (b_distkeys)
-		CdbPathLocus_MakeHashed(b_locus, b_distkeys, GP_POLICY_INVALID_NUMSEGMENTS());
+		CdbPathLocus_MakeHashed(b_locus, b_distkeys,
+								numsegments,
+								parallel_workers,
+								HASHED_ON_WORKERS);
 	else
 		*b_locus = *a_locus;
+
 	return true;
 }								/* cdbpath_distkeys_from_preds */
 
@@ -1146,7 +1211,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	 */
 	if (outer.has_wts && inner.locus.distkey != NIL)
 		CdbPathLocus_MakeStrewn(&inner.locus,
-								CdbPathLocus_NumSegments(inner.locus));
+								CdbPathLocus_NumSegments(inner.locus),
+								inner.path->parallel_workers);
 
 	/*
 	 * Caller can specify an ordering for each source path that is the same as
@@ -1371,7 +1437,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 					 * FIXME: do we need to test inner's movable?
 					 */
 					CdbPathLocus_MakeReplicated(&inner.move_to,
-												CdbPathLocus_NumSegments(outer.locus));
+												CdbPathLocus_NumSegments(outer.locus),
+												outer.path->parallel_workers);
 					use_common = false;
 				}
 				else if ((CdbPathLocus_NumSegments(outer.locus) <
@@ -1391,7 +1458,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 					 * FIXME: do we need to test outer's movable?
 					 */
 					CdbPathLocus_MakeReplicated(&outer.move_to,
-												CdbPathLocus_NumSegments(inner.locus));
+												CdbPathLocus_NumSegments(inner.locus),
+												inner.path->parallel_workers);
 					use_common = false;
 				}
 			}
@@ -1450,7 +1518,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 				 * FIXME: do we need to test other's movable?
 				 */
 				CdbPathLocus_MakeReplicated(&other->move_to,
-											CdbPathLocus_NumSegments(segGeneral->locus));
+											CdbPathLocus_NumSegments(segGeneral->locus),
+											segGeneral->path->parallel_workers);
 			}
 			else if (CdbPathLocus_IsBottleneck(other->locus))
 			{
@@ -1589,25 +1658,24 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 		/* Replicate single rel if cheaper than redistributing both rels. */
 		else if (single->ok_to_replicate &&
-				 (single->bytes * CdbPathLocus_NumSegments(other->locus) <
+				 (single->bytes * cdbpath_parallel_workers(other->path) <
 				  single->bytes + other->bytes))
 			CdbPathLocus_MakeReplicated(&single->move_to,
-										CdbPathLocus_NumSegments(other->locus));
+										CdbPathLocus_NumSegments(other->locus),
+										other->path->parallel_workers);
 
 		/* Redistribute both rels on equijoin cols. */
 		else if (!other_immovable &&
 				 cdbpath_distkeys_from_preds(root,
 											 redistribution_clauses,
 											 single->path,
-											 &single->move_to,	/* OUT */
-											 &other->move_to))	/* OUT */
+											 CdbPathLocus_NumSegments(other->locus),
+											 Max(single->path->parallel_workers,
+												 other->path->parallel_workers),
+											 &single->move_to,      /* OUT */
+											 &other->move_to))      /* OUT */
 		{
-			/*
-			 * Redistribute both to the same segments, here we choose the
-			 * same segments with other.
-			 */
-			single->move_to.numsegments = CdbPathLocus_NumSegments(other->locus);
-			other->move_to.numsegments = CdbPathLocus_NumSegments(other->locus);
+			/* do nothing */
 		}
 
 		/* Broadcast single rel for below cases. */
@@ -1616,7 +1684,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 				  single->bytes < other->bytes ||
 				  other->has_wts))
 			CdbPathLocus_MakeReplicated(&single->move_to,
-										CdbPathLocus_NumSegments(other->locus));
+										CdbPathLocus_NumSegments(other->locus),
+										other->path->parallel_workers);
 
 		/* Last resort: If possible, move all partitions of other rel to single QE. */
 		else if (!other_immovable)
@@ -1630,8 +1699,13 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	 */
 	else if (cdbpath_match_preds_to_both_distkeys(root, redistribution_clauses,
 												  outer.locus, inner.locus))
-		return cdbpathlocus_join(jointype, outer.locus, inner.locus);
-
+	{
+		/* 
+		 * set join locus to outer's which always has a equal/larger
+		 * parallel workers.
+		 */
+		return outer.locus;
+	}
 	/*
 	 * Both sources are partitioned.  Redistribute or replicate one or both.
 	 */
@@ -1667,10 +1741,11 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		 */
 		else if (!small_rel->require_existing_order &&
 				 small_rel->ok_to_replicate &&
-				 (small_rel->bytes * CdbPathLocus_NumSegments(large_rel->locus) <
+				 (small_rel->bytes * cdbpath_parallel_workers(large_rel->path) <
 				  large_rel->bytes))
 			CdbPathLocus_MakeReplicated(&small_rel->move_to,
-										CdbPathLocus_NumSegments(large_rel->locus));
+										CdbPathLocus_NumSegments(large_rel->locus),
+										large_rel->path->parallel_workers);
 
 		/*
 		 * Replicate larger rel if cheaper than redistributing smaller rel.
@@ -1678,10 +1753,11 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		 */
 		else if (!large_rel->require_existing_order &&
 				 large_rel->ok_to_replicate &&
-				 (large_rel->bytes * CdbPathLocus_NumSegments(small_rel->locus) <
+				 (large_rel->bytes * cdbpath_parallel_workers(small_rel->path) <
 				  small_rel->bytes))
 			CdbPathLocus_MakeReplicated(&large_rel->move_to,
-										CdbPathLocus_NumSegments(small_rel->locus));
+										CdbPathLocus_NumSegments(small_rel->locus),
+										small_rel->path->parallel_workers);
 
 		/* If joining on smaller rel's partitioning key, redistribute larger. */
 		else if (!large_rel->require_existing_order &&
@@ -1698,18 +1774,20 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		/* Replicate smaller rel if cheaper than redistributing both rels. */
 		else if (!small_rel->require_existing_order &&
 				 small_rel->ok_to_replicate &&
-				 (small_rel->bytes * CdbPathLocus_NumSegments(large_rel->locus) <
+				 (small_rel->bytes * cdbpath_parallel_workers(large_rel->path) <
 				  small_rel->bytes + large_rel->bytes))
 			CdbPathLocus_MakeReplicated(&small_rel->move_to,
-										CdbPathLocus_NumSegments(large_rel->locus));
+										CdbPathLocus_NumSegments(large_rel->locus),
+										large_rel->path->parallel_workers);
 
 		/* Replicate largeer rel if cheaper than redistributing both rels. */
 		else if (!large_rel->require_existing_order &&
 				 large_rel->ok_to_replicate &&
-				 (large_rel->bytes * CdbPathLocus_NumSegments(small_rel->locus) <
+				 (large_rel->bytes * cdbpath_parallel_workers(small_rel->path) <
 				  large_rel->bytes + small_rel->bytes))
 			CdbPathLocus_MakeReplicated(&large_rel->move_to,
-										CdbPathLocus_NumSegments(small_rel->locus));
+										CdbPathLocus_NumSegments(small_rel->locus),
+										small_rel->path->parallel_workers);
 
 		/* Redistribute both rels on equijoin cols. */
 		else if (!small_rel->require_existing_order &&
@@ -1719,19 +1797,14 @@ cdbpath_motion_for_join(PlannerInfo *root,
 				 cdbpath_distkeys_from_preds(root,
 											 redistribution_clauses,
 											 large_rel->path,
+											 CdbPathLocus_CommonSegments(large_rel->locus,
+																		 small_rel->locus),
+											 Max(large_rel->path->parallel_workers,
+												 small_rel->path->parallel_workers),
 											 &large_rel->move_to,
 											 &small_rel->move_to))
 		{
-			/*
-			 * the two results should all be distributed on the same segments,
-			 * here we make them the same with common segments for safe
-			 * TODO: how about distribute them both to ALL segments?
-			 */
-			numsegments = CdbPathLocus_CommonSegments(large_rel->locus,
-													  small_rel->locus);
-
-			large_rel->move_to.numsegments = numsegments;
-			small_rel->move_to.numsegments = numsegments;
+			/* do nothing */
 		}
 
 		/*
@@ -1742,11 +1815,13 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		else if (!small_rel->require_existing_order &&
 				 small_rel->ok_to_replicate)
 			CdbPathLocus_MakeReplicated(&small_rel->move_to,
-										CdbPathLocus_NumSegments(large_rel->locus));
+										CdbPathLocus_NumSegments(large_rel->locus),
+										large_rel->path->parallel_workers);
 		else if (!large_rel->require_existing_order &&
 				 large_rel->ok_to_replicate)
 			CdbPathLocus_MakeReplicated(&large_rel->move_to,
-										CdbPathLocus_NumSegments(small_rel->locus));
+										CdbPathLocus_NumSegments(small_rel->locus),
+										small_rel->path->parallel_workers);
 
 		/* Last resort: Move both rels to a single qExec. */
 		else
@@ -1960,7 +2035,9 @@ cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx
 
 		Assert(distkeys);
 		CdbPathLocus_MakeHashed(&locus, distkeys,
-								CdbPathLocus_NumSegments(uniquePath->subpath->locus));
+								CdbPathLocus_NumSegments(uniquePath->subpath->locus),
+								uniquePath->path.parallel_workers,
+								HASHED_ON_WORKERS);
 
 		uniquePath->subpath = cdbpath_create_motion_path(ctx->root,
 														 uniquePath->subpath,
@@ -2332,11 +2409,14 @@ try_redistribute(PlannerInfo *root, CdbpathMfjRel *g, CdbpathMfjRel *o,
 {
 	bool g_immovable;
 	bool o_immovable;
-	int  numsegments;
 
 	Assert(CdbPathLocus_IsGeneral(g->locus) ||
 		   CdbPathLocus_IsSegmentGeneral(g->locus));
 	Assert(CdbPathLocus_IsPartitioned(o->locus));
+
+	/* do hash locus precheck first */
+	if (!cdbpathlocus_precheck_hash(o->locus))
+		return false;
 
 	/*
 	 * we cannot add motion if requiring order.
@@ -2379,13 +2459,13 @@ try_redistribute(PlannerInfo *root, CdbpathMfjRel *g, CdbpathMfjRel *o,
 			if(cdbpath_distkeys_from_preds(root,
 										   redistribution_clauses,
 										   o->path,
+										   CdbPathLocus_CommonSegments(o->locus,
+																	   g->locus),
+										   Max(o->path->parallel_workers,
+											   g->path->parallel_workers),
 										   &o->move_to,
 										   &g->move_to))
 			{
-				numsegments = CdbPathLocus_CommonSegments(o->locus,
-														  g->locus);
-				o->move_to.numsegments = numsegments;
-				g->move_to.numsegments = numsegments;
 				return true;
 			}
 		}
@@ -2401,13 +2481,13 @@ try_redistribute(PlannerInfo *root, CdbpathMfjRel *g, CdbpathMfjRel *o,
 			cdbpath_distkeys_from_preds(root,
 										redistribution_clauses,
 										o->path,
+										CdbPathLocus_CommonSegments(o->locus,
+																	g->locus),
+										Max(o->path->parallel_workers,
+											g->path->parallel_workers),
 										&o->move_to,
 										&g->move_to))
 		{
-			numsegments = CdbPathLocus_CommonSegments(o->locus,
-													  g->locus);
-			o->move_to.numsegments = numsegments;
-			g->move_to.numsegments = numsegments;
 			return true;
 		}
 	}
@@ -2469,7 +2549,7 @@ create_motion_path_for_ctas(PlannerInfo *root, GpPolicy *policy, Path *subpath)
 		 */
 		CdbPathLocus targetLocus;
 
-		CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments);
+		CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments, 0);
 		return cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
 	}
 	else
@@ -2519,14 +2599,14 @@ create_motion_path_for_insert(PlannerInfo *root, GpPolicy *policy,
 			 */
 			if(targetLocus.numsegments != subpath->locus.numsegments)
 			{
-				CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments);
+				CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments, 0);
 				subpath = cdbpath_create_motion_path(root, subpath, NIL, false, targetLocus);
 			}
 		}
 		else if (CdbPathLocus_IsNull(targetLocus))
 		{
 			/* could not create DistributionKeys to represent the distribution keys. */
-			CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments);
+			CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments, 0);
 
 			subpath = (Path *) make_motion_path(root, subpath, targetLocus, false, policy);
 		}
@@ -2616,7 +2696,7 @@ create_motion_path_for_delete(PlannerInfo *root, GpPolicy *policy,
 		 *
 		 * Is "strewn" correct here? Can we do better?
 		 */
-		CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments);
+		CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments, 0);
 		subpath = cdbpath_create_explicit_motion_path(root,
 													  subpath,
 													  targetLocus);
@@ -2649,7 +2729,7 @@ create_motion_path_for_update(PlannerInfo *root, GpPolicy *policy,
 
 	if (policyType == POLICYTYPE_PARTITIONED)
 	{
-		CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments);
+		CdbPathLocus_MakeStrewn(&targetLocus, policy->numsegments, 0);
 		subpath = cdbpath_create_explicit_motion_path(root,
 													  subpath,
 													  targetLocus);
@@ -2796,7 +2876,8 @@ make_splitupdate_path(PlannerInfo *root, Path *subpath, Index rti)
 	splitupdatepath->path.pathtarget = splitUpdatePathTarget;
 	splitupdatepath->path.param_info = NULL;
 	splitupdatepath->path.parallel_aware = false;
-	splitupdatepath->path.parallel_safe = subpath->parallel_safe;
+	/* A motion is not parallel safe, it cannot underneath the Gather node */
+	splitupdatepath->path.parallel_safe = false;
 	splitupdatepath->path.parallel_workers = subpath->parallel_workers;
 	splitupdatepath->path.rows = 2 * subpath->rows;
 	splitupdatepath->path.startup_cost = subpath->startup_cost;

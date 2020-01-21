@@ -52,6 +52,7 @@
 #include "cdb/cdbmutate.h"		/* cdbmutate_warn_ctid_without_segid */
 #include "cdb/cdbpath.h"		/* cdbpath_rows() */
 #include "cdb/cdbutil.h"
+#include "cdb/cdbvars.h"
 
 // TODO: these planner gucs need to be refactored into PlannerConfig.
 bool		gp_enable_sort_limit = FALSE;
@@ -1974,7 +1975,8 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 
 		if (forceDistRand)
 			CdbPathLocus_MakeStrewn(&locus,
-									CdbPathLocus_NumSegments(subpath->locus));
+									CdbPathLocus_NumSegments(subpath->locus),
+									subpath->parallel_workers);
 		else
 			locus = cdbpathlocus_from_subquery(root, rel, subpath);
 
@@ -2493,9 +2495,15 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel)
 	 * non-NIL pathkeys.
 	 */
 	cheapest_partial_path = linitial(rel->partial_pathlist);
+
+	if (gp_enable_mpp_plan &&
+		!cheapest_partial_path->parallel_safe)
+		return;
+
 	simple_gather_path = (Path *)
 		create_gather_path(root, rel, cheapest_partial_path, rel->reltarget,
 						   NULL, NULL);
+
 	add_path(rel, simple_gather_path);
 }
 
