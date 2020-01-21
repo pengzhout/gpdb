@@ -149,7 +149,7 @@ static char *ExecBuildSlotValueDescription(Oid reloid,
 static void EvalPlanQualStart(EPQState *epqstate, EState *parentestate,
 				  Plan *planTree);
 
-static void FillSliceGangInfo(Slice *slice, int numsegments);
+static void FillSliceGangInfo(Slice *slice, int numsegments, int parallel_workers);
 static void FillSliceTable(EState *estate, PlannedStmt *stmt);
 static PartitionNode *BuildPartitionNodeFromRoot(Oid relid);
 static void InitializeQueryPartsMetadata(PlannedStmt *plannedstmt, EState *estate);
@@ -4964,8 +4964,10 @@ typedef struct
 } FillSliceTable_cxt;
 
 static void
-FillSliceGangInfo(Slice *slice, int numsegments)
+FillSliceGangInfo(Slice *slice, int numsegments, int parallel_workers)
 {
+	int factor = parallel_workers ? parallel_workers : 1;
+
 	switch (slice->gangType)
 	{
 		case GANGTYPE_UNALLOCATED:
@@ -4975,16 +4977,27 @@ FillSliceGangInfo(Slice *slice, int numsegments)
 		case GANGTYPE_PRIMARY_READER:
 			if (slice->directDispatch.isDirectDispatch)
 			{
-				slice->gangSize = list_length(slice->directDispatch.contentIds);
-				slice->segments = slice->directDispatch.contentIds;
+				int i;
+				ListCell *lc;
+				slice->gangSize = list_length(slice->directDispatch.contentIds) * factor;
+				slice->segments = NIL;
+
+				foreach(lc, slice->directDispatch.contentIds)
+				{
+					int segment = lfirst_int(lc);
+
+					for (i = 0; i < factor; i++)
+						slice->segments = lappend_int(slice->segments, segment);
+				}
 			}
 			else
 			{
-				int i;
-				slice->gangSize = numsegments;
+				int i, j;
+				slice->gangSize = numsegments * factor;
 				slice->segments = NIL;
 				for (i = 0; i < numsegments; i++)
-					slice->segments = lappend_int(slice->segments, i);
+					for (j = 0; j < factor; j++)
+						slice->segments = lappend_int(slice->segments, i);
 			}
 			break;
 		case GANGTYPE_ENTRYDB_READER:
@@ -5056,9 +5069,10 @@ FillSliceTable_walker(Node *node, void *context)
 				 * distpatch on all segments.
 				 */
 				if (stmt->planGen == PLANGEN_PLANNER)
-					FillSliceGangInfo(currentSlice, mt->plan.flow->numsegments);
+					/* parallel worker is not enabled for UPDATE/INSERT/DELETE */
+					FillSliceGangInfo(currentSlice, mt->plan.flow->numsegments, 0);
 				else
-					FillSliceGangInfo(currentSlice, getgpsegmentCount());
+					FillSliceGangInfo(currentSlice, getgpsegmentCount(), 0);
 			}
 		}
 	}
@@ -5080,7 +5094,7 @@ FillSliceTable_walker(Node *node, void *context)
 
 			/* DML node can only be genereated by ORCA */
 			Assert(stmt->planGen == PLANGEN_OPTIMIZER);
-			FillSliceGangInfo(currentSlice, getgpsegmentCount());
+			FillSliceGangInfo(currentSlice, getgpsegmentCount(), 0);
 		}
 	}
 
@@ -5125,9 +5139,10 @@ FillSliceTable_walker(Node *node, void *context)
 			 * distpatch on all segments.
 			 */
 			if (stmt->planGen == PLANGEN_PLANNER)
-				FillSliceGangInfo(sendSlice, sendFlow->numsegments);
+				FillSliceGangInfo(sendSlice, sendFlow->numsegments,
+								  sendFlow->parallel_workers);
 			else
-				FillSliceGangInfo(sendSlice, getgpsegmentCount());
+				FillSliceGangInfo(sendSlice, getgpsegmentCount(), 0);
 		}
 		else
 		{
@@ -5140,9 +5155,9 @@ FillSliceTable_walker(Node *node, void *context)
 			 * distpatch on all segments.
 			 */
 			if (stmt->planGen == PLANGEN_PLANNER)
-				FillSliceGangInfo(sendSlice, sendFlow->numsegments);
+				FillSliceGangInfo(sendSlice, sendFlow->numsegments, 0);
 			else
-				FillSliceGangInfo(sendSlice, getgpsegmentCount());
+				FillSliceGangInfo(sendSlice, getgpsegmentCount(), 0);
 		}
 
 		MemoryContextSwitchTo(oldcxt);
@@ -5227,7 +5242,7 @@ FillSliceTable(EState *estate, PlannedStmt *stmt)
 			/* FIXME: ->lefttree or planTree? */
 			numsegments = stmt->planTree->flow->numsegments;
 		currentSlice->gangType = GANGTYPE_PRIMARY_WRITER;
-		FillSliceGangInfo(currentSlice, numsegments);
+		FillSliceGangInfo(currentSlice, numsegments, 0);
 	}
 
 	/*
