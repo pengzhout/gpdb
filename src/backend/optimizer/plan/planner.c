@@ -382,15 +382,16 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * serializable mode.
 	 */
 	/* GPDB_96_MERGE_FIXME: disable parallel workers for now */
-	glob->parallelModeOK = false;
-	/*
-	 * glob->parallelModeOK = (cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
-	 *         IsUnderPostmaster && dynamic_shared_memory_type != DSM_IMPL_NONE &&
-	 *         parse->commandType == CMD_SELECT && !parse->hasModifyingCTE &&
-	 *         parse->utilityStmt == NULL && max_parallel_workers_per_gather > 0 &&
-	 *         !IsParallelWorker() && !IsolationIsSerializable() &&
-	 *         !has_parallel_hazard((Node *) parse, true);
-	 */
+	//glob->parallelModeOK = false;
+	
+	glob->parallelModeOK = (cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
+	        IsUnderPostmaster && dynamic_shared_memory_type != DSM_IMPL_NONE &&
+	        parse->commandType == CMD_SELECT && !parse->hasModifyingCTE &&
+	        parse->utilityStmt == NULL && max_parallel_workers_per_gather > 0 &&
+	        !IsParallelWorker() && !IsolationIsSerializable() &&
+	        !has_parallel_hazard((Node *) parse, true) &&
+			gp_enable_parallelscan;
+	
 
 	/*
 	 * glob->parallelModeNeeded should tell us whether it's necessary to
@@ -2350,6 +2351,18 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 												&agg_costs,
 												rollup_lists,
 												rollup_groupclauses);
+
+			/*
+			 * ParallelScan_FIXME:
+			 * grouped_rel->partial_pathlist is a place to store partial paths
+			 * that have been partially aggregate, but that's really not correct,
+			 * because a partial path for a relation is supposed to be one which
+			 * produces the correct results with the addition of only a Gather
+			 * node, and for grouped_rel, it's partial paths also require a
+			 * Finalize Aggregate step. This line can be removed once upstream
+			 * commit 3bf05e096b9 is merged.
+			 */
+			current_rel->partial_pathlist = NIL;
 		}
 
 		/*
@@ -2377,6 +2390,48 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 												current_rel);
 		}
 
+		/* 
+		 * CDB: In postgres, partial_pathlist is not a valid
+		 * path, it must be added a GATHER node to gather the
+		 * data flow, partial_pathlist keeps the possible
+		 * partial paths for later planner stage, however,
+		 * In GPDB, partial_pathlist also contain valid paths,
+		 * the data can flow to upper node without a GATHER
+		 * node.
+		 *
+		 * So in postgres, after this point, following code
+		 * will not consider partial_pathlist anymore, so 
+		 * we need to merge partial_pathlist to pathlist.
+		 *
+		 * A problem to compare the cost of partial_pathlist
+		 * and pathlist here is: both partial_pathlist and
+		 * pathlist need a Gather Motion node to bring data
+		 * to the QD, the number of parallel workers affect
+		 * the startup cost of Gather Motion node, see
+		 * cdbpath_cost_motion(), so at this moment,
+		 * partial_pathlist has a cheaper cost than pathlist,
+		 * but it is uncertain after the Gather Motion is
+		 * added later. Luckily, the following operations
+		 * like LIMIT, ORDERED BY will all get benifit from
+		 * large parallel workers, so in the worse case, we
+		 * only suffer a loss of QE startup cost.
+		 *
+		 * FIXME: we should also consider partial pathlist
+		 * in following planning steps like limit, order by
+		 * etc. Postgresql didn't do so because the partial
+		 * path must be gathered to pathlist.
+		 */
+		if (gp_enable_parallelscan &&
+			current_rel->partial_pathlist)
+		{
+			Path *cheapest_partial_path = (Path *)
+				linitial(current_rel->partial_pathlist);
+
+			add_path(current_rel, cheapest_partial_path);
+			set_cheapest(current_rel);
+			/* empty the partial_pathlist */
+			current_rel->partial_pathlist = NIL;
+		}
 	}							/* end of if (setOperations) */
 
 	/*

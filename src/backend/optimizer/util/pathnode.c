@@ -663,6 +663,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 	if (!CdbLocusType_IsValid(new_path->locus.locustype))
 		elog(ERROR, "path of type %u is missing distribution locus", new_path->pathtype);
 	Assert(cdbpathlocus_is_valid(new_path->locus));
+	Assert(new_path->parallel_workers == new_path->locus.parallel_workers);
 
 	/* Pretend parameterized paths have no pathkeys, per comment above */
 	new_path_pathkeys = new_path->param_info ? NIL : new_path->pathkeys;
@@ -1074,6 +1075,21 @@ add_partial_path(RelOptInfo *parent_rel, Path *new_path)
 
 	/* Check for query cancel. */
 	CHECK_FOR_INTERRUPTS();
+
+	/*
+	 * CDB: In GPDB, add_partial_path() not always have a new_path with
+	 * parallel_workers > 0, eg: join between partial_pathlist and pathlist
+	 * may redistribute partial_pathlist to pathlist whose parallel_workers
+	 * is zero. If input path's parallel_workers is zero, we prefer to add
+	 * it to pathlist instead.
+	 */
+	if (!new_path->parallel_workers)
+	{
+		add_path(parent_rel, new_path);
+		return;
+	}
+
+	Assert(new_path->parallel_workers == new_path->locus.parallel_workers);
 
 	/*
 	 * As in add_path, throw out any paths which are dominated by the new

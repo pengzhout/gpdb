@@ -2494,6 +2494,9 @@ generate_gather_paths(PlannerInfo *root, RelOptInfo *rel)
 	 * non-NIL pathkeys.
 	 */
 	cheapest_partial_path = linitial(rel->partial_pathlist);
+
+	if (!cheapest_partial_path->parallel_safe)
+		return;
 	simple_gather_path = (Path *)
 		create_gather_path(root, rel, cheapest_partial_path, rel->reltarget,
 						   NULL, NULL);
