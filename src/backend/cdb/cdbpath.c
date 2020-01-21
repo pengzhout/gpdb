@@ -62,6 +62,24 @@ static bool try_redistribute(PlannerInfo *root, CdbpathMfjRel *g,
 
 static SplitUpdatePath *make_splitupdate_path(PlannerInfo *root, Path *subpath, Index rti);
 
+static int
+cdbpath_parallel_workers(Path *path)
+{
+	int workers;
+
+	if (CdbPathLocus_IsPartitioned(path->locus) ||
+		CdbPathLocus_IsReplicated(path->locus))
+	{
+		workers = CdbPathLocus_NumSegments(path->locus);	
+
+		if (path->parallel_workers)
+			workers = workers * path->parallel_workers;
+	}
+	else
+		workers = 1;
+
+	return workers;
+}
 
 /*
  * cdbpath_cost_motion
@@ -76,23 +94,63 @@ cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 	double		recvrows;
 	double		sendrows;
 
-	if (CdbPathLocus_IsReplicated(motionpath->path.locus))
-		motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(motionpath->path.locus);
+	if (gp_enable_parallelscan)
+	{
+		double startup_cost;
+		double run_cost;
+		double startup_cost_per_bgworker;
+
+		sendrows = subpath->rows * cdbpath_parallel_workers(subpath);
+
+		if (CdbPathLocus_IsPartitioned(motionpath->path.locus))
+		{
+			recvrows = sendrows / cdbpath_parallel_workers(&motionpath->path);
+			if (recvrows < 1.0)
+				recvrows = 1.0;
+		}
+		else if (CdbPathLocus_IsReplicated(motionpath->path.locus))
+			recvrows = sendrows * cdbpath_parallel_workers(&motionpath->path);
+		else
+			recvrows = sendrows; 
+
+		motionpath->path.rows = recvrows; 
+
+		startup_cost = subpath->startup_cost;
+		run_cost = subpath->total_cost - subpath->startup_cost;
+
+		/* Parallel motion setup and communication cost. */
+		startup_cost_per_bgworker = max_parallel_workers_per_gather ?
+			parallel_setup_cost / max_parallel_workers_per_gather : 
+			1.0;
+		startup_cost += 1.5 * startup_cost_per_bgworker *
+			cdbpath_parallel_workers(subpath);
+
+		run_cost += recvrows * 1.5 * parallel_tuple_cost;
+
+		motionpath->path.startup_cost = startup_cost;
+		motionpath->path.total_cost = startup_cost + run_cost;
+		motionpath->path.memory = subpath->memory;
+	}
 	else
-		motionpath->path.rows = subpath->rows;
+	{
+		if (CdbPathLocus_IsReplicated(motionpath->path.locus))
+			motionpath->path.rows = subpath->rows * CdbPathLocus_NumSegments(motionpath->path.locus);
+		else
+			motionpath->path.rows = subpath->rows;
 
-	cost_per_row = (gp_motion_cost_per_row > 0.0)
-		? gp_motion_cost_per_row
-		: 2.0 * cpu_tuple_cost;
-	sendrows = subpath->rows;
-	recvrows = motionpath->path.rows;
-	motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
+		sendrows = subpath->rows;
+		recvrows = motionpath->path.rows;
 
-	motionpath->path.total_cost = motioncost + subpath->total_cost;
-	motionpath->path.startup_cost = subpath->startup_cost;
-	motionpath->path.memory = subpath->memory;
+		cost_per_row = (gp_motion_cost_per_row > 0.0)
+			? gp_motion_cost_per_row
+			: 2.0 * cpu_tuple_cost;
+		motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
+
+		motionpath->path.total_cost = motioncost + subpath->total_cost;
+		motionpath->path.startup_cost = subpath->startup_cost;
+		motionpath->path.memory = subpath->memory;
+	}
 }								/* cdbpath_cost_motion */
-
 
 /*
  * cdbpath_create_motion_path
@@ -1629,7 +1687,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 		/* Replicate single rel if cheaper than redistributing both rels. */
 		else if (single->ok_to_replicate &&
-				 (single->bytes * CdbPathLocus_NumSegments(other->locus) <
+				 (single->bytes * cdbpath_parallel_workers(other->path) <
 				  single->bytes + other->bytes))
 			CdbPathLocus_MakeReplicated(&single->move_to,
 										CdbPathLocus_NumSegments(other->locus),
@@ -1712,7 +1770,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		 */
 		else if (!small_rel->require_existing_order &&
 				 small_rel->ok_to_replicate &&
-				 (small_rel->bytes * CdbPathLocus_NumSegments(large_rel->locus) <
+				 (small_rel->bytes * cdbpath_parallel_workers(large_rel->path) <
 				  large_rel->bytes))
 			CdbPathLocus_MakeReplicated(&small_rel->move_to,
 										CdbPathLocus_NumSegments(large_rel->locus),
@@ -1724,7 +1782,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		 */
 		else if (!large_rel->require_existing_order &&
 				 large_rel->ok_to_replicate &&
-				 (large_rel->bytes * CdbPathLocus_NumSegments(small_rel->locus) <
+				 (large_rel->bytes * cdbpath_parallel_workers(small_rel->path) <
 				  small_rel->bytes))
 			CdbPathLocus_MakeReplicated(&large_rel->move_to,
 										CdbPathLocus_NumSegments(small_rel->locus),
@@ -1745,7 +1803,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		/* Replicate smaller rel if cheaper than redistributing both rels. */
 		else if (!small_rel->require_existing_order &&
 				 small_rel->ok_to_replicate &&
-				 (small_rel->bytes * CdbPathLocus_NumSegments(large_rel->locus) <
+				 (small_rel->bytes * cdbpath_parallel_workers(large_rel->path) <
 				  small_rel->bytes + large_rel->bytes))
 			CdbPathLocus_MakeReplicated(&small_rel->move_to,
 										CdbPathLocus_NumSegments(large_rel->locus),
@@ -1754,7 +1812,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		/* Replicate largeer rel if cheaper than redistributing both rels. */
 		else if (!large_rel->require_existing_order &&
 				 large_rel->ok_to_replicate &&
-				 (large_rel->bytes * CdbPathLocus_NumSegments(small_rel->locus) <
+				 (large_rel->bytes * cdbpath_parallel_workers(small_rel->path) <
 				  large_rel->bytes + small_rel->bytes))
 			CdbPathLocus_MakeReplicated(&large_rel->move_to,
 										CdbPathLocus_NumSegments(small_rel->locus),
