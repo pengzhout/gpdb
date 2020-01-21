@@ -73,6 +73,12 @@ cdbpathlocus_equal(CdbPathLocus a, CdbPathLocus b)
 		list_length(a.distkey) != list_length(b.distkey))
 		return false;
 
+	if (a.parallel_workers != b.parallel_workers)
+		return false;
+
+	if (!(a.hashflag & b.hashflag))
+		return false;
+
 	if ((CdbPathLocus_IsHashed(a) || CdbPathLocus_IsHashedOJ(a)) &&
 		(CdbPathLocus_IsHashed(b) || CdbPathLocus_IsHashedOJ(b)))
 	{
@@ -824,6 +830,10 @@ cdbpathlocus_is_hashed_on_exprs(CdbPathLocus locus, List *exprlist,
 
 	if (CdbPathLocus_IsHashed(locus) || CdbPathLocus_IsHashedOJ(locus))
 	{
+		/* do hash locus precheck first */
+		if (!cdbpathlocus_precheck_hash(locus))
+			return false;
+
 		foreach(distkeycell, locus.distkey)
 		{
 			DistributionKey *distkey = (DistributionKey *) lfirst(distkeycell);
@@ -886,6 +896,10 @@ cdbpathlocus_is_hashed_on_eclasses(CdbPathLocus locus, List *eclasses,
 
 	if (CdbPathLocus_IsHashed(locus) || CdbPathLocus_IsHashedOJ(locus))
 	{
+		/* do hash locus precheck first */
+		if (!cdbpathlocus_precheck_hash(locus))
+			return false;
+
 		foreach(distkeycell, locus.distkey)
 		{
 			DistributionKey *distkey = (DistributionKey *) lfirst(distkeycell);
@@ -954,6 +968,10 @@ cdbpathlocus_is_hashed_on_tlist(CdbPathLocus locus, List *tlist,
 
 	if (CdbPathLocus_IsHashed(locus) || CdbPathLocus_IsHashedOJ(locus))
 	{
+		/* first do hash locus validation */
+		if (!cdbpathlocus_precheck_hash(locus))
+			return false;
+
 		foreach(distkeycell, locus.distkey)
 		{
 			DistributionKey *distkey = (DistributionKey *) lfirst(distkeycell);
@@ -1122,3 +1140,20 @@ cdbpathlocus_is_valid(CdbPathLocus locus)
 bad:
 	return false;
 }								/* cdbpathlocus_is_valid */
+
+/* 
+ * This function check whether the distkey of hash locus is
+ * valid. This function should be called before we decide
+ * whether need a redistribute motion using distkey.
+ */
+bool
+cdbpathlocus_precheck_hash(CdbPathLocus locus)
+{
+	if (!CdbPathLocus_IsHashed(locus) &&
+		!CdbPathLocus_IsHashedOJ(locus))
+		return true;
+
+	if (locus.hashflag & HASHED_ON_WORKERS)
+		return true;
+	return false;
+}
