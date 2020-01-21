@@ -19,6 +19,7 @@
 Flow *
 cdbpathtoplan_create_flow(PlannerInfo  *root,
                           CdbPathLocus  locus,
-                          Plan         *plan);
+                          Plan         *plan,
+						  int			parallel_workers);
 
 #endif   /* CDBPATHTOPLAN_H */
