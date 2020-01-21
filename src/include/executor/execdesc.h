@@ -106,8 +106,6 @@ typedef struct Slice
 	Bitmapset	*processesMap;
 	/* A list of segment ids who will execute this slice */
 	List		*segments;
-
-	int			parallel_workers;
 } Slice;
 
 /*
