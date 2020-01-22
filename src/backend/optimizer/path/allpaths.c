@@ -828,7 +828,8 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	}
 
 	/* If appropriate, consider parallel sequential scan */
-	if (rel->consider_parallel && required_outer == NULL)
+	if (rel->consider_parallel && required_outer == NULL &&
+		rel->relstorage == RELSTORAGE_HEAP)
 		create_plain_partial_paths(root, rel);
 
 	/* Consider index and bitmap scans */
