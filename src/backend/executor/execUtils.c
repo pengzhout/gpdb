@@ -1602,7 +1602,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 * mark the estate to "cancelUnfinished" and then try to do a
 		 * normal interconnect teardown).
 		 */
-		TeardownInterconnect(estate->interconnect_context, estate->cancelUnfinished);
+		TeardownInterconnect(estate->interconnect_context, false);
 		estate->interconnect_context = NULL;
 		estate->es_interconnect_is_setup = false;
 	}

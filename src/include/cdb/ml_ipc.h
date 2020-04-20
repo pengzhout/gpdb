@@ -117,7 +117,7 @@ extern void SetupInterconnect(struct EState *estate);
  *
  */
 extern void TeardownInterconnect(ChunkTransportState *transportStates,
-								 bool forceEOS);
+								 bool hasErrors);
 
 extern void WaitInterconnectQuit(void);
 
@@ -318,9 +318,9 @@ extern void WaitInterconnectQuitUDPIFC(void);
 extern void SetupTCPInterconnect(EState *estate);
 extern void SetupUDPIFCInterconnect(EState *estate);
 extern void TeardownTCPInterconnect(ChunkTransportState *transportStates,
-									bool forceEOS);
+									bool hasErrors);
 extern void TeardownUDPIFCInterconnect(ChunkTransportState *transportStates,
-								 bool forceEOS);
+								 bool hasErrors);
 
 extern uint32 getActiveMotionConns(void);
 extern void adjustMasterRouting(ExecSlice *recvSlice);
