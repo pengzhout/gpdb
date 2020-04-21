@@ -2024,17 +2024,6 @@ vacuum_rel(Oid relid, RangeVar *relation, int options, VacuumParams *params,
 	PopActiveSnapshot();
 	CommitTransactionCommand();
 
-#ifdef FAULT_INJECTOR
-	if (ao_vacuum_phase == VACOPT_AO_POST_CLEANUP_PHASE)
-	{
-		FaultInjector_InjectFaultIfSet(
-			"vacuum_post_cleanup_committed",
-			DDLNotSpecified,
-			"",	// databaseName
-			""); // tableName
-	}
-#endif
-
 	if (is_appendoptimized && ao_vacuum_phase == 0)
 	{
 		/* orchestrate the AO vacuum phases */
@@ -2151,6 +2140,17 @@ vacuum_rel(Oid relid, RangeVar *relation, int options, VacuumParams *params,
 	 * Now release the session-level lock on the master table.
 	 */
 	UnlockRelationIdForSession(&onerelid, lmode);
+
+#ifdef FAULT_INJECTOR
+	if (ao_vacuum_phase == VACOPT_AO_POST_CLEANUP_PHASE)
+	{
+		FaultInjector_InjectFaultIfSet(
+			"vacuum_post_cleanup_committed",
+			DDLNotSpecified,
+			"",	// databaseName
+			""); // tableName
+	}
+#endif
 
 	/* Report that we really did it. */
 	return true;
