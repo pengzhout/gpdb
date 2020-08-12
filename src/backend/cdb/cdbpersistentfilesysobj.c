@@ -1720,21 +1720,35 @@ PersistentFileSysObj_RemoveSegment(PersistentFileSysObjName *fsObjName,
 		{
 			int dbidattnum;
 			int locattnum;
-			int dbid_1_attnum = Anum_gp_persistent_filespace_node_db_id_1;
+			int dbid_1 = values[Anum_gp_persistent_filespace_node_db_id_1 - 1];
+			int dbid_2 = values[Anum_gp_persistent_filespace_node_db_id_2 - 1];
 			char ep[FilespaceLocationBlankPaddedWithNullTermLen];
 
 			MemSet(ep, ' ', FilespaceLocationBlankPaddedWithNullTermLen - 1);
 			ep[FilespaceLocationBlankPaddedWithNullTermLen - 1] = '\0';
 
-			if (DatumGetInt16(values[dbid_1_attnum - 1]) == dbid)
+			if (dbid_1 == dbid)
 			{
 				dbidattnum = Anum_gp_persistent_filespace_node_db_id_1;
 				locattnum = Anum_gp_persistent_filespace_node_location_1;
 			}
-			else
+			else if (dbid_2 == dbid)
 			{
 				dbidattnum = Anum_gp_persistent_filespace_node_db_id_2;
 				locattnum = Anum_gp_persistent_filespace_node_location_2;
+			}
+			else
+			{
+				/*
+				 * There is no match for this dbid, someone may have removed
+				 * the segment.
+				 */
+				Assert(dbid_1 == 0 || dbid_2 == 0);
+
+				pfree(newValues);
+				pfree(replaces);
+				pfree(values);
+				return;
 			}
 
 			replaces[dbidattnum - 1] = true;
