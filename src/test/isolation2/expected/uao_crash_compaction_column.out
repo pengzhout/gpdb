@@ -235,7 +235,7 @@ UPDATE 1
  1     | 2          | 257            | 8        | 2        | 1     
 (9 rows)
 -- verify the new segment files contain no tuples.
-1:SELECT sum(tupcount) FROM gp_toolkit.__gp_aocsseg('crash_vacuum_in_appendonly_insert') where state = 1 and segno = 2;
+1:SELECT sum(tupcount) FROM gp_toolkit.__gp_aocsseg('crash_vacuum_in_appendonly_insert') where segno = 2;
  sum 
 -----
  0   
